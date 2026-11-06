@@ -256,12 +256,13 @@ def render(path, cam_loc, target, lens, res):
     bpy.ops.render.render(write_still=True)
 
 
-OUT.mkdir(parents=True, exist_ok=True)
-bpy.ops.wm.read_factory_settings(use_empty=True)
-plot_scene()
-render("farm_plot.png", (1.2, -10.5, 6.2), (0, 0.2, 0.3), 30, (1280, 720))
-bpy.ops.wm.read_factory_settings(use_empty=True)
-MATS.clear()
-stages_scene()
-render("farm_stages.png", (0, -7.5, 6.5), (0, 0, 0.1), 38, (1280, 720))
-print("rendered to", OUT)
+if __name__ == "__main__":  # build_mock.py imports the crop and prop helpers from here
+    OUT.mkdir(parents=True, exist_ok=True)
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    plot_scene()
+    render("farm_plot.png", (1.2, -10.5, 6.2), (0, 0.2, 0.3), 30, (1280, 720))
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    MATS.clear()
+    stages_scene()
+    render("farm_stages.png", (0, -7.5, 6.5), (0, 0, 0.1), 38, (1280, 720))
+    print("rendered to", OUT)
