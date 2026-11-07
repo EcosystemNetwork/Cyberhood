@@ -162,10 +162,18 @@
   .farmbar .n { display: inline-block; margin-top: 4px; padding: 1px 8px; border-radius: 999px; background: #1a0624; font: 12px 'Lilita One', sans-serif; color: var(--lime); }
   #buildMode { left: 50%; top: 62px; transform: translateX(-50%); padding: 6px 18px; border-radius: 999px; font: 17px 'Lilita One', sans-serif; color: var(--lime); white-space: nowrap; }
   .tag.plot { font-size: 16px; } .tag.plot.free { background: #2a5a1a; border-color: #c8ff2e; color: #e8ffb0; box-shadow: 0 3px 0 #1a3a10; }
-  @media (max-width: 640px) { .farmbar .seed { width: 84px; } .farmbar i { display: none; } }
+  @media (max-width: 640px) {
+    .farmbar { left: 8px; right: 112px; transform: none; overflow-x: auto; scrollbar-width: none; bottom: 64px; }
+    .farmbar .seed { width: 76px; flex: none; } .farmbar i { display: none; } .farmbar .h { display: none; }
+    #nearChip { top: 104px; max-width: calc(100% - 140px); left: 12px; transform: none; font-size: 13px; white-space: normal; }
+    #buildMode { top: 104px; left: auto; right: 150px; transform: none; font-size: 12px; padding: 4px 10px; display: none; }
+    body.building #chat, body.building #chatBtn, body.building #camBtn, body.building #bagBtn { display: none; }
+  }
   #crosshair { position: fixed; z-index: 3; left: 50%; top: 50%; width: 22px; height: 22px; margin: -11px 0 0 -11px; pointer-events: none;
     background: linear-gradient(#fff, #fff) center / 2px 100% no-repeat, linear-gradient(#fff, #fff) center / 100% 2px no-repeat; filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.8)); }
   #viewBtn { padding: 6px 12px; border-radius: 999px; font-size: 15px; }
+  .actions .touch { padding: 6px 12px; border-radius: 999px; font-size: 14px; background: linear-gradient(#ffd27a, #e89a2a); box-shadow: 0 3px 0 #8a4a10; }
+  .actions .touch.on { background: linear-gradient(#ff8a8a, #e04a4a); box-shadow: 0 3px 0 #8a1a1a; }
   #fade { position: fixed; inset: 0; z-index: 9; background: #000; opacity: 0; pointer-events: none; transition: opacity 0.7s; }
 
   @media (max-width: 640px) {
@@ -224,6 +232,10 @@ else if (!localStorage.getItem('taproot_character')) window.location.replace('/g
   <button id="chatBtn" type="button" tabindex="-1" aria-label="Chat">&#128172;<kbd>T</kbd></button>
   <button id="camBtn" type="button" tabindex="-1" aria-label="Camera view">&#127909;<kbd>C</kbd></button>
   <button id="viewBtn" type="button" tabindex="-1" aria-label="First or third person">&#128065;<kbd>V</kbd></button>
+  <button id="buildBtn" class="touch" type="button" tabindex="-1" hidden>&#128296; Build</button>
+  <button id="nextBtn" class="touch" type="button" tabindex="-1" hidden>&#9654; Next</button>
+  <button id="rotBtn" class="touch" type="button" tabindex="-1" hidden>&#8635; Turn</button>
+  <button id="breakBtn" class="touch" type="button" tabindex="-1" hidden>&#9935; Break</button>
   <button id="bagBtn" type="button" tabindex="-1">Bag<kbd>B</kbd></button>
   <button id="jumpBtn" type="button" tabindex="-1" aria-label="Jump">JUMP</button>
   <button id="attackBtn" type="button" tabindex="-1" aria-label="Attack">&#9876;&#65039;</button>
@@ -3273,6 +3285,14 @@ const blockMode = () => !!building && building.k.startsWith('block:');
 const blockType = () => building.k.slice(6);
 // ---- blocks: aim with the mouse (or a tap), place with F / a click, break with X / a right-click
 const mouse = { x: 0, y: 0, has: false }; // last pointer position over the game, in NDC
+let tapMode = 'place'; // phones: what a confirmed tap does
+const TOUCH = navigator.maxTouchPoints > 0;
+const nextItem = () => { building.k = BAR[(BAR.indexOf(building.k) + 1) % BAR.length]; if (building.ghost) { scene.remove(building.ghost); building.ghost = null; } renderBuildBar(); };
+const tapBtn = (id, fn) => $(id).addEventListener('pointerdown', (e) => { e.preventDefault(); fn(); });
+tapBtn('buildBtn', () => { if (building) setBuilding(false); else if (myFarm && onPlot(plotOf(myFarm.id))) setBuilding(true); });
+tapBtn('nextBtn', () => building && nextItem());
+tapBtn('rotBtn', () => { if (building) building.r = (building.r + 1) % 4; });
+tapBtn('breakBtn', () => { tapMode = tapMode === 'break' ? 'place' : 'break'; });
 const AIM = new THREE.Raycaster(), AIM_NDC = new THREE.Vector2();
 function blockCtx(p) {
   return {
@@ -3318,19 +3338,28 @@ function breakBlock() {
 }
 function blockAction() {
   const a = aimBlock(), t = blockType(), it = BLOCKS[t];
-  if (!a) return info(`${it.name} · point at your soil · R rotate · Esc done`);
-  if (a.why) return info(`${it.name} · ${a.why}${a.breakable ? ' · X or right-click breaks the block you point at' : ''}`);
-  return { text: `Press F or click to place ${it.name} (${field.bag['block_' + t]} left) · X or right-click breaks · R rotate`, btn: '\u{1F9F1} Place', run: placeBlock };
+  if (!a) return info(TOUCH ? `${it.name} · tap your soil` : `${it.name} · point at your soil · R rotate · Esc done`);
+  if (tapMode === 'break' && TOUCH) return info(a.breakable ? 'Break · tap the block again to break it' : 'Break · tap a block');
+  if (a.why) return info(`${it.name} · ${a.why}${a.breakable && !TOUCH ? ' · X or right-click breaks the block you point at' : ''}`);
+  return { text: TOUCH ? `${it.name} (${field.bag['block_' + t]}) · tap again or Place` : `Press F or click to place ${it.name} (${field.bag['block_' + t]} left) · X or right-click breaks · R rotate`, btn: '\u{1F9F1} Place', run: placeBlock };
 }
 addEventListener('pointermove', (e) => { mouse.x = (e.clientX / innerWidth) * 2 - 1; mouse.y = -(e.clientY / innerHeight) * 2 + 1; mouse.has = true; });
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 { // a short click places (left) or breaks (right); a drag still turns the camera
   let down = null;
   canvas.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY, t: performance.now(), b: e.button }; });
+  let lastTap = null;
   canvas.addEventListener('pointerup', (e) => {
     if (!down || !blockMode() || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 6 || performance.now() - down.t > 300) { down = null; return; }
-    if (down.b === 2) breakBlock(); else if (down.b === 0) placeBlock();
     down = null;
+    if (e.pointerType === 'touch') { // phones: the first tap aims (the ghost shows), a second tap on the same spot confirms
+      mouse.x = (e.clientX / innerWidth) * 2 - 1; mouse.y = -(e.clientY / innerHeight) * 2 + 1; mouse.has = true;
+      const a = aimBlock(), cell = a && (tapMode === 'break' ? `${a.i},${a.j},${a.k}` : a.place.join());
+      if (cell && lastTap && lastTap.cell === cell && performance.now() - lastTap.t < 1500) { if (tapMode === 'break') breakBlock(); else placeBlock(); lastTap = null; }
+      else lastTap = cell ? { cell, t: performance.now() } : null;
+      return;
+    }
+    if (e.button === 2) breakBlock(); else if (e.button === 0) placeBlock();
   });
 }
 function buildAction() {
@@ -3360,6 +3389,7 @@ function setBuilding(on) {
   if (building && building.ghost) { scene.remove(building.ghost); building.ghost = null; }
   building = on ? { k: (building && building.k) || BAR[0], r: (building && building.r) || (plotOf(myFarm.id).side === 's' ? 0 : 2), ghost: null } : null;
   $('buildBar').hidden = $('buildMode').hidden = !building;
+  document.body.classList.toggle('building', !!building);
   if (building) renderBuildBar();
 }
 function farmKey(code) {
@@ -3542,6 +3572,8 @@ function renderBuildBar() {
     const it = BUILDS[k], count = myFarm.builds.filter((b) => b.k === k).length;
     return `<div class="seed ${k === building.k ? 'on' : ''}"><kbd>${n + 1}</kbd><div class="e">${it.emoji}</div><b>${it.name}</b><i>${it.size} x ${it.size} &middot; ${it.about}</i><span class="n">${count >= it.max ? 'max built' : it.cost + ' gold'}</span></div>`;
   }).join('');
+  const on = $('buildBar').querySelector('.on'); // phones: keep the picked item in view
+  if (on && $('buildBar').scrollWidth > $('buildBar').clientWidth) $('buildBar').scrollLeft = on.offsetLeft - 8;
 }
 // Blocks: one InstancedMesh per block type per plot. Geometry origin is the cell centre
 // (a door's panel reaches up into the cell above).
@@ -3665,6 +3697,14 @@ function updateFarm(dt, now) {
   }
   const mine = myFarm && onPlot(plotOf(myFarm.id));
   if (building && !mine) setBuilding(false);
+  if (TOUCH) { // phone buttons for building
+    const show = (id, on) => { if ($(id).hidden === on) $(id).hidden = !on; };
+    show('buildBtn', !!mine);
+    show('nextBtn', !!building); show('rotBtn', !!building); show('breakBtn', blockMode());
+    const bl = building ? '\u2714 Done' : '\u{1F528} Build';
+    if ($('buildBtn').dataset.l !== bl) { $('buildBtn').dataset.l = bl; $('buildBtn').textContent = bl; }
+    $('breakBtn').classList.toggle('on', tapMode === 'break');
+  }
   $('seedBar').hidden = !mine || !!building;
   const ss = mine ? selSeed + SEEDS.map((k) => field.bag[k + '_seed'] || 0).join() : '';
   if (mine && ss !== seedBarSig) { seedBarSig = ss; renderSeedBar(); }
@@ -4075,7 +4115,7 @@ function update(dt, now) {
 
 SPAWN_LIST.forEach((type) => spawnMonster(type));
 // debug hook for tests and screenshots: __world3d.tp(x, z) teleports, .P is the player state
-window.__world3d = { P, ghosts, arena, farms, firstPerson: () => firstPerson, setPitch: (v) => { fpPitch = v; }, openShop, hiddenBlocks, doorAngle: (id, i, j, k) => { const v = plotViews.get(id); return (v && v.doorAng && v.doorAng.get(`${i},${j},${k}`)) || 0; }, shopSpots, aimBlock, mouse, camera, building: () => building, toScreen, groundAt, solidAt, setBlocks, plots: PLOTS, placed, decorCrops, myFarm: () => myFarm, farmTile: () => farmTile(), hp: () => hp, mp, monsters, drops, field: () => field, hero: () => hero, fireballs, tp: (x, z, yaw) => { P.x = x; P.z = z; if (yaw !== undefined) camYaw = yaw; }, cam: (dist, pitch) => { camDistT = camDist = dist; camPitchT = camPitch = pitch; }, size: [MAP_W, MAP_H], info: () => { // one full frame's draw calls and triangles (all passes, shadows included)
+window.__world3d = { P, ghosts, arena, farms, getPitch: () => fpPitch, firstPerson: () => firstPerson, setPitch: (v) => { fpPitch = v; }, openShop, hiddenBlocks, doorAngle: (id, i, j, k) => { const v = plotViews.get(id); return (v && v.doorAng && v.doorAng.get(`${i},${j},${k}`)) || 0; }, shopSpots, aimBlock, mouse, camera, building: () => building, toScreen, groundAt, solidAt, setBlocks, plots: PLOTS, placed, decorCrops, myFarm: () => myFarm, farmTile: () => farmTile(), hp: () => hp, mp, monsters, drops, field: () => field, hero: () => hero, fireballs, tp: (x, z, yaw) => { P.x = x; P.z = z; if (yaw !== undefined) camYaw = yaw; }, cam: (dist, pitch) => { camDistT = camDist = dist; camPitchT = camPitch = pitch; }, size: [MAP_W, MAP_H], info: () => { // one full frame's draw calls and triangles (all passes, shadows included)
   renderer.info.autoReset = false; renderer.info.reset(); composer.render();
   const r = { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles };
   renderer.info.autoReset = true; return r;
