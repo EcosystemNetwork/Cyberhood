@@ -280,7 +280,8 @@ import { makeHero3D, loadBlenderParts } from '/game/lib/hero3d.js';
 import { loadBlenderHero, makeBlenderHero } from '/game/lib/blenderhero.js';
 import { SHOPS, SELL, RECIPES, CONSUMABLES } from './shops.js';
 import { CROPS, BUILDS, ALTAR, FARM_ITEMS } from './farm.js';
-import { MAX_H, unpack, standHeight, blockedAt } from './blocks.js';
+import { BLOCKS, BLOCK_IDS, MAX_H, unpack, pack, standHeight, blockedAt, raycast, canPlace } from './blocks.js';
+for (const id of BLOCK_IDS) FARM_ITEMS['block_' + id] = { name: BLOCKS[id].name, emoji: BLOCKS[id].emoji, info: 'Building block · place it on your plot in build mode (G)' };
 
 const AREA = new URLSearchParams(location.search).get('area');
 const PLOT_Q = new URLSearchParams(location.search).get('plot'); // which player's clubhouse you're in
@@ -503,7 +504,7 @@ const AREAS = {
     // along the south road stay decor; the barn sits on the third.
     const farmPlots = [[12, 12, 37, 37, 's'], [44, 12, 53, 21, 's'], [44, 28, 53, 37, 'n']]
       .map(([x1, y1, x2, y2, side], i) => [x1, y1, x2, y2, 'player', i + 1, side]);
-    const plots = [...farmPlots, [28, 45, 37, 49, 'crops'], [44, 45, 53, 49, 'dirt']];
+    const plots = [...farmPlots, [28, 45, 37, 49, 'crops']];
     const inPlot = (x, y) => plots.some(([x1, y1, x2, y2]) => x >= x1 && x <= x2 && y >= y1 && y <= y2);
     const lamps = xs.flatMap((x) => ys.flatMap((y) => [[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([sx, sy]) => [Math.floor(x + sx * 2.4), Math.floor(y + sy * 2.4)])))
       .filter(([x, y]) => !inPlot(x, y)).map(([x, y]) => ['streetlamp', x, y, 1, 1]);
@@ -515,11 +516,11 @@ const AREAS = {
       grid: { xs, ys, road: 1.6, walk: 1.5 },
       paths: [], ponds: [], tall: [],
       plots,
-      fenceRects: [...farmPlots.map(([x1, y1, x2, y2, , , side]) => [x1, y1, x2, y2, side]), [28, 45, 37, 49, 'n'], [44, 45, 53, 49, 'n']],
+      fenceRects: [...farmPlots.map(([x1, y1, x2, y2, , , side]) => [x1, y1, x2, y2, side]), [28, 45, 37, 49, 'n']],
       objects: [
         ['house_b', 12, 2, 4, 3], ['shop', 17, 2, 4, 3, 'Seed Shop'], ['house_a', 28, 1, 5, 4], ['house_b', 34, 2, 4, 3],
         ['tavern', 44, 2, 5, 3, 'Harvest Inn'], ['house_a', 50, 1, 4, 4],
-        ['barn', 14, 45, 6, 4, "Bo's Barn"],
+        ['barn', 14, 45, 6, 4, "Bo's Barn"], ['shop', 46, 45, 5, 3, "Builder's Yard", Math.PI],
         ...lamps,
       ],
       start: { x: 24, y: 44 },
@@ -535,6 +536,8 @@ const AREAS = {
       npcs: [
         ['Farmer Bo', 'runs the Seed Shop', 20.6, 6.6, { skin: 2, hc: 1, hs: 'short', equipment: { body: 'ranger_tunic', feet: 'leather_boots' } },
           'Six plots, one per farmer. Walk up to a FOR CLAIM sign and press F!'],
+        ['Mason', "runs the Builder's Yard", 51.6, 43.9, { skin: 3, hc: 1, hs: 'short', equipment: { body: 'leather_vest', feet: 'leather_boots' } },
+          'Stone, planks, glass, roof tiles, doors. Build a house on your plot!'],
         ['Kit', 'city courier', 42.8, 23, { skin: 0, hc: 2, hs: 'long', equipment: { head: 'ranger_hood', body: 'rogue_tunic', feet: 'swift_sandals' } },
           'Plots out here are up for grabs. Somebody has to farm them!'],
       ],
@@ -3202,7 +3205,7 @@ function farmAction() {
     }
   }
   const t = farmTile();
-  if (!t || !myFarm || t.p.id !== myFarm.id || buildAt(myFarm, t.i, t.j)) return null;
+  if (!t || !myFarm || t.p.id !== myFarm.id || buildAt(myFarm, t.i, t.j) || P.y > 0.3 || voxOf(t.p).get(t.i, t.j, 0)) return null;
   const key = `${t.i},${t.j}`, c = myFarm.crops[key];
   if (c) {
     if (cropProgress(myFarm, c) >= 1) return { text: `Press F to harvest ${CROPS[c.k].name}`, btn: '\u{1F9FA} Harvest', run: () => harvest(key) };
@@ -3222,6 +3225,7 @@ function buildTarget() {
   let why = '';
   if (i < 0 || j < 0 || i + s > p.nx || j + s > p.nz) why = 'outside your soil';
   else for (let y = j; y < j + s && !why; y++) for (let x = i; x < i + s; x++) {
+    if (voxOf(p).get(x, y, 0)) { why = 'blocks in the way'; break; }
     if (myFarm.crops[`${x},${y}`]) { why = 'crops in the way'; break; }
     if (buildAt(myFarm, x, y)) { why = 'something is already there'; break; }
     if (Math.floor(P.x) === p.i0 + x && Math.floor(P.z) === p.j0 + y) { why = 'you are standing there'; break; }
@@ -3232,7 +3236,73 @@ function buildTarget() {
   const hit = buildAt(myFarm, tx, tz);
   return { p, i, j, s, why, hit };
 }
+const BAR = [...BUILD_KEYS, ...BLOCK_IDS.map((id) => 'block:' + id)];
+const blockMode = () => !!building && building.k.startsWith('block:');
+const blockType = () => building.k.slice(6);
+// ---- blocks: aim with the mouse (or a tap), place with F / a click, break with X / a right-click
+const mouse = { x: 0, y: 0, has: false }; // last pointer position over the game, in NDC
+const AIM = new THREE.Raycaster(), AIM_NDC = new THREE.Vector2();
+function blockCtx(p) {
+  return {
+    crops: new Set(Object.keys(myFarm.crops || {})),
+    builds: (myFarm.builds || []).map((b) => ({ i: b.i, j: b.j, size: BUILDS[b.k].size })),
+    players: [P, ...ghosts.values()].map((q) => ({ x: q.x - p.i0, z: q.z - p.j0, y: q.y })),
+  };
+}
+function aimBlock() {
+  if (!myFarm || !building) return null;
+  const p = plotOf(myFarm.id), vox = voxOf(p);
+  AIM.setFromCamera(AIM_NDC.set(mouse.has ? mouse.x : 0, mouse.has ? mouse.y : 0), camera);
+  const o = AIM.ray.origin, d = AIM.ray.direction, h = raycast(vox, o.x - p.i0, o.y, o.z - p.j0, d.x, d.y, d.z, 60);
+  if (!h) return null;
+  const place = [h.i + h.nx, h.j + h.nz, h.k + h.ny], t = blockMode() ? blockType() : null;
+  const why = !t ? '' : !(field.bag['block_' + t] > 0) ? `no ${BLOCKS[t].name} in your bag` : canPlace(vox, place[0], place[1], place[2], t, blockCtx(p));
+  return { i: h.i, j: h.j, k: h.k, place, breakable: !h.soil, why };
+}
+function setPlotBlocks(p, vox) {
+  const packed = pack(vox);
+  voxCache.set(p.id, { src: packed, vox });
+  myFarm.blocks = packed;
+  saveField(); renderBag(); farmChanged();
+  if (building) renderBuildBar();
+}
+function placeBlock() {
+  const a = aimBlock();
+  if (!a || a.why || !blockMode()) return;
+  const p = plotOf(myFarm.id), t = blockType(), vox = voxOf(p);
+  field.bag['block_' + t] -= 1;
+  vox.set(a.place[0], a.place[1], a.place[2], t, building.r);
+  setPlotBlocks(p, vox);
+}
+function breakBlock() {
+  const a = aimBlock();
+  if (!a || !a.breakable) return;
+  const p = plotOf(myFarm.id), vox = voxOf(p), c = vox.get(a.i, a.j, a.k);
+  if (!c) return;
+  vox.del(a.i, a.j, a.k);
+  field.bag['block_' + c.t] = (field.bag['block_' + c.t] || 0) + 1;
+  setPlotBlocks(p, vox);
+  burst(p.i0 + a.i + 0.5, a.k + 0.5, p.j0 + a.j + 0.5, '#d8c8a8', 8);
+}
+function blockAction() {
+  const a = aimBlock(), t = blockType(), it = BLOCKS[t];
+  if (!a) return info(`${it.name} · point at your soil · R rotate · Esc done`);
+  if (a.why) return info(`${it.name} · ${a.why}${a.breakable ? ' · X or right-click breaks the block you point at' : ''}`);
+  return { text: `Press F or click to place ${it.name} (${field.bag['block_' + t]} left) · X or right-click breaks · R rotate`, btn: '\u{1F9F1} Place', run: placeBlock };
+}
+addEventListener('pointermove', (e) => { mouse.x = (e.clientX / innerWidth) * 2 - 1; mouse.y = -(e.clientY / innerHeight) * 2 + 1; mouse.has = true; });
+canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+{ // a short click places (left) or breaks (right); a drag still turns the camera
+  let down = null;
+  canvas.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY, t: performance.now(), b: e.button }; });
+  canvas.addEventListener('pointerup', (e) => {
+    if (!down || !blockMode() || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 6 || performance.now() - down.t > 300) { down = null; return; }
+    if (down.b === 2) breakBlock(); else if (down.b === 0) placeBlock();
+    down = null;
+  });
+}
 function buildAction() {
+  if (blockMode()) return blockAction();
   const t = buildTarget(), it = BUILDS[building.k];
   if (t.why) return info(`${it.name} · ${t.why}${t.hit ? ` · X picks up the ${BUILDS[t.hit.k].name}` : ''}`);
   return { text: `Press F to build a ${it.name} (${it.cost} gold) · R rotate · Esc done`, btn: '\u{1F528} Build', run: placeBuild };
@@ -3256,7 +3326,7 @@ function pickUpBuild() {
 }
 function setBuilding(on) {
   if (building && building.ghost) { scene.remove(building.ghost); building.ghost = null; }
-  building = on ? { k: (building && building.k) || BUILD_KEYS[0], r: (building && building.r) || (plotOf(myFarm.id).side === 's' ? 0 : 2), ghost: null } : null;
+  building = on ? { k: (building && building.k) || BAR[0], r: (building && building.r) || (plotOf(myFarm.id).side === 's' ? 0 : 2), ghost: null } : null;
   $('buildBar').hidden = $('buildMode').hidden = !building;
   if (building) renderBuildBar();
 }
@@ -3264,9 +3334,9 @@ function farmKey(code) {
   if (building) {
     if (code === 'Escape' || code === 'KeyG' || !onPlot(plotOf(myFarm.id))) return setBuilding(false);
     if (code === 'KeyR') building.r = (building.r + 1) % 4;
-    if (code === 'KeyX') pickUpBuild();
+    if (code === 'KeyX') { if (blockMode()) breakBlock(); else pickUpBuild(); }
     const n = +code.replace('Digit', '');
-    if (n >= 1 && n <= BUILD_KEYS.length) { building.k = BUILD_KEYS[n - 1]; if (building.ghost) { scene.remove(building.ghost); building.ghost = null; } renderBuildBar(); }
+    if (n >= 1 && n <= BAR.length) { building.k = BAR[n - 1]; if (building.ghost) { scene.remove(building.ghost); building.ghost = null; } renderBuildBar(); }
     return;
   }
   if (!myFarm || !onPlot(plotOf(myFarm.id))) return;
@@ -3432,10 +3502,61 @@ function renderSeedBar() {
   }).join('');
 }
 function renderBuildBar() {
-  $('buildBar').innerHTML = BUILD_KEYS.map((k, n) => {
+  $('buildBar').innerHTML = BAR.map((k, n) => {
+    if (k.startsWith('block:')) {
+      const b = BLOCKS[k.slice(6)], have = field.bag[k.replace(':', '_')] || 0;
+      return `<div class="seed ${k === building.k ? 'on' : ''}"><kbd>${n + 1}</kbd><div class="e">${b.emoji}</div><b>${b.name}</b><i>block${b.tall ? ' &middot; 2 tall' : ''}</i><span class="n">x${have}</span></div>`;
+    }
     const it = BUILDS[k], count = myFarm.builds.filter((b) => b.k === k).length;
     return `<div class="seed ${k === building.k ? 'on' : ''}"><kbd>${n + 1}</kbd><div class="e">${it.emoji}</div><b>${it.name}</b><i>${it.size} x ${it.size} &middot; ${it.about}</i><span class="n">${count >= it.max ? 'max built' : it.cost + ' gold'}</span></div>`;
   }).join('');
+}
+// Blocks: one InstancedMesh per block type per plot. Geometry origin is the cell centre
+// (a door's panel reaches up into the cell above).
+const blockTex = (draw) => { const c = canvasOf(64, 64), x = c.getContext('2d'); draw(x); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.magFilter = THREE.NearestFilter; return t; };
+const BLOCK_LOOK = {
+  planks: () => toon({ map: blockTex((x) => { for (let r = 0; r < 4; r++) { x.fillStyle = ['#c8925e', '#bb8654', '#d09a64', '#c08a58'][r]; x.fillRect(0, r * 16, 64, 16); x.fillStyle = '#7a4a28'; x.fillRect(0, r * 16 + 15, 64, 1); x.fillRect((r * 23) % 64, r * 16, 1, 16); } }) }),
+  stone: () => toon({ map: blockTex((x) => { x.fillStyle = '#7e7a74'; x.fillRect(0, 0, 64, 64); for (let r = 0; r < 4; r++) for (let c = -1; c < 3; c++) { x.fillStyle = ['#b4b0a8', '#a8a49c', '#bcb8b0'][(r + c + 3) % 3]; x.fillRect(c * 32 + (r % 2) * 16 + 1, r * 16 + 1, 30, 14); } }) }),
+  grass: () => [0, 1, 2, 3, 4, 5].map((f) => (f === 2 ? toon({ color: '#7cbf4a' }) : f === 3 ? toon({ color: '#a87e52' }) : toon({ map: blockTex((x) => { x.fillStyle = '#c49a68'; x.fillRect(0, 0, 64, 64); x.fillStyle = '#b08856'; x.fillRect(0, 40, 64, 10); x.fillStyle = '#7cbf4a'; x.fillRect(0, 0, 64, 14); x.fillStyle = '#4f8f2e'; x.fillRect(0, 14, 64, 4); }) }))),
+  glass: () => new THREE.MeshToonMaterial({ gradientMap, color: '#cfeeff', transparent: true, opacity: 0.45, depthWrite: false }),
+  roof: () => toon({ map: blockTex((x) => { x.fillStyle = '#a8402c'; x.fillRect(0, 0, 64, 64); for (let r = 0; r < 4; r++) { x.fillStyle = r % 2 ? '#c4553a' : '#cc6044'; x.fillRect(0, r * 16, 64, 13); } }) }),
+  door: () => toon({ map: blockTex((x) => { x.fillStyle = '#8a5230'; x.fillRect(0, 0, 64, 64); x.fillStyle = '#6a3a20'; for (let c = 0; c < 4; c++) x.fillRect(c * 16, 0, 2, 64); x.fillStyle = '#ffcf3a'; x.fillRect(50, 30, 6, 6); }) }),
+};
+const BLOCK_GEO = {}, BLOCK_MAT = {};
+function blockGeo(t) {
+  if (BLOCK_GEO[t]) return BLOCK_GEO[t];
+  let g;
+  if (BLOCKS[t].shape === 'slope') { // a wedge rising toward +z (rotated by r)
+    const P0 = [[-0.5, -0.5, -0.5], [0.5, -0.5, -0.5], [0.5, -0.5, 0.5], [-0.5, -0.5, 0.5], [-0.5, 0.5, 0.5], [0.5, 0.5, 0.5]];
+    const tris = [[0, 2, 1], [0, 3, 2], [3, 4, 5], [3, 5, 2], [0, 1, 5], [0, 5, 4], [0, 4, 3], [1, 2, 5]];
+    const uv = [[0, 0], [1, 0], [1, 1]];
+    g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(tris.flatMap((tr) => tr.flatMap((n) => P0[n])), 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(tris.flatMap(() => uv.flat()), 2));
+    g.computeVertexNormals();
+  } else if (BLOCKS[t].shape === 'door') {
+    g = new THREE.BoxGeometry(0.86, 1.96, 0.12).translate(0, 0.48, 0);
+  } else g = new THREE.BoxGeometry(1, 1, 1);
+  return (BLOCK_GEO[t] = g);
+}
+const blockMat = (t) => (BLOCK_MAT[t] ||= BLOCK_LOOK[t]());
+const BM = new THREE.Matrix4(), BQ = new THREE.Quaternion(), BV = new THREE.Vector3(), BS = new THREE.Vector3(1, 1, 1), UP = new THREE.Vector3(0, 1, 0);
+function rebuildBlocks(p) {
+  const v = plotViews.get(p.id);
+  (v.blockMeshes || []).forEach((m) => { scene.remove(m); m.dispose(); });
+  v.blockMeshes = [];
+  v.blockLists = {};
+  if (!farms.get(p.id)) return;
+  voxOf(p).forEach((i, j, k, t, r) => (v.blockLists[t] ||= []).push([i, j, k, r]));
+  for (const [t, list] of Object.entries(v.blockLists)) {
+    const im = new THREE.InstancedMesh(blockGeo(t), blockMat(t), list.length);
+    list.forEach(([i, j, k, r], n) => im.setMatrixAt(n, BM.compose(BV.set(p.i0 + i + 0.5, k + 0.5, p.j0 + j + 0.5), BQ.setFromAxisAngle(UP, r * Math.PI / 2), BS)));
+    im.castShadow = !BLOCKS[t].see;
+    im.receiveShadow = true;
+    im.computeBoundingSphere();
+    scene.add(im);
+    v.blockMeshes.push(im);
+  }
 }
 let farmTick = 0, seedBarSig = '';
 function updateFarm(dt, now) {
@@ -3445,6 +3566,8 @@ function updateFarm(dt, now) {
     for (const p of PLOTS) {
       const f = farms.get(p.id), v = plotViews.get(p.id), sig = plotSig(f);
       if (sig !== v.sig || !v.group) { v.sig = sig; rebuildPlot(p, f); }
+      const bsrc = (f && f.blocks) || '';
+      if (bsrc !== v.blocksSrc) { v.blocksSrc = bsrc; rebuildBlocks(p); }
       const label = f ? `${safeText(f.owner)}'s Farm<small>Plot ${p.id}${boosted(f) ? ' &middot; altar glowing' : ''}</small>` : `FOR CLAIM<small>Plot ${p.id} &middot; free</small>`;
       if (v.label !== label) { v.label = label; v.tag.innerHTML = label; v.tag.classList.toggle('free', !f); }
     }
@@ -3459,7 +3582,17 @@ function updateFarm(dt, now) {
   $('seedBar').hidden = !mine || !!building;
   const ss = mine ? selSeed + SEEDS.map((k) => field.bag[k + '_seed'] || 0).join() : '';
   if (mine && ss !== seedBarSig) { seedBarSig = ss; renderSeedBar(); }
-  if (building) {
+  if (building && blockMode()) {
+    const a = aimBlock(), t = blockType();
+    if (!building.ghost) { building.ghost = new THREE.Mesh(blockGeo(t), GHOST_OK); scene.add(building.ghost); }
+    building.ghost.visible = !!a;
+    if (a) {
+      const p = plotOf(myFarm.id);
+      building.ghost.position.set(p.i0 + a.place[0] + 0.5, a.place[2] + 0.5, p.j0 + a.place[1] + 0.5);
+      building.ghost.rotation.y = building.r * Math.PI / 2;
+      building.ghost.material = a.why ? GHOST_BAD : GHOST_OK;
+    }
+  } else if (building) {
     const t = buildTarget(), it = BUILDS[building.k];
     if (!building.ghost) {
       building.ghost = model(building.k, BUILD_MODELS[building.k]);
@@ -3470,6 +3603,8 @@ function updateFarm(dt, now) {
     building.ghost.rotation.y = building.r * Math.PI / 2;
     const mat = t.why ? GHOST_BAD : GHOST_OK;
     building.ghost.traverse((o) => { if (o.isMesh) o.material = mat; });
+  }
+  if (building) {
     const txt = `BUILD MODE · Plot ${myFarm.id} · ${field.gold} gold`;
     if ($('buildMode').textContent !== txt) $('buildMode').textContent = txt;
   }
@@ -3833,7 +3968,7 @@ function update(dt, now) {
 
 SPAWN_LIST.forEach((type) => spawnMonster(type));
 // debug hook for tests and screenshots: __world3d.tp(x, z) teleports, .P is the player state
-window.__world3d = { P, ghosts, arena, farms, groundAt, solidAt, setBlocks, plots: PLOTS, placed, decorCrops, myFarm: () => myFarm, farmTile: () => farmTile(), hp: () => hp, mp, monsters, drops, field: () => field, hero: () => hero, fireballs, tp: (x, z, yaw) => { P.x = x; P.z = z; if (yaw !== undefined) camYaw = yaw; }, cam: (dist, pitch) => { camDistT = camDist = dist; camPitchT = camPitch = pitch; }, size: [MAP_W, MAP_H], info: () => { // one full frame's draw calls and triangles (all passes, shadows included)
+window.__world3d = { P, ghosts, arena, farms, shopSpots, aimBlock, mouse, camera, building: () => building, toScreen, groundAt, solidAt, setBlocks, plots: PLOTS, placed, decorCrops, myFarm: () => myFarm, farmTile: () => farmTile(), hp: () => hp, mp, monsters, drops, field: () => field, hero: () => hero, fireballs, tp: (x, z, yaw) => { P.x = x; P.z = z; if (yaw !== undefined) camYaw = yaw; }, cam: (dist, pitch) => { camDistT = camDist = dist; camPitchT = camPitch = pitch; }, size: [MAP_W, MAP_H], info: () => { // one full frame's draw calls and triangles (all passes, shadows included)
   renderer.info.autoReset = false; renderer.info.reset(); composer.render();
   const r = { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles };
   renderer.info.autoReset = true; return r;

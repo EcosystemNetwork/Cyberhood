@@ -12,6 +12,8 @@
      or press H for the best potion you have).
    ============================================================================ */
 
+import { BLOCKS, BLOCK_IDS } from './blocks.js';
+
 export const CONSUMABLES = {
   health_potion: { name: 'Health Potion', heal: 40, emoji: '\u{1F9EA}' },
   big_potion:    { name: 'Big Potion',    heal: 100, emoji: '⚗️' },
@@ -35,6 +37,11 @@ export const SHOPS = {
     keeper: 'Farmer Bo',
     greeting: 'Seeds for your plot! Carrots are quick, pumpkins pay best.',
     stock: [['carrot_seed', 2], ['wheat_seed', 3], ['pumpkin_seed', 10]],
+  },
+  "Builder's Yard": {
+    keeper: 'Mason',
+    greeting: 'Blocks by the piece! Build whatever you like on your own plot.',
+    stock: BLOCK_IDS.map((id) => ['block_' + id, BLOCKS[id].price]),
   },
   'Fruit Stall': {
     keeper: 'Old Fenn',
