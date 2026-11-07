@@ -119,7 +119,8 @@ export function blockedAt(vox, x, z, feetY, hw = 0.28, hd = 0.2, bodyH = 1.5) {
 
 // Walks the grid from (ox, oy, oz) along (dx, dy, dz) until it meets a block or the soil.
 // Returns the cell hit and the face normal it came in through; soil hits have k = -1.
-export function raycast(vox, ox, oy, oz, dx, dy, dz, maxDist) {
+// skip(i, j, k) lets the caller see through cells (e.g. blocks hidden indoors).
+export function raycast(vox, ox, oy, oz, dx, dy, dz, maxDist, skip = null) {
   const len = Math.hypot(dx, dy, dz) || 1;
   dx /= len; dy /= len; dz /= len;
   let i = Math.floor(ox), k = Math.floor(oy), j = Math.floor(oz);
@@ -130,7 +131,7 @@ export function raycast(vox, ox, oy, oz, dx, dy, dz, maxDist) {
   let n = [0, 1, 0], t = 0;
   for (let steps = 0; steps < 512 && t <= maxDist; steps++) {
     if (k < 0) return inside(vox, i, j) ? { i, j, k: -1, nx: 0, ny: 1, nz: 0, soil: true } : null;
-    if (k < MAX_H && inside(vox, i, j) && vox.get(i, j, k)) return { i, j, k, nx: n[0], ny: n[1], nz: n[2], soil: false };
+    if (k < MAX_H && inside(vox, i, j) && vox.get(i, j, k) && !(skip && skip(i, j, k))) return { i, j, k, nx: n[0], ny: n[1], nz: n[2], soil: false };
     if (tx <= ty && tx <= tz) { t = tx; tx += ddx; i += si; n = [-si, 0, 0]; }
     else if (ty <= tz) { t = ty; ty += ddy; k += sk; n = [0, -sk, 0]; }
     else { t = tz; tz += ddz; j += sj; n = [0, 0, -sj]; }

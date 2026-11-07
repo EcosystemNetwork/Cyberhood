@@ -50,6 +50,18 @@ try {
   // teleported into the stack, you're nudged onto its top
   await A.ev(`__world3d.tp(${X(7)}, ${Z0 + 0.5}); 1`); await sleep(200);
   assert.equal(await A.ev(`__world3d.P.y`), 2);
+  // a block floating 2 above the soil: jumping under it bumps your head, it doesn't lift you onto it
+  await A.ev(`(async () => { const { unpack, pack } = await import('/game/world3d/blocks.js'); const v = unpack(__world3d.myFarm().blocks, 24, 24);
+    v.set(12, 5, 2, 'stone'); for (let k = 0; k < 12; k++) v.set(15, 5, k, 'stone'); __world3d.setBlocks(1, pack(v)); return 1; })()`);
+  await A.ev(`__world3d.tp(${X(12)}, ${Z0 + 0.5}); __world3d.P.y = 0; 1`); await sleep(300);
+  assert.equal(await A.ev(`__world3d.P.y`), 0);
+  await A.key('Space', ' '); await sleep(1000);
+  assert.equal(await A.ev(`__world3d.P.y`), 0, 'still on the soil after jumping under a ceiling');
+  // standing on top of a 12-high column, the third-person camera still frames the hero
+  await A.ev(`__world3d.tp(${X(15)}, ${Z0 + 0.5}, 0); __world3d.cam(6, 0.34); 1`); await sleep(1500);
+  assert.equal(await A.ev(`__world3d.P.y`), 12);
+  const sy = await A.ev(`(() => { const s = __world3d.toScreen(__world3d.P.x, __world3d.P.y + 0.8, __world3d.P.z); return s && s[1] / innerHeight; })()`);
+  assert.ok(sy !== null && sy > 0.25 && sy < 0.85, `hero on screen at height 12 (y=${sy})`);
   await A.ev(`__world3d.cam(9, 0.6); 1`); await sleep(500);
   await A.shot('stand.png');
   console.log('PASS');

@@ -109,3 +109,10 @@ test('canPlace returns each reason in turn, and empty when free', () => {
   assert.equal(canPlace(v, 5, 5, 3, 'stone', { ...free, players: [{ x: 5.4, z: 5.6, y: 0 }] }), '', 'well above a head is fine');
   assert.equal(canPlace(v, 1, 1, 1, 'stone', free), '');
 });
+
+test('raycast passes through cells the caller skips', () => {
+  const v = new Voxels(8, 8);
+  v.set(3, 3, 2, 'stone');
+  const h = raycast(v, 3.5, 6, 3.5, 0, -1, 0, 20, (i, j, k) => k === 2);
+  assert.deepEqual(h, { i: 3, j: 3, k: -1, nx: 0, ny: 1, nz: 0, soil: true });
+});

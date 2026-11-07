@@ -37,6 +37,12 @@ try {
   const keys = await A.ev(`[...__world3d.hiddenBlocks]`);
   for (let i = 8; i <= 12; i++) for (let j = 8; j <= 12; j++) assert.ok(keys.includes(`1:${i},${j},2`), `roof ${i},${j} hidden`);
   assert.ok(keys.some((k) => /^1:\d+,12,[01]$/.test(k)), 'some of the south wall is hidden');
+  // aiming at the floor inside goes through the hidden roof
+  await A.ev(`__world3d.field().bag.block_stone = 2; __world3d.cam(6, 0.7); 1`); await A.key('KeyG', 'g'); await A.key('Digit5', '5'); await sleep(600);
+  const fl = await A.ev(`__world3d.toScreen(${p.i0 + 11.5}, 0.01, ${p.j0 + 10.5})`);
+  await A.mouse('mouseMoved', fl[0], fl[1], 'none'); await sleep(200);
+  assert.deepEqual(await A.ev(`__world3d.aimBlock() && __world3d.aimBlock().place`), [11, 10, 0], 'aims at the floor, not the hidden roof');
+  await A.key('Escape'); await A.ev(`__world3d.cam(6, 0.12); 1`); await sleep(400);
   // Blue, outside, sees nothing hidden
   await B.go(AVENUES);
   assert.ok(await ready(B)); await sleep(2000);

@@ -38,7 +38,9 @@ try {
   await aimAt(tx, 0.01, tz);
   assert.deepEqual(await A.ev(`__world3d.aimBlock().place`), [10, 10, 0]);
   assert.deepEqual(await A.ev(`__world3d.building().ghost.position.toArray().map((v) => +v.toFixed(2))`), [tx, 0.5, tz]);
-  await A.key('KeyF', 'f'); await sleep(200);
+  await A.key('KeyF', 'f'); await sleep(60);
+  assert.equal(await A.ev(`__world3d.drawnBlocks(1)`), 1, 'the placed block is drawn right away');
+  await sleep(140);
   assert.equal(await A.ev(`__world3d.field().bag.block_stone`), 9);
   assert.equal(await A.ev(`__world3d.myFarm().blocks.length`), 4);
   // stack a second one by aiming at the top face, with a short click
@@ -63,10 +65,11 @@ try {
   await aimAt(bx, 0.01, bz);
   assert.match(await near(A), /someone is standing there/);
   // not above 12
-  await A.ev(`(async () => { const { unpack, pack } = await import('/game/world3d/blocks.js'); const v = unpack(__world3d.myFarm().blocks, 24, 24); for (let k = 0; k < 12; k++) v.set(16, 10, k, 'stone'); __world3d.setBlocks(1, pack(v)); return 1; })()`);
+  await A.ev(`(async () => { const { unpack, pack } = await import('/game/world3d/blocks.js'); const v = unpack(__world3d.myFarm().blocks, 24, 24); for (let k = 0; k < 12; k++) { v.set(16, 10, k, 'stone'); v.set(17, 10, k, 'stone'); } __world3d.setBlocks(1, pack(v)); return 1; })()`);
   await sleep(700);
   const [hx, hz] = W(16, 10);
-  await A.ev(`__world3d.tp(${hx}, ${hz - 4}, 0); __world3d.cam(20, 1.2); 1`); await sleep(900);
+  await A.ev(`__world3d.tp(${hx + 1}, ${hz}, Math.PI / 2); __world3d.cam(7, 0.5); 1`); await sleep(1200); // on top of the next column, looking across
+  assert.equal(await A.ev(`__world3d.P.y`), 12);
   await aimAt(hx, 11.999, hz);
   assert.match(await near(A), /too high/);
   // a roof turned twice
@@ -84,6 +87,7 @@ try {
   await A.shot('build.png');
   // draw calls stay within budget with the plot full of blocks
   await A.key('Escape'); await sleep(200);
+  await A.ev(`__world3d.tp(${p.sign.x}, ${p.sign.z + 1.5}, 0); __world3d.P.y = 0; __world3d.cam(9, 0.5); 1`); // measured from the same spot, off the plot
   await A.ev(`__world3d.setBlocks(1, ''); 1`); await sleep(800);
   const base = await A.ev(`__world3d.info().calls`);
   await A.ev(`(async () => { const { Voxels, pack, BLOCK_IDS } = await import('/game/world3d/blocks.js'); const v = new Voxels(24, 24);

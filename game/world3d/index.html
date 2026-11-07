@@ -2324,7 +2324,7 @@ try { camMode = Math.min(CAM_MODES.length - 1, Math.max(0, +localStorage.getItem
 let camYaw = 0, camPitch = CAM_MODES[camMode].pitch, camDist = CAM_MODES[camMode].dist, camPitchT = camPitch, camDistT = camDist;
 let fov = 58, shake = 0, lastDrag = -1e9;
 // First person (V): the camera sits at the hero's eyes and everything aims where you look.
-let firstPerson = false, fpPitch = 0;
+let firstPerson = false, fpPitch = 0, camGround = 0;
 try { firstPerson = localStorage.getItem('taproot3d_fp') === '1'; } catch (e) {}
 const exitLock = () => { if (document.pointerLockElement) document.exitPointerLock(); };
 function setFirstPerson(on) {
@@ -3305,7 +3305,8 @@ function aimBlock() {
   if (!myFarm || !building) return null;
   const p = plotOf(myFarm.id), vox = voxOf(p);
   AIM.setFromCamera(AIM_NDC.set(mouse.has && !firstPerson ? mouse.x : 0, mouse.has && !firstPerson ? mouse.y : 0), camera); // first person: the crosshair
-  const o = AIM.ray.origin, d = AIM.ray.direction, h = raycast(vox, o.x - p.i0, o.y, o.z - p.j0, d.x, d.y, d.z, 60);
+  const seeThrough = (i, j, k) => { const c = vox.get(i, j, k); return hiddenBlocks.has(`${p.id}:${i},${j},${c && c.upper ? k - 1 : k}`); };
+  const o = AIM.ray.origin, d = AIM.ray.direction, h = raycast(vox, o.x - p.i0, o.y, o.z - p.j0, d.x, d.y, d.z, 60, seeThrough);
   if (!h) return null;
   const place = [h.i + h.nx, h.j + h.nz, h.k + h.ny], t = blockMode() ? blockType() : null;
   const why = !t ? '' : !(field.bag['block_' + t] > 0) ? `no ${BLOCKS[t].name} in your bag` : canPlace(vox, place[0], place[1], place[2], t, blockCtx(p));
@@ -3315,6 +3316,9 @@ function setPlotBlocks(p, vox) {
   const packed = pack(vox);
   voxCache.set(p.id, { src: packed, vox });
   myFarm.blocks = packed;
+  const v = plotViews.get(p.id);
+  v.blocksSrc = packed;
+  rebuildBlocks(p); // drawn this frame, not on the next farm tick
   saveField(); renderBag(); farmChanged();
   if (building) renderBuildBar();
 }
@@ -3343,7 +3347,7 @@ function blockAction() {
   if (a.why) return info(`${it.name} · ${a.why}${a.breakable && !TOUCH ? ' · X or right-click breaks the block you point at' : ''}`);
   return { text: TOUCH ? `${it.name} (${field.bag['block_' + t]}) · tap again or Place` : `Press F or click to place ${it.name} (${field.bag['block_' + t]} left) · X or right-click breaks · R rotate`, btn: '\u{1F9F1} Place', run: placeBlock };
 }
-addEventListener('pointermove', (e) => { mouse.x = (e.clientX / innerWidth) * 2 - 1; mouse.y = -(e.clientY / innerHeight) * 2 + 1; mouse.has = true; });
+addEventListener('pointermove', (e) => { if (e.pointerType !== 'mouse') return; mouse.x = (e.clientX / innerWidth) * 2 - 1; mouse.y = -(e.clientY / innerHeight) * 2 + 1; mouse.has = true; });
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 { // a short click places (left) or breaks (right); a drag still turns the camera
   let down = null;
@@ -3874,6 +3878,7 @@ function update(dt, now) {
   P.vy -= 22 * dt;
   P.y += P.vy * dt;
   // the ground is the soil or the top of whatever block is under you (slopes are walked up)
+  if (P.vy > 0 && solidAt(P.x, P.z, P.y) && !solidAt(P.x, P.z, prevY)) { P.y = prevY; P.vy = 0; } // bumped your head
   const ground = groundAt(P.x, P.z, prevY);
   if (P.y <= ground) { P.y = ground; P.vy = 0; P.grounded = 0; } else P.grounded += dt;
   if (solidAt(P.x, P.z, P.y)) { P.y = groundAt(P.x, P.z, MAX_H); P.vy = 0; P.grounded = 0; } // never stuck inside a block
@@ -4028,7 +4033,8 @@ function update(dt, now) {
     camera.lookAt(lookAt);
     first = true; // third person snaps straight back to its spot when you switch
   } else {
-    const cp = Math.cos(camPitch), target = V.set(P.x, 0.9 + P.y * 0.5, P.z);
+    camGround = damp(camGround, groundAt(P.x, P.z, P.y), 6, dt); // eased, so stepping onto a block doesn't jolt the view
+    const cp = Math.cos(camPitch), target = V.set(P.x, 0.9 + camGround + (P.y - camGround) * 0.5, P.z);
     const want = new THREE.Vector3(P.x + Math.sin(camYaw) * camDist * cp, target.y + Math.sin(camPitch) * camDist + 0.6, P.z + Math.cos(camYaw) * camDist * cp);
     if (first) { camPos.copy(want); first = false; } else camPos.lerp(want, Math.min(1, dt * 8));
     camera.position.copy(camPos);
@@ -4115,7 +4121,7 @@ function update(dt, now) {
 
 SPAWN_LIST.forEach((type) => spawnMonster(type));
 // debug hook for tests and screenshots: __world3d.tp(x, z) teleports, .P is the player state
-window.__world3d = { P, ghosts, arena, farms, getPitch: () => fpPitch, firstPerson: () => firstPerson, setPitch: (v) => { fpPitch = v; }, openShop, hiddenBlocks, doorAngle: (id, i, j, k) => { const v = plotViews.get(id); return (v && v.doorAng && v.doorAng.get(`${i},${j},${k}`)) || 0; }, shopSpots, aimBlock, mouse, camera, building: () => building, toScreen, groundAt, solidAt, setBlocks, plots: PLOTS, placed, decorCrops, myFarm: () => myFarm, farmTile: () => farmTile(), hp: () => hp, mp, monsters, drops, field: () => field, hero: () => hero, fireballs, tp: (x, z, yaw) => { P.x = x; P.z = z; if (yaw !== undefined) camYaw = yaw; }, cam: (dist, pitch) => { camDistT = camDist = dist; camPitchT = camPitch = pitch; }, size: [MAP_W, MAP_H], info: () => { // one full frame's draw calls and triangles (all passes, shadows included)
+window.__world3d = { P, ghosts, arena, farms, updateIndoor, drawnBlocks: (id) => ((plotViews.get(id) || {}).blockMeshes || []).reduce((n, m) => n + m.count, 0), getPitch: () => fpPitch, firstPerson: () => firstPerson, setPitch: (v) => { fpPitch = v; }, openShop, hiddenBlocks, doorAngle: (id, i, j, k) => { const v = plotViews.get(id); return (v && v.doorAng && v.doorAng.get(`${i},${j},${k}`)) || 0; }, shopSpots, aimBlock, mouse, camera, building: () => building, toScreen, groundAt, solidAt, setBlocks, plots: PLOTS, placed, decorCrops, myFarm: () => myFarm, farmTile: () => farmTile(), hp: () => hp, mp, monsters, drops, field: () => field, hero: () => hero, fireballs, tp: (x, z, yaw) => { P.x = x; P.z = z; if (yaw !== undefined) camYaw = yaw; }, cam: (dist, pitch) => { camDistT = camDist = dist; camPitchT = camPitch = pitch; }, size: [MAP_W, MAP_H], info: () => { // one full frame's draw calls and triangles (all passes, shadows included)
   renderer.info.autoReset = false; renderer.info.reset(); composer.render();
   const r = { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles };
   renderer.info.autoReset = true; return r;

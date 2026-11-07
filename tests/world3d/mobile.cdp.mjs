@@ -41,6 +41,9 @@ try {
   assert.deepEqual(await A.ev(`__world3d.aimBlock().place`), [spot.i, spot.j, 0]);
   assert.equal(await A.ev(`__world3d.building().ghost.visible`), true);
   assert.equal(await count(), 0, 'first tap only aims');
+  const m0 = await A.ev(`[__world3d.mouse.x, __world3d.mouse.y]`);
+  await A.touch('touchStart', [[60, 700]]); await A.touch('touchMove', [[60, 690]]); await A.touch('touchMove', [[62, 700]]); await A.touch('touchEnd', []); await sleep(100);
+  assert.deepEqual(await A.ev(`[__world3d.mouse.x, __world3d.mouse.y]`), m0, 'the joystick finger does not move the aim');
   await tap(spot.s[0], spot.s[1]);
   assert.equal(await count(), 1, 'second tap places');
   await A.shot('mobile_build.png');
