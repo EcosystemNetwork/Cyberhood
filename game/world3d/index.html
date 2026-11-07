@@ -280,6 +280,7 @@ import { makeHero3D, loadBlenderParts } from '/game/lib/hero3d.js';
 import { loadBlenderHero, makeBlenderHero } from '/game/lib/blenderhero.js';
 import { SHOPS, SELL, RECIPES, CONSUMABLES } from './shops.js';
 import { CROPS, BUILDS, ALTAR, FARM_ITEMS } from './farm.js';
+import { MAX_H, unpack, standHeight, blockedAt } from './blocks.js';
 
 const AREA = new URLSearchParams(location.search).get('area');
 const PLOT_Q = new URLSearchParams(location.search).get('plot'); // which player's clubhouse you're in
@@ -2352,7 +2353,7 @@ function free(x, z) {
   return [[-0.28, -0.2], [0.28, -0.2], [-0.28, 0.2], [0.28, 0.2]].every(([ox, oz]) => {
     const cx = Math.floor(x + ox), cy = Math.floor(z + oz);
     return cx >= 0 && cy >= 0 && cx < MAP_W && cy < MAP_H && !blocked[cy][cx];
-  }) && circles.every(([cx, cz, r]) => Math.hypot(x - cx, z - cz) > r + 0.28);
+  }) && circles.every(([cx, cz, r]) => Math.hypot(x - cx, z - cz) > r + 0.28) && !solidAt(x, z, P.y);
 }
 
 /* ---------- monsters & combat ---------- */
@@ -2841,7 +2842,7 @@ function chatLine(name, msg, sys) {
   setTimeout(() => el.remove(), 30000);
 }
 function myState() {
-  return { id: mp.id, name: mp.name, char: charData, room: MP_ROOM, x: +P.x.toFixed(2), z: +P.z.toFixed(2), y: +P.y.toFixed(2), h: +P.heading.toFixed(2), atk: mp.atk, atkL: mp.atkL, hp, mhp: stats.hp };
+  return { id: mp.id, name: mp.name, char: charData, room: MP_ROOM, x: +P.x.toFixed(2), z: +P.z.toFixed(2), y: +P.y.toFixed(2), h: +P.heading.toFixed(2), atk: mp.atk, atkL: mp.atkL, hp, mhp: stats.hp, air: P.y > groundAt(P.x, P.z, P.y) + 0.02 };
 }
 function addGhost(d) {
   if (d.id === mp.id || d.room !== MP_ROOM) return null;
@@ -2870,7 +2871,7 @@ function removeGhost(id) {
 function onState(d) {
   const g = addGhost(d);
   if (!g) { if (ghosts.has(d.id)) removeGhost(d.id); return; } // they walked into another room
-  Object.assign(g, { tx: d.x, tz: d.z, ty: d.y || 0, th: d.h || 0, seen: performance.now() });
+  Object.assign(g, { tx: d.x, tz: d.z, ty: d.y || 0, th: d.h || 0, air: !!d.air, seen: performance.now() });
   if (d.hp !== undefined) { g.hp = d.hp; g.mhp = d.mhp; }
   if (d.atk && d.atk !== g.atkSeen) { g.atkSeen = d.atk; g.atk = 0; }
   if (d.atkL && d.atkL !== g.atkLSeen) { g.atkLSeen = d.atkL; g.atkL = 0; }
@@ -2954,7 +2955,7 @@ function updateMultiplayer(dt, now) {
     g.hero.root.rotation.y = g.h;
     g.hero.root.visible = !g.dead;
     if (g.bar && g.mhp) g.bar.style.width = `${Math.max(0, g.hp / g.mhp) * 100}%`;
-    g.hero.update(dt, { atk: g.atk, atkL: g.atkL, air: g.y > 0.02 });
+    g.hero.update(dt, { atk: g.atk, atkL: g.atkL, air: g.air });
     const near = !g.dead && Math.hypot(g.x - P.x, g.z - P.z) < 30, pos = near ? toScreen(g.x, HERO_H + 0.35 + g.y, g.z) : null;
     g.tag.hidden = !pos;
     if (pos) g.tag.style.transform = `translate(${pos[0]}px, ${pos[1]}px) translate(-50%, -100%)`;
@@ -3097,6 +3098,30 @@ function onFarm({ farm: f }) {
   farms.set(f.id, f);
 }
 const plotOf = (id) => PLOTS.find((p) => p.id === id);
+// blocks: each farm keeps them packed in farm.blocks; unpacked copies are cached per plot
+const voxCache = new Map(); // plot id -> { src, vox }
+function voxOf(p) {
+  const f = farms.get(p.id), src = (f && f.blocks) || '';
+  let c = voxCache.get(p.id);
+  if (!c || c.src !== src) { c = { src, vox: unpack(src, p.nx, p.nz) }; voxCache.set(p.id, c); }
+  return c.vox;
+}
+// the plot whose soil (plus a hitbox margin) covers (x, z)
+const blockPlotAt = (x, z) => PLOTS.find((p) => x > p.i0 - 0.5 && x < p.i0 + p.nx + 0.5 && z > p.j0 - 0.5 && z < p.j0 + p.nz + 0.5);
+function groundAt(x, z, feetY) {
+  const p = blockPlotAt(x, z);
+  return p && farms.get(p.id) ? standHeight(voxOf(p), x - p.i0, z - p.j0, feetY) : 0;
+}
+function solidAt(x, z, feetY) {
+  const p = blockPlotAt(x, z);
+  return !!(p && farms.get(p.id) && blockedAt(voxOf(p), x - p.i0, z - p.j0, feetY));
+}
+function setBlocks(id, packed) {
+  const f = farms.get(id);
+  if (!f) return;
+  f.blocks = packed;
+  if (f === myFarm) farmChanged();
+}
 const soilAt = (x, z) => PLOTS.find((p) => x >= p.i0 && x < p.i0 + p.nx && z >= p.j0 && z < p.j0 + p.nz);
 const onPlot = (p) => p && P.x >= p.x1 && P.x < p.x2 + 1 && P.z >= p.y1 && P.z < p.y2 + 1;
 function farmTile() { const p = soilAt(P.x, P.z); return p && { p, i: Math.floor(P.x) - p.i0, j: Math.floor(P.z) - p.j0 }; }
@@ -3572,9 +3597,13 @@ function update(dt, now) {
     if (free(P.x + pkb.x * dt, P.z)) P.x += pkb.x * dt;
     if (free(P.x, P.z + pkb.z * dt)) P.z += pkb.z * dt;
   }
+  const prevY = P.y;
   P.vy -= 22 * dt;
   P.y += P.vy * dt;
-  if (P.y <= 0) { P.y = 0; P.vy = 0; P.grounded = 0; } else P.grounded += dt;
+  // the ground is the soil or the top of whatever block is under you (slopes are walked up)
+  const ground = groundAt(P.x, P.z, prevY);
+  if (P.y <= ground) { P.y = ground; P.vy = 0; P.grounded = 0; } else P.grounded += dt;
+  if (solidAt(P.x, P.z, P.y)) { P.y = groundAt(P.x, P.z, MAX_H); P.vy = 0; P.grounded = 0; } // never stuck inside a block
   U.player.value.set(P.x, P.y, P.z);
 
   // 3D hero: it reads its own speed from how the root moves; looks at the nearest monster or townsfolk
@@ -3585,7 +3614,7 @@ function update(dt, now) {
   for (const n of npcs) { const d = Math.hypot(n.x - P.x, n.z - P.z); if (d < Math.min(ld, 4)) { ld = d; look = n; } }
   hero.root.position.set(P.x, P.y, P.z);
   hero.root.rotation.y = P.heading;
-  hero.update(dt, { atk: P.atk, atkL: P.atkL, lookAt: look, air: P.y > 0.001, vy: P.vy });
+  hero.update(dt, { atk: P.atk, atkL: P.atkL, lookAt: look, air: P.y > groundAt(P.x, P.z, P.y) + 0.001, vy: P.vy });
   hero.root.visible = !(ARENA && fainted) && !(inv > 0 && Math.floor(inv / 0.08) % 2);
   attackCd -= dt;
   attackCdL -= dt;
@@ -3804,7 +3833,7 @@ function update(dt, now) {
 
 SPAWN_LIST.forEach((type) => spawnMonster(type));
 // debug hook for tests and screenshots: __world3d.tp(x, z) teleports, .P is the player state
-window.__world3d = { P, ghosts, arena, farms, plots: PLOTS, placed, decorCrops, myFarm: () => myFarm, farmTile: () => farmTile(), hp: () => hp, mp, monsters, drops, field: () => field, hero: () => hero, fireballs, tp: (x, z, yaw) => { P.x = x; P.z = z; if (yaw !== undefined) camYaw = yaw; }, cam: (dist, pitch) => { camDistT = camDist = dist; camPitchT = camPitch = pitch; }, size: [MAP_W, MAP_H], info: () => { // one full frame's draw calls and triangles (all passes, shadows included)
+window.__world3d = { P, ghosts, arena, farms, groundAt, solidAt, setBlocks, plots: PLOTS, placed, decorCrops, myFarm: () => myFarm, farmTile: () => farmTile(), hp: () => hp, mp, monsters, drops, field: () => field, hero: () => hero, fireballs, tp: (x, z, yaw) => { P.x = x; P.z = z; if (yaw !== undefined) camYaw = yaw; }, cam: (dist, pitch) => { camDistT = camDist = dist; camPitchT = camPitch = pitch; }, size: [MAP_W, MAP_H], info: () => { // one full frame's draw calls and triangles (all passes, shadows included)
   renderer.info.autoReset = false; renderer.info.reset(); composer.render();
   const r = { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles };
   renderer.info.autoReset = true; return r;
