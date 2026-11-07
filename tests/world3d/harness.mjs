@@ -50,7 +50,8 @@ export async function launch() {
       ev: async (expr) => {
         const r = await s('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true });
         if (r.result?.exceptionDetails) throw new Error(`${name}: ${r.result.exceptionDetails.exception?.description || r.result.exceptionDetails.text}`);
-        return r.result?.result?.value;
+        const v = r.result?.result;
+        return v && 'unserializableValue' in v ? Number(v.unserializableValue) : v?.value; // -0, NaN, Infinity
       },
       go: async (url) => { await s('Page.navigate', { url }); await sleep(300); },
       key: async (code, key = code, hold = 40) => { await s('Input.dispatchKeyEvent', { type: 'keyDown', code, key }); await sleep(hold); await s('Input.dispatchKeyEvent', { type: 'keyUp', code, key }); await sleep(40); },
