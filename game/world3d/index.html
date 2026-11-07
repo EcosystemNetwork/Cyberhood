@@ -496,11 +496,13 @@ const AREAS = {
   // centre 2x2 blocks are merged into one mega plot (over the roads between them), as in 2D.
   avenues: (() => {
     const xs = [8.5, 24.5, 40.5, 56.5], ys = [9, 25, 41];
-    // Six player plots (10 x 10 with the fence, 8 x 8 of soil), each with its gate toward a road:
-    // [x1, y1, x2, y2, 'player', id, gate side]. The three strips along the south road stay decor.
-    const farmPlots = [[12, 12, 's'], [28, 12, 's'], [12, 28, 'n'], [28, 28, 'n'], [44, 12, 's'], [44, 28, 'n']]
-      .map(([x, y, side], i) => [x, y, x + 9, y + 9, 'player', i + 1, side]);
-    const plots = [...farmPlots, [12, 45, 21, 49, 'dirt'], [28, 45, 37, 49, 'crops'], [44, 45, 53, 49, 'dirt']];
+    // Player plots, each with its gate toward a road: [x1, y1, x2, y2, 'player', id, gate side].
+    // Plot 1 is the big one in the middle (26 x 26 with the fence, 24 x 24 of soil, over the
+    // roads between the four centre blocks); 2 and 3 are 10 x 10 (8 x 8 of soil). Two strips
+    // along the south road stay decor; the barn sits on the third.
+    const farmPlots = [[12, 12, 37, 37, 's'], [44, 12, 53, 21, 's'], [44, 28, 53, 37, 'n']]
+      .map(([x1, y1, x2, y2, side], i) => [x1, y1, x2, y2, 'player', i + 1, side]);
+    const plots = [...farmPlots, [28, 45, 37, 49, 'crops'], [44, 45, 53, 49, 'dirt']];
     const inPlot = (x, y) => plots.some(([x1, y1, x2, y2]) => x >= x1 && x <= x2 && y >= y1 && y <= y2);
     const lamps = xs.flatMap((x) => ys.flatMap((y) => [[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([sx, sy]) => [Math.floor(x + sx * 2.4), Math.floor(y + sy * 2.4)])))
       .filter(([x, y]) => !inPlot(x, y)).map(([x, y]) => ['streetlamp', x, y, 1, 1]);
@@ -512,10 +514,11 @@ const AREAS = {
       grid: { xs, ys, road: 1.6, walk: 1.5 },
       paths: [], ponds: [], tall: [],
       plots,
-      fenceRects: [...farmPlots.map(([x1, y1, x2, y2, , , side]) => [x1, y1, x2, y2, side]), [12, 45, 21, 49, 'n'], [28, 45, 37, 49, 'n'], [44, 45, 53, 49, 'n']],
+      fenceRects: [...farmPlots.map(([x1, y1, x2, y2, , , side]) => [x1, y1, x2, y2, side]), [28, 45, 37, 49, 'n'], [44, 45, 53, 49, 'n']],
       objects: [
         ['house_b', 12, 2, 4, 3], ['shop', 17, 2, 4, 3, 'Seed Shop'], ['house_a', 28, 1, 5, 4], ['house_b', 34, 2, 4, 3],
         ['tavern', 44, 2, 5, 3, 'Harvest Inn'], ['house_a', 50, 1, 4, 4],
+        ['barn', 14, 45, 6, 4, "Bo's Barn"],
         ...lamps,
       ],
       start: { x: 24, y: 44 },
@@ -529,7 +532,7 @@ const AREAS = {
       })(),
       treeKind: (x, y) => (hash(x, y, 61) > 0.4 ? 'tree_round' : 'tree_pine'),
       npcs: [
-        ['Farmer Bo', 'runs the Seed Shop', 22.2, 23.4, { skin: 2, hc: 1, hs: 'short', equipment: { body: 'ranger_tunic', feet: 'leather_boots' } },
+        ['Farmer Bo', 'runs the Seed Shop', 20.6, 6.6, { skin: 2, hc: 1, hs: 'short', equipment: { body: 'ranger_tunic', feet: 'leather_boots' } },
           'Six plots, one per farmer. Walk up to a FOR CLAIM sign and press F!'],
         ['Kit', 'city courier', 42.8, 23, { skin: 0, hc: 2, hs: 'long', equipment: { head: 'ranger_hood', body: 'rogue_tunic', feet: 'swift_sandals' } },
           'Plots out here are up for grabs. Somebody has to farm them!'],
@@ -1890,7 +1893,7 @@ for (let i = 0; i < (DAY || UNDER || INDOOR ? 0 : 9); i++) {
   }
 });
 (A.plots || []).forEach(([x1, y1, x2, y2, type]) => {
-  if (type === 'dirt' || type === 'player') return; // player plots grow what their owners plant
+  if (type === 'dirt' || type === 'player' || type === 'crops') return; // player plots grow what their owners plant; decor crops are drawn with the crop models (farm section)
   at(0, 0);
   for (let z = y1 + 1.5; z < y2 + 0.6; z += 1) for (let x = x1 + 1; x < x2 + 0.6; x += 0.7) {
     const r = hash(Math.round(x * 10), Math.round(z * 10), 401);
@@ -3069,9 +3072,9 @@ const MIN = 60000 / FAST;
 const SEEDS = Object.keys(CROPS);
 const PLOTS = (A.plots || []).filter((p) => p[4] === 'player').map(([x1, y1, x2, y2, , id, side]) => {
   const g0 = gateAt(x1, x2);
-  return { id, x1, y1, x2, y2, side, i0: x1 + 1, j0: y1 + 1, n: x2 - x1 - 1, sign: { x: g0 + 4.3, z: side === 's' ? y2 + 1.55 : y1 - 0.55 } };
+  return { id, x1, y1, x2, y2, side, i0: x1 + 1, j0: y1 + 1, nx: x2 - x1 - 1, nz: y2 - y1 - 1, sign: { x: g0 + 4.3, z: side === 's' ? y2 + 1.55 : y1 - 0.55 } };
 });
-const FARM_KEY = `taproot_farm_${mp.name}`;
+const FARM_KEY = `taproot_farm2_${mp.name}`; // farm2: plots were resized, so the old 8 x 8 saves start fresh
 let myFarm = null;
 try { myFarm = JSON.parse(localStorage.getItem(FARM_KEY)); } catch (e) {}
 const farms = new Map(); // plot id -> farm: { id, owner, claimed, crops: { 'i,j': { k, t } }, builds: [{ k, i, j, r }], boost: [from, to], members }
@@ -3094,7 +3097,7 @@ function onFarm({ farm: f }) {
   farms.set(f.id, f);
 }
 const plotOf = (id) => PLOTS.find((p) => p.id === id);
-const soilAt = (x, z) => PLOTS.find((p) => x >= p.i0 && x < p.i0 + p.n && z >= p.j0 && z < p.j0 + p.n);
+const soilAt = (x, z) => PLOTS.find((p) => x >= p.i0 && x < p.i0 + p.nx && z >= p.j0 && z < p.j0 + p.nz);
 const onPlot = (p) => p && P.x >= p.x1 && P.x < p.x2 + 1 && P.z >= p.y1 && P.z < p.y2 + 1;
 function farmTile() { const p = soilAt(P.x, P.z); return p && { p, i: Math.floor(P.x) - p.i0, j: Math.floor(P.z) - p.j0 }; }
 const buildAt = (f, i, j) => (f.builds || []).find((b) => { const s = BUILDS[b.k].size; return i >= b.i && i < b.i + s && j >= b.j && j < b.j + s; });
@@ -3190,9 +3193,9 @@ const BUILD_KEYS = Object.keys(BUILDS);
 function buildTarget() {
   const p = plotOf(myFarm.id), s = BUILDS[building.k].size;
   const tx = Math.floor(P.x + Math.sin(P.heading) * (1 + s / 2)) - p.i0, tz = Math.floor(P.z + Math.cos(P.heading) * (1 + s / 2)) - p.j0;
-  const i = clamp(tx - Math.floor((s - 1) / 2), 0, p.n - s), j = clamp(tz - Math.floor((s - 1) / 2), 0, p.n - s); // snaps inside the soil
+  const i = clamp(tx - Math.floor((s - 1) / 2), 0, p.nx - s), j = clamp(tz - Math.floor((s - 1) / 2), 0, p.nz - s); // snaps inside the soil
   let why = '';
-  if (i < 0 || j < 0 || i + s > p.n || j + s > p.n) why = 'outside your soil';
+  if (i < 0 || j < 0 || i + s > p.nx || j + s > p.nz) why = 'outside your soil';
   else for (let y = j; y < j + s && !why; y++) for (let x = i; x < i + s; x++) {
     if (myFarm.crops[`${x},${y}`]) { why = 'crops in the way'; break; }
     if (buildAt(myFarm, x, y)) { why = 'something is already there'; break; }
@@ -3335,6 +3338,15 @@ const GHOST_OK = new THREE.MeshBasicMaterial({ color: '#7aff6a', transparent: tr
 const GHOST_BAD = new THREE.MeshBasicMaterial({ color: '#ff5a5a', transparent: true, opacity: 0.45, depthWrite: false });
 
 // one group per plot, rebuilt whenever its crops change stage or its buildings change
+// decor crop strips: ripe carrot / pumpkin rows, drawn once as one merged batch
+let decorCrops = 0;
+scene.add(buildGroup(() => (A.plots || []).filter((p) => p[4] === 'crops').forEach(([x1, y1, x2, y2]) => {
+  for (let z = y1 + 1.5, row = 0; z < y2 + 0.6; z += 1, row++) for (let x = x1 + 1.5; x < x2 + 0.6; x += 1) {
+    at(x, z, hash(Math.round(x), Math.round(z), 604) * 6.28);
+    cropBuild(row % 2 ? 'pumpkin' : 'carrot', 3);
+    decorCrops++;
+  }
+})));
 const plotViews = new Map();
 PLOTS.forEach((p) => {
   const sign = buildGroup(() => {
@@ -3792,7 +3804,7 @@ function update(dt, now) {
 
 SPAWN_LIST.forEach((type) => spawnMonster(type));
 // debug hook for tests and screenshots: __world3d.tp(x, z) teleports, .P is the player state
-window.__world3d = { P, ghosts, arena, farms, myFarm: () => myFarm, farmTile: () => farmTile(), hp: () => hp, mp, monsters, drops, field: () => field, hero: () => hero, fireballs, tp: (x, z, yaw) => { P.x = x; P.z = z; if (yaw !== undefined) camYaw = yaw; }, cam: (dist, pitch) => { camDistT = camDist = dist; camPitchT = camPitch = pitch; }, size: [MAP_W, MAP_H], info: () => { // one full frame's draw calls and triangles (all passes, shadows included)
+window.__world3d = { P, ghosts, arena, farms, plots: PLOTS, placed, decorCrops, myFarm: () => myFarm, farmTile: () => farmTile(), hp: () => hp, mp, monsters, drops, field: () => field, hero: () => hero, fireballs, tp: (x, z, yaw) => { P.x = x; P.z = z; if (yaw !== undefined) camYaw = yaw; }, cam: (dist, pitch) => { camDistT = camDist = dist; camPitchT = camPitch = pitch; }, size: [MAP_W, MAP_H], info: () => { // one full frame's draw calls and triangles (all passes, shadows included)
   renderer.info.autoReset = false; renderer.info.reset(); composer.render();
   const r = { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles };
   renderer.info.autoReset = true; return r;
