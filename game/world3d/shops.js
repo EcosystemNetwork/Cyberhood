@@ -31,6 +31,11 @@ export const SHOPS = {
     stock: [['iron_sword', 50], ['wooden_shield', 35], ['iron_helm', 45], ['leather_boots', 25], ['cutlass', 110],
       ['chainmail', 120], ['steel_armor', 160], ['tower_shield', 140], ['iron_greaves', 70]],
   },
+  'Seed Shop': {
+    keeper: 'Farmer Bo',
+    greeting: 'Seeds for your plot! Carrots are quick, pumpkins pay best.',
+    stock: [['carrot_seed', 2], ['wheat_seed', 3], ['pumpkin_seed', 10]],
+  },
   'Fruit Stall': {
     keeper: 'Old Fenn',
     greeting: 'Fresh from the fields! Mind the slimes on your way out.',
@@ -38,7 +43,7 @@ export const SHOPS = {
   },
 };
 
-export const SELL = { slime_gel: 3, spore_cap: 4, bat_fang: 5, goblin_ear: 8, royal_jelly: 40, health_potion: 6, big_potion: 18, apple: 1 };
+export const SELL = { carrot: 3, wheat: 4, pumpkin: 45, slime_gel: 3, spore_cap: 4, bat_fang: 5, goblin_ear: 8, royal_jelly: 40, health_potion: 6, big_potion: 18, apple: 1 };
 
 export const RECIPES = [
   // the first gear loop: beat a slime and a bat, grab their drops and 10 gold, forge a fire staff

@@ -150,6 +150,19 @@
   #death .btns { margin-top: 18px; display: flex; gap: 10px; justify-content: center; }
   #death button { padding: 9px 18px; border-radius: 999px; font-size: 17px; border: 3px solid #2a0a3a; background: linear-gradient(#e6ff7a, #a8e000); color: #1e3000; cursor: pointer; }
   #death button.alt { background: #4a1a62; color: #fff; }
+  /* farming: seed bar and build bar (bottom centre), build mode pill, owner signs */
+  .farmbar { left: 50%; bottom: 78px; transform: translateX(-50%); padding: 8px 10px; display: flex; gap: 8px; align-items: stretch; }
+  .farmbar .h { font: 15px 'Lilita One', sans-serif; color: var(--orange); writing-mode: vertical-rl; transform: rotate(180deg); text-align: center; }
+  .farmbar .seed { position: relative; width: 112px; padding: 7px 6px 6px; border-radius: 12px; background: rgba(255, 255, 255, 0.06); border: 2px solid transparent; text-align: center; }
+  .farmbar .seed.on { border-color: var(--lime); background: rgba(200, 255, 46, 0.12); }
+  .farmbar .seed kbd { position: absolute; left: 6px; top: 5px; padding: 0 5px; border-radius: 5px; background: var(--orange); color: #3a1200; font: 11px 'Lilita One', sans-serif; }
+  .farmbar .e { font-size: 24px; line-height: 1; }
+  .farmbar b { display: block; font: 14px 'Lilita One', sans-serif; font-weight: 400; margin-top: 3px; }
+  .farmbar i { display: block; font: 800 11px 'Nunito', sans-serif; font-style: normal; color: #e7c9f2; }
+  .farmbar .n { display: inline-block; margin-top: 4px; padding: 1px 8px; border-radius: 999px; background: #1a0624; font: 12px 'Lilita One', sans-serif; color: var(--lime); }
+  #buildMode { left: 50%; top: 62px; transform: translateX(-50%); padding: 6px 18px; border-radius: 999px; font: 17px 'Lilita One', sans-serif; color: var(--lime); white-space: nowrap; }
+  .tag.plot { font-size: 16px; } .tag.plot.free { background: #2a5a1a; border-color: #c8ff2e; color: #e8ffb0; box-shadow: 0 3px 0 #1a3a10; }
+  @media (max-width: 640px) { .farmbar .seed { width: 84px; } .farmbar i { display: none; } }
   #fade { position: fixed; inset: 0; z-index: 9; background: #000; opacity: 0; pointer-events: none; transition: opacity 0.7s; }
 
   @media (max-width: 640px) {
@@ -231,6 +244,9 @@ else if (!localStorage.getItem('taproot_character')) window.location.replace('/g
 </div>
 <div class="panel" id="arenaBar" hidden><b>ARENA</b><span class="k" id="arenaK"></span><span class="d" id="arenaD"></span><span id="arenaN"></span></div>
 <div id="killFeed"></div>
+<div class="panel farmbar" id="seedBar" hidden></div>
+<div class="panel farmbar" id="buildBar" hidden></div>
+<div class="panel" id="buildMode" hidden></div>
 <div id="death" hidden><div class="panel card">
   <h1>DEFEATED</h1>
   <p>You were taken down by <b id="deathBy"></b></p>
@@ -263,8 +279,10 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { makeHero3D, loadBlenderParts } from '/game/lib/hero3d.js';
 import { loadBlenderHero, makeBlenderHero } from '/game/lib/blenderhero.js';
 import { SHOPS, SELL, RECIPES, CONSUMABLES } from './shops.js';
+import { CROPS, BUILDS, ALTAR, FARM_ITEMS } from './farm.js';
 
 const AREA = new URLSearchParams(location.search).get('area');
+const PLOT_Q = new URLSearchParams(location.search).get('plot'); // which player's clubhouse you're in
 const T = 16;
 const MINI = 4; // minimap pixels per tile
 
@@ -478,7 +496,11 @@ const AREAS = {
   // centre 2x2 blocks are merged into one mega plot (over the roads between them), as in 2D.
   avenues: (() => {
     const xs = [8.5, 24.5, 40.5, 56.5], ys = [9, 25, 41];
-    const plots = [[12, 12, 37, 37, 'mega'], [44, 12, 53, 21, 'crops'], [44, 28, 53, 37, 'wheat'], [12, 45, 21, 49, 'dirt'], [28, 45, 37, 49, 'crops'], [44, 45, 53, 49, 'dirt']];
+    // Six player plots (10 x 10 with the fence, 8 x 8 of soil), each with its gate toward a road:
+    // [x1, y1, x2, y2, 'player', id, gate side]. The three strips along the south road stay decor.
+    const farmPlots = [[12, 12, 's'], [28, 12, 's'], [12, 28, 'n'], [28, 28, 'n'], [44, 12, 's'], [44, 28, 'n']]
+      .map(([x, y, side], i) => [x, y, x + 9, y + 9, 'player', i + 1, side]);
+    const plots = [...farmPlots, [12, 45, 21, 49, 'dirt'], [28, 45, 37, 49, 'crops'], [44, 45, 53, 49, 'dirt']];
     const inPlot = (x, y) => plots.some(([x1, y1, x2, y2]) => x >= x1 && x <= x2 && y >= y1 && y <= y2);
     const lamps = xs.flatMap((x) => ys.flatMap((y) => [[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([sx, sy]) => [Math.floor(x + sx * 2.4), Math.floor(y + sy * 2.4)])))
       .filter(([x, y]) => !inPlot(x, y)).map(([x, y]) => ['streetlamp', x, y, 1, 1]);
@@ -490,11 +512,10 @@ const AREAS = {
       grid: { xs, ys, road: 1.6, walk: 1.5 },
       paths: [], ponds: [], tall: [],
       plots,
-      fenceRects: [[12, 12, 37, 37, 's'], [44, 12, 53, 21, 's'], [44, 28, 53, 37, 'n'], [12, 45, 21, 49, 'n'], [28, 45, 37, 49, 'n'], [44, 45, 53, 49, 'n']],
+      fenceRects: [...farmPlots.map(([x1, y1, x2, y2, , , side]) => [x1, y1, x2, y2, side]), [12, 45, 21, 49, 'n'], [28, 45, 37, 49, 'n'], [44, 45, 53, 49, 'n']],
       objects: [
         ['house_b', 12, 2, 4, 3], ['shop', 17, 2, 4, 3, 'Seed Shop'], ['house_a', 28, 1, 5, 4], ['house_b', 34, 2, 4, 3],
         ['tavern', 44, 2, 5, 3, 'Harvest Inn'], ['house_a', 50, 1, 4, 4],
-        ['barn', 14, 14, 6, 4, 'Mega Plot'],
         ...lamps,
       ],
       start: { x: 24, y: 44 },
@@ -508,16 +529,33 @@ const AREAS = {
       })(),
       treeKind: (x, y) => (hash(x, y, 61) > 0.4 ? 'tree_round' : 'tree_pine'),
       npcs: [
-        ['Farmer Bo', 'keeper of the mega plot', 28.5, 38.6, { skin: 2, hc: 1, hs: 'short', equipment: { body: 'ranger_tunic', feet: 'leather_boots' } },
-          'Four plots in one! Biggest farm in Taproot. The barn is mine though.'],
+        ['Farmer Bo', 'runs the Seed Shop', 22.2, 23.4, { skin: 2, hc: 1, hs: 'short', equipment: { body: 'ranger_tunic', feet: 'leather_boots' } },
+          'Six plots, one per farmer. Walk up to a FOR CLAIM sign and press F!'],
         ['Kit', 'city courier', 42.8, 23, { skin: 0, hc: 2, hs: 'long', equipment: { head: 'ranger_hood', body: 'rogue_tunic', feet: 'swift_sandals' } },
           'Plots out here are up for grabs. Somebody has to farm them!'],
       ],
       exits: [{ edge: 's', range: [22, 26], href: '/game/world3d/?area=city&from=avenues', name: 'Taproot City' }],
-      arrive: { city: { x: 23.5, y: 44 } },
+      // back from a clubhouse: just outside that plot's gate
+      arrive: { city: { x: 23.5, y: 44 }, ...Object.fromEntries(farmPlots.map(([x1, y1, x2, y2, , id, side]) => [`plot${id}`, { x: Math.floor((x1 + x2) / 2), y: side === 's' ? y2 + 1 : y1 - 2 }])) },
       spawn: [],
     };
   })(),
+
+  // Inside a player's clubhouse (?area=clubhouse&plot=N): a cosy timber room like the Workshop.
+  clubhouse: {
+    title: 'Clubhouse',
+    indoor: true,
+    size: [14, 10],
+    paths: [], ponds: [], tall: [], bushes: [], stumps: [], flowers: [], trees: [], treeKind: () => 'tree_pine',
+    objects: [
+      ['table', 6, 4, 2, 2], ['shelf', 1, 1, 2, 1], ['shelf', 4, 1, 2, 1], ['fireplace', 11, 1, 2, 1],
+      ['bed', 1, 5, 2, 3], ['barrel', 12, 7, 1, 1], ['chest', 12, 5, 1, 1], ['crate', 9, 1, 1, 1],
+    ],
+    start: { x: 6, y: 7 },
+    exits: [{ edge: 's', range: [6, 7], href: `/game/world3d/?area=avenues&from=plot${PLOT_Q}`, name: 'Taproot Avenues' }],
+    arrive: {},
+    spawn: [],
+  },
 
   // The mine under the fields, built from the 2D page's cave map ('#' rock, '.' floor, '~' water).
   cave: {
@@ -642,6 +680,7 @@ function stitch(title, size, parts) {
 }
 const A = AREAS[AREA] || AREAS.fields;
 const [MAP_W, MAP_H] = A.size || (AREA === 'workshop' ? [14, 10] : [48, 36]);
+const CLUB = AREA === 'clubhouse' && PLOT_Q;
 const DAY = A.sky === 'day'; // blue sky, clouds and real mountains instead of the neon backdrop
 const TOWN = !!A.town;
 const INDOOR = !!A.indoor; // a room: plank floor, walls, warm lamps, no sky     // city areas use the Phaser town look: timber cottages, cobbles, no neon
@@ -1851,7 +1890,7 @@ for (let i = 0; i < (DAY || UNDER || INDOOR ? 0 : 9); i++) {
   }
 });
 (A.plots || []).forEach(([x1, y1, x2, y2, type]) => {
-  if (type === 'dirt') return;
+  if (type === 'dirt' || type === 'player') return; // player plots grow what their owners plant
   at(0, 0);
   for (let z = y1 + 1.5; z < y2 + 0.6; z += 1) for (let x = x1 + 1; x < x2 + 0.6; x += 0.7) {
     const r = hash(Math.round(x * 10), Math.round(z * 10), 401);
@@ -1880,6 +1919,8 @@ const shopSpots = placed.filter((o) => o.name && SHOPS[o.name]).map((o) => {
 const craftAt = placed.filter((o) => o.key === 'craft_table').map((o) => ({ x: o.tx + o.w / 2, z: o.ty + o.h + 0.6 }))[0];
 let action = null;
 function currentAction() {
+  const fa = farmAction();
+  if (fa) return fa;
   if (BOARD_AT && Math.hypot(P.x - BOARD_AT.x, P.z - BOARD_AT.z) < 2) return { text: 'Press F to set sail', btn: '⛵ Set sail', run: setSail };
   for (const s of shopSpots) if (Math.hypot(P.x - s.x, P.z - s.z) < 2.4) return { text: `Press F to shop at ${s.name}`, btn: '\u{1F6D2} Shop', run: () => openShop(s.name) };
   if (craftAt && Math.hypot(P.x - craftAt.x, P.z - craftAt.z) < 2.3) return { text: 'Press F to use the crafting table', btn: '\u{1F528} Craft', run: openCraft };
@@ -2376,10 +2417,11 @@ let owned = [];
 try { owned = JSON.parse(localStorage.getItem('taproot_owned')) || []; } catch (e) {}
 const saveOwned = () => { try { localStorage.setItem('taproot_owned', JSON.stringify(owned)); } catch (e) {} };
 const ITEM = (id) => (typeof GAME !== 'undefined' && GAME.ITEMS[id]) || null;
-const nameOf = (id) => (ITEM(id) || CONSUMABLES[id] || LOOT[id] || { name: id }).name;
+const nameOf = (id) => (ITEM(id) || CONSUMABLES[id] || LOOT[id] || FARM_ITEMS[id] || { name: id }).name;
 const equippedIds = () => Object.values((charData || DEFAULT_CHAR).equipment || {});
 function iconOf(id) {
   if (CONSUMABLES[id]) return CONSUMABLES[id].emoji;
+  if (FARM_ITEMS[id]) return FARM_ITEMS[id].emoji;
   if (LOOT[id]) return `<img src="/game/world/assets/loot/${id}.png" alt="">`;
   const it = ITEM(id);
   return it ? GAME.SLOT_ICONS[it.slot] || '✨' : '❓';
@@ -2391,6 +2433,7 @@ function infoOf(id) {
     return `<span style="color:${r.color === '#9a95a8' ? '#7a6a5a' : r.color}">${r.label}</span> ${GAME.SLOT_LABELS[it.slot]} &middot; ` + Object.entries(it.stats).map(([k, v]) => `${v > 0 ? '+' : ''}${v} ${GAME.STAT_LABELS[k]}`).join(' ');
   }
   if (CONSUMABLES[id]) return `Restores ${CONSUMABLES[id].heal} HP`;
+  if (FARM_ITEMS[id]) return FARM_ITEMS[id].info;
   return 'Monster drop';
 }
 let modal = null; // { kind: 'shop' | 'craft', name, tab }
@@ -2419,7 +2462,8 @@ function renderModal() {
     $('shopTabs').innerHTML = ['buy', 'sell'].map((t) => `<button data-tab="${t}" class="${modal.tab === t ? 'on' : ''}">${t === 'buy' ? 'Buy' : 'Sell'}</button>`).join('');
     if (modal.tab === 'buy') rows = shop.stock.map(([id, price]) => {
       const gear = !!ITEM(id), have = gear && owned.includes(id);
-      const btn = have ? gearButton(id) : `<button data-act="buy" data-id="${id}" data-price="${price}" ${field.gold < price ? 'disabled' : ''}>Buy ${price}g</button>`;
+      const btn = have ? gearButton(id) : `<button data-act="buy" data-id="${id}" data-price="${price}" ${field.gold < price ? 'disabled' : ''}>Buy ${price}g</button>`
+        + (gear ? '' : `<button class="alt" data-act="buy" data-id="${id}" data-price="${price * 5}" data-n="5" ${field.gold < price * 5 ? 'disabled' : ''}>x5 ${price * 5}g</button>`);
       const count = !gear && field.bag[id] ? ` (have ${field.bag[id]})` : '';
       return `<div class="row"><div class="ico">${iconOf(id)}</div><div class="txt"><b>${nameOf(id)}${count}</b><small>${infoOf(id)}</small></div>${btn}</div>`;
     }).join('');
@@ -2449,8 +2493,9 @@ function shopAct(act, id, extra) {
     const price = +extra;
     if (field.gold < price) return;
     field.gold -= price;
-    if (ITEM(id)) { owned.push(id); saveOwned(); } else field.bag[id] = (field.bag[id] || 0) + 1;
-    floatText(P.x, 2, P.z, `Bought ${nameOf(id)}`, '#ffe066');
+    const n = ITEM(id) ? 1 : +(shopAct.n || 1);
+    if (ITEM(id)) { owned.push(id); saveOwned(); } else field.bag[id] = (field.bag[id] || 0) + n;
+    floatText(P.x, 2, P.z, `Bought ${n > 1 ? n + ' ' : ''}${nameOf(id)}`, '#ffe066');
   } else if (act === 'sell') {
     const n = Math.min(+extra, field.bag[id] || 0);
     field.bag[id] -= n;
@@ -2708,10 +2753,11 @@ function toggleBag(open) {
 }
 function renderBag() {
   $('bagGold').innerHTML = `<img src="/game/world/assets/loot/gold.png" alt="">${field.gold} gold`;
-  const items = Object.entries(field.bag).filter(([id, n]) => (LOOT[id] || CONSUMABLES[id]) && n > 0);
+  const items = Object.entries(field.bag).filter(([id, n]) => (LOOT[id] || CONSUMABLES[id] || FARM_ITEMS[id]) && n > 0);
   $('bagGrid').innerHTML = items.length
     ? items.map(([id, n]) => CONSUMABLES[id]
       ? `<div class="bag-item use" data-use="${id}" title="Click to use"><span class="emo">${CONSUMABLES[id].emoji}</span><span>${CONSUMABLES[id].name}</span><b>x${n}</b></div>`
+      : FARM_ITEMS[id] ? `<div class="bag-item"><span class="emo">${FARM_ITEMS[id].emoji}</span><span>${FARM_ITEMS[id].name}</span><b>x${n}</b></div>`
       : `<div class="bag-item"><img src="/game/world/assets/loot/${id}.png" alt=""><span>${LOOT[id].name}</span><b>x${n}</b></div>`).join('')
     : '<p class="bag-empty">Your bag is empty. Defeat monsters to collect their drops.</p>';
 }
@@ -2765,7 +2811,7 @@ function drawMinimap(now) {
    tile coordinates. Each client sends its position about 8 times a second while moving (and a
    ping every 3 s); others ease toward it, so their heroes walk and turn smoothly. Players in the
    mine or the workshop only see each other there (the 'room' field). */
-const MP_ROOM = UNDER ? 'cave' : INDOOR || ARENA ? AREA : 'world';
+const MP_ROOM = UNDER ? 'cave' : CLUB ? `clubhouse-${PLOT_Q}` : INDOOR || ARENA ? AREA : 'world';
 const mp = { id: Math.random().toString(36).slice(2, 10), live: false, last: 0, sent: null, atk: 0, atkL: 0 };
 mp.name = (charData && charData.name && charData.name.trim()) || 'Wanderer';
 const ghosts = new Map();
@@ -2837,9 +2883,11 @@ if (window.supabase) {
       const known = ghosts.has(payload.id);
       onState(payload);
       if (!known && payload.room === MP_ROOM) mp.channel.send({ type: 'broadcast', event: 'move', payload: myState() }); // say hi back
+      if (!known) sendFarm(); // and show them my plot
     })
     .on('broadcast', { event: 'move' }, ({ payload }) => onState(payload))
     .on('broadcast', { event: 'leave' }, ({ payload }) => { const g = ghosts.get(payload.id); if (g) chatLine('', `${g.name} left`, true); removeGhost(payload.id); })
+    .on('broadcast', { event: 'farm' }, ({ payload }) => onFarm(payload))
     .on('broadcast', { event: 'hit' }, ({ payload }) => onHit(payload))
     .on('broadcast', { event: 'ouch' }, ({ payload }) => onOuch(payload))
     .on('broadcast', { event: 'ko' }, ({ payload }) => onKo(payload))
@@ -2852,6 +2900,7 @@ if (window.supabase) {
       if (status !== 'SUBSCRIBED') return;
       mp.live = true;
       mp.channel.send({ type: 'broadcast', event: 'join', payload: myState() });
+      sendFarm();
     });
   // keep-alive on a timer, so a player whose tab is in the background (no frames) doesn't vanish
   setInterval(() => { if (mp.live && performance.now() - mp.last > 3000) { mp.channel.send({ type: 'broadcast', event: 'move', payload: myState() }); mp.last = performance.now(); } }, 3000);
@@ -2861,6 +2910,7 @@ function sendChat() {
   const txt = $('chatIn').value.trim().slice(0, 200);
   $('chatIn').value = '';
   if (!txt) return;
+  if (txt.startsWith('/') && farmCommand(txt)) return;
   if (mp.live) mp.channel.send({ type: 'broadcast', event: 'chat', payload: { id: mp.id, name: mp.name, msg: txt } });
   chatLine(mp.name, txt);
   addBubble(myBubble, txt);
@@ -3006,6 +3056,405 @@ if (ARENA) {
   chatLine('', 'Welcome to the arena: player hits do damage in here. Walk out the south gate to leave.', true);
 }
 
+/* ---------- farming: player plots, crops and plot buildings ----------
+   Six fenced plots in the Avenues. Walk up to a FOR CLAIM sign and press F to make one yours (one
+   per player). On your own plot, 1 / 2 / 3 pick a seed, F on empty soil plants it and F on a ripe
+   crop harvests it. Crops grow on the real clock, also while you're away. G opens build mode:
+   Growth Altar, Clubhouse, Scarecrow (R rotates, F places, X picks one back up for a refund).
+   For now each owner keeps their plot in this browser and shows it to everyone online over the
+   multiplayer channel ('farm'). A shared Supabase table should replace that before going live, so
+   plots stay visible while their owners are offline. ?farmfast=1 turns minutes into seconds. */
+const FAST = new URLSearchParams(location.search).has('farmfast') ? 60 : 1;
+const MIN = 60000 / FAST;
+const SEEDS = Object.keys(CROPS);
+const PLOTS = (A.plots || []).filter((p) => p[4] === 'player').map(([x1, y1, x2, y2, , id, side]) => {
+  const g0 = gateAt(x1, x2);
+  return { id, x1, y1, x2, y2, side, i0: x1 + 1, j0: y1 + 1, n: x2 - x1 - 1, sign: { x: g0 + 4.3, z: side === 's' ? y2 + 1.55 : y1 - 0.55 } };
+});
+const FARM_KEY = `taproot_farm_${mp.name}`;
+let myFarm = null;
+try { myFarm = JSON.parse(localStorage.getItem(FARM_KEY)); } catch (e) {}
+const farms = new Map(); // plot id -> farm: { id, owner, claimed, crops: { 'i,j': { k, t } }, builds: [{ k, i, j, r }], boost: [from, to], members }
+if (myFarm) farms.set(myFarm.id, myFarm);
+let selSeed = SEEDS[0], building = null;
+
+const saveFarm = () => { try { if (myFarm) localStorage.setItem(FARM_KEY, JSON.stringify(myFarm)); else localStorage.removeItem(FARM_KEY); } catch (e) {} };
+function sendFarm() { if (mp.live && myFarm) mp.channel.send({ type: 'broadcast', event: 'farm', payload: { farm: myFarm } }); }
+function farmChanged() { saveFarm(); sendFarm(); }
+function onFarm({ farm: f }) {
+  if (!f || !f.owner || f.owner === mp.name) return;
+  if (myFarm && f.id === myFarm.id) { // two players claimed the same plot: the earlier claim keeps it
+    if (f.claimed >= myFarm.claimed) { sendFarm(); return; }
+    toast(`${f.owner} claimed Plot ${f.id} first`);
+    chatLine('', `${f.owner} claimed Plot ${f.id} before you did. Pick another free plot.`, true);
+    myFarm = null;
+    saveFarm();
+  }
+  if (!farms.has(f.id) && PLOTS.length) chatLine('', `${f.owner} farms Plot ${f.id}`, true);
+  farms.set(f.id, f);
+}
+const plotOf = (id) => PLOTS.find((p) => p.id === id);
+const soilAt = (x, z) => PLOTS.find((p) => x >= p.i0 && x < p.i0 + p.n && z >= p.j0 && z < p.j0 + p.n);
+const onPlot = (p) => p && P.x >= p.x1 && P.x < p.x2 + 1 && P.z >= p.y1 && P.z < p.y2 + 1;
+function farmTile() { const p = soilAt(P.x, P.z); return p && { p, i: Math.floor(P.x) - p.i0, j: Math.floor(P.z) - p.j0 }; }
+const buildAt = (f, i, j) => (f.builds || []).find((b) => { const s = BUILDS[b.k].size; return i >= b.i && i < b.i + s && j >= b.j && j < b.j + s; });
+const boosted = (f, now = Date.now()) => f.boost && now < f.boost[1];
+function cropProgress(f, c, now = Date.now()) {
+  const [b0, b1] = f.boost || [0, 0], extra = Math.max(0, Math.min(now, b1) - Math.max(c.t, b0)) * (ALTAR.speed - 1);
+  return Math.min(1, (now - c.t + extra) / (CROPS[c.k].grow * MIN));
+}
+const stageOf = (pr) => (pr >= 1 ? 3 : pr >= 0.5 ? 2 : pr >= 0.12 ? 1 : 0);
+const mmss = (ms) => { const s = Math.max(0, Math.ceil(ms / 1000)); return s >= 3600 ? `${Math.floor(s / 3600)}h ${Math.floor(s / 60) % 60}m` : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+function timeLeft(f, c) {
+  const pr = cropProgress(f, c);
+  return (1 - pr) * CROPS[c.k].grow * MIN / (boosted(f) ? ALTAR.speed : 1);
+}
+
+// ---- actions
+function claimPlot(p) {
+  if (myFarm || farms.has(p.id)) return;
+  myFarm = { id: p.id, owner: mp.name, claimed: Date.now(), crops: {}, builds: [], boost: [0, 0], members: [] };
+  farms.set(p.id, myFarm);
+  farmChanged();
+  floatText(P.x, 2.2, P.z, `Plot ${p.id} is yours!`, '#c8ff2e');
+  hero.emote('happy', 1.2);
+  burst(p.sign.x, 1.4, p.sign.z, '#c8ff2e', 14);
+  chatLine('', `You claimed Plot ${p.id}. Buy seeds at the Seed Shop, then press F on the soil to plant. G builds.`, true);
+}
+function plant(key) {
+  const id = selSeed + '_seed';
+  if (!(field.bag[id] > 0) || myFarm.crops[key]) return;
+  field.bag[id] -= 1;
+  myFarm.crops[key] = { k: selSeed, t: Date.now() };
+  saveField(); renderBag(); farmChanged();
+  burst(P.x, 0.3, P.z, '#8a5a36', 6);
+}
+function harvest(key) {
+  const c = myFarm.crops[key];
+  if (!c || cropProgress(myFarm, c) < 1) return;
+  const n = CROPS[c.k].yield;
+  field.bag[c.k] = (field.bag[c.k] || 0) + n;
+  delete myFarm.crops[key];
+  saveField(); renderBag(); updateHud(); farmChanged();
+  floatText(P.x, 1.7, P.z, `+${n} ${CROPS[c.k].name}`, '#ffb04a');
+  burst(P.x, 0.5, P.z, '#ffd23a', 8);
+}
+function offerAltar() {
+  if (!(field.bag[ALTAR.offering] > 0) || boosted(myFarm)) return;
+  field.bag[ALTAR.offering] -= 1;
+  const now = Date.now();
+  myFarm.boost = [now, now + ALTAR.minutes * MIN];
+  saveField(); renderBag(); farmChanged();
+  floatText(P.x, 2.2, P.z, `Crops grow ${ALTAR.speed}x faster!`, '#5affd8');
+  hero.emote('happy', 1);
+}
+const NOOP = () => {};
+const info = (text) => ({ text, btn: '', info: true, run: NOOP });
+function farmAction() {
+  if (!PLOTS.length) return null;
+  if (building) return buildAction();
+  for (const p of PLOTS) if (Math.hypot(P.x - p.sign.x, P.z - p.sign.z) < 2.2) {
+    const f = farms.get(p.id);
+    if (f) return info(f === myFarm ? `Your farm · Plot ${p.id} · G to build` : `${f.owner}'s Farm · Plot ${p.id}`);
+    if (myFarm) return info(`Plot ${p.id} is free (you farm Plot ${myFarm.id}: one plot per player)`);
+    return { text: `Press F to claim Plot ${p.id} (free)`, btn: '\u{1F331} Claim', run: () => claimPlot(p) };
+  }
+  // buildings: anyone's clubhouse (members only), your own altar
+  for (const f of farms.values()) for (const b of f.builds || []) {
+    const p = plotOf(f.id), s = BUILDS[b.k].size, cx = p.i0 + b.i + s / 2, cz = p.j0 + b.j + s / 2, d = Math.hypot(P.x - cx, P.z - cz);
+    if (b.k === 'clubhouse' && d < 2.6) {
+      const ok = f === myFarm || (f.members || []).includes(mp.name);
+      return ok ? { text: `Press F to go into ${f === myFarm ? 'your' : f.owner + "'s"} clubhouse`, btn: '\u{1F3E0} Go in', run: () => goTo(`/game/world3d/?area=clubhouse&plot=${f.id}`) }
+        : info(`${f.owner}'s Clubhouse · members only`);
+    }
+    if (b.k === 'altar' && f === myFarm && d < 2) {
+      if (boosted(f)) return info(`Growth Altar · crops grow ${ALTAR.speed}x faster for ${mmss(f.boost[1] - Date.now())}`);
+      if (field.bag[ALTAR.offering] > 0) return { text: `Press F to offer a ${nameOf(ALTAR.offering)}: crops grow ${ALTAR.speed}x faster for ${ALTAR.minutes} min`, btn: '\u{1F48E} Offer', run: offerAltar };
+      return info(`Growth Altar · offer a ${nameOf(ALTAR.offering)} to make your crops grow ${ALTAR.speed}x faster`);
+    }
+  }
+  const t = farmTile();
+  if (!t || !myFarm || t.p.id !== myFarm.id || buildAt(myFarm, t.i, t.j)) return null;
+  const key = `${t.i},${t.j}`, c = myFarm.crops[key];
+  if (c) {
+    if (cropProgress(myFarm, c) >= 1) return { text: `Press F to harvest ${CROPS[c.k].name}`, btn: '\u{1F9FA} Harvest', run: () => harvest(key) };
+    return info(`${CROPS[c.k].name} · growing · ${mmss(timeLeft(myFarm, c))} left`);
+  }
+  const have = field.bag[selSeed + '_seed'] || 0;
+  if (!have) return info(`No ${CROPS[selSeed].name} seeds · buy some at the Seed Shop (1 / 2 / 3 switch seeds)`);
+  return { text: `Press F to plant ${CROPS[selSeed].name} (${have} seeds)`, btn: '\u{1F331} Plant', run: () => plant(key) };
+}
+
+// ---- build mode
+const BUILD_KEYS = Object.keys(BUILDS);
+function buildTarget() {
+  const p = plotOf(myFarm.id), s = BUILDS[building.k].size;
+  const tx = Math.floor(P.x + Math.sin(P.heading) * (1 + s / 2)) - p.i0, tz = Math.floor(P.z + Math.cos(P.heading) * (1 + s / 2)) - p.j0;
+  const i = clamp(tx - Math.floor((s - 1) / 2), 0, p.n - s), j = clamp(tz - Math.floor((s - 1) / 2), 0, p.n - s); // snaps inside the soil
+  let why = '';
+  if (i < 0 || j < 0 || i + s > p.n || j + s > p.n) why = 'outside your soil';
+  else for (let y = j; y < j + s && !why; y++) for (let x = i; x < i + s; x++) {
+    if (myFarm.crops[`${x},${y}`]) { why = 'crops in the way'; break; }
+    if (buildAt(myFarm, x, y)) { why = 'something is already there'; break; }
+    if (Math.floor(P.x) === p.i0 + x && Math.floor(P.z) === p.j0 + y) { why = 'you are standing there'; break; }
+  }
+  const count = myFarm.builds.filter((b) => b.k === building.k).length;
+  if (!why && count >= BUILDS[building.k].max) why = `you have the max (${BUILDS[building.k].max})`;
+  if (!why && field.gold < BUILDS[building.k].cost) why = `needs ${BUILDS[building.k].cost} gold`;
+  const hit = buildAt(myFarm, tx, tz);
+  return { p, i, j, s, why, hit };
+}
+function buildAction() {
+  const t = buildTarget(), it = BUILDS[building.k];
+  if (t.why) return info(`${it.name} · ${t.why}${t.hit ? ` · X picks up the ${BUILDS[t.hit.k].name}` : ''}`);
+  return { text: `Press F to build a ${it.name} (${it.cost} gold) · R rotate · Esc done`, btn: '\u{1F528} Build', run: placeBuild };
+}
+function placeBuild() {
+  const t = buildTarget(), it = BUILDS[building.k];
+  if (t.why) return;
+  field.gold -= it.cost;
+  myFarm.builds.push({ k: building.k, i: t.i, j: t.j, r: building.r });
+  saveField(); updateHud(); farmChanged();
+  burst(t.p.i0 + t.i + t.s / 2, 1, t.p.j0 + t.j + t.s / 2, '#c8ff2e', 16);
+  floatText(P.x, 2.2, P.z, `Built a ${it.name}!`, '#c8ff2e');
+}
+function pickUpBuild() {
+  const { hit } = buildTarget();
+  if (!hit) return;
+  myFarm.builds.splice(myFarm.builds.indexOf(hit), 1);
+  field.gold += BUILDS[hit.k].cost;
+  saveField(); updateHud(); farmChanged();
+  floatText(P.x, 2.2, P.z, `Picked up the ${BUILDS[hit.k].name} (+${BUILDS[hit.k].cost} gold)`, '#ffd34a');
+}
+function setBuilding(on) {
+  if (building && building.ghost) { scene.remove(building.ghost); building.ghost = null; }
+  building = on ? { k: (building && building.k) || BUILD_KEYS[0], r: (building && building.r) || (plotOf(myFarm.id).side === 's' ? 0 : 2), ghost: null } : null;
+  $('buildBar').hidden = $('buildMode').hidden = !building;
+  if (building) renderBuildBar();
+}
+function farmKey(code) {
+  if (building) {
+    if (code === 'Escape' || code === 'KeyG' || !onPlot(plotOf(myFarm.id))) return setBuilding(false);
+    if (code === 'KeyR') building.r = (building.r + 1) % 4;
+    if (code === 'KeyX') pickUpBuild();
+    const n = +code.replace('Digit', '');
+    if (n >= 1 && n <= BUILD_KEYS.length) { building.k = BUILD_KEYS[n - 1]; if (building.ghost) { scene.remove(building.ghost); building.ghost = null; } renderBuildBar(); }
+    return;
+  }
+  if (!myFarm || !onPlot(plotOf(myFarm.id))) return;
+  const n = +code.replace('Digit', '');
+  if (n >= 1 && n <= SEEDS.length) { selSeed = SEEDS[n - 1]; renderSeedBar(); }
+  if (code === 'KeyG') setBuilding(true);
+}
+
+// ---- models: crops (origin = tile centre), buildings (origin = footprint centre, front = +z), signs
+function cropBuild(k, st) {
+  put('toon', 'sph', st < 2 ? '#6a4428' : '#7a5232', 0, 0, 0, 0.34, 0.1, 0.34); // mound
+  if (st === 0) { for (let a = 0; a < 3; a++) put('toon', 'sph', '#f0dca0', Math.cos(a * 2.1) * 0.08, 0.08, Math.sin(a * 2.1) * 0.08, 0.035); return; }
+  if (st === 1) {
+    put('toon', 'cyl', '#5aa83a', 0, 0.14, 0, 0.02, 0.18, 0.02);
+    for (const s of [-1, 1]) put('toon', 'sph', k === 'wheat' ? '#9ad84a' : '#7ad44a', s * 0.09, 0.24, 0, 0.1, 0.03, 0.05, 0, 0, s * 0.5);
+    return;
+  }
+  const ripe = st === 3;
+  if (k === 'carrot') {
+    const n = ripe ? 8 : 5, L = ripe ? 0.46 : 0.3;
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2, t = 0.35 + hash(i, st, 601) * 0.3, tx = Math.cos(a) * Math.sin(t) * L, tz = Math.sin(a) * Math.sin(t) * L, ty = 0.08 + Math.cos(t) * L;
+      put('toon', 'cyl', '#4aa83a', tx / 2, (0.08 + ty) / 2, tz / 2, 0.014, L, 0.014, 0, -a, -t);
+      put('toon', 'sph', i % 2 ? '#4ab83a' : '#62cc44', tx, ty, tz, ripe ? 0.09 : 0.065, ripe ? 0.05 : 0.04, ripe ? 0.09 : 0.065);
+    }
+    if (ripe) put('toon', 'sph', '#ff8a2a', 0, 0.09, 0, 0.15, 0.13, 0.15);
+  } else if (k === 'wheat') {
+    for (let i = 0; i < 9; i++) {
+      const a = i * 2.4, r = 0.06 + (i % 3) * 0.07, x = Math.cos(a) * r, z = Math.sin(a) * r, h = (ripe ? 0.72 : 0.44) + (hash(i, st, 602) - 0.5) * 0.12;
+      put('toon', 'cyl', ripe ? '#e0c060' : '#8ad04a', x, h / 2, z, 0.018, h, 0.018);
+      if (ripe) put('toon', 'sph', '#f4d26a', x, h + 0.06, z, 0.045, 0.11, 0.045);
+      else put('toon', 'sph', '#7ac844', x + Math.cos(a) * 0.06, h * 0.45, z + Math.sin(a) * 0.06, 0.07, 0.025, 0.04, 0, -a, 0.6);
+    }
+  } else {
+    for (let i = 0; i < 6; i++) { const a = i * 1.05; put('toon', 'sph', i % 2 ? '#3f9a36' : '#4fb03e', Math.cos(a) * 0.18, 0.08, Math.sin(a) * 0.18, ripe ? 0.19 : 0.15, 0.06, ripe ? 0.19 : 0.15); }
+    if (!ripe) put('toon', 'sph', '#c8d84a', 0.05, 0.1, -0.05, 0.08);
+    else {
+      for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2; put('toon', 'sph', i % 2 ? '#ff8a1a' : '#f47a14', Math.cos(a) * 0.1, 0.2, Math.sin(a) * 0.1, 0.12, 0.16, 0.12); }
+      put('toon', 'cyl', '#5a7a2a', 0, 0.4, 0, 0.035, 0.12, 0.035);
+    }
+  }
+}
+const BUILD_MODELS = {
+  altar() {
+    put('toon', 'box', '#a8a296', 0, 0.1, 0, 1.8, 0.2, 1.8);
+    put('toon', 'box', '#bcb6aa', 0, 0.3, 0, 1.3, 0.2, 1.3);
+    put('toon', 'cyl', '#d8d2c4', 0, 0.75, 0, 0.3, 0.7, 0.3);
+    put('toon', 'cyl', '#bcb6aa', 0, 1.14, 0, 0.42, 0.12, 0.42);
+    put('glow', 'oct', '#5affd8', 0, 1.6, 0, 0.24, 0.42, 0.24);
+    put('glow', 'tor', '#5affd8', 0, 0.42, 0, 0.85, 0.85, 0.12, Math.PI / 2);
+    for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+      put('toon', 'cyl', '#f4ecd8', sx * 0.55, 0.51, sz * 0.55, 0.05, 0.22, 0.05);
+      put('glow', 'sph', '#ffc040', sx * 0.55, 0.67, sz * 0.55, 0.04, 0.065, 0.04);
+    }
+    put('toon', 'cyl', '#8a5a36', 0.45, 0.44, 0.62, 0.16, 0.08, 0.16);
+  },
+  clubhouse() {
+    const W = 2.6, D = 2.3, H = 1.55, f = D / 2;
+    put('toon', 'box', '#8c8478', 0, 0.12, 0, W + 0.2, 0.25, D + 0.2);
+    put('toon', 'box', '#d8a46a', 0, 0.25 + H / 2, 0, W, H, D);
+    for (let i = 0; i < 6; i++) put('toon', 'box', '#a87444', -W / 2 + 0.25 + i * 0.43, 0.25 + H / 2, f + 0.005, 0.03, H, 0.02);
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) put('toon', 'box', '#7a4a28', sx * W / 2, 0.25 + H / 2, sz * D / 2, 0.16, H + 0.05, 0.16);
+    const run = D / 2 + 0.35;
+    for (const k of [-1, 1]) put('toon', 'box', '#c4553a', 0, 0.25 + H + D / 4, k * run / 2 * 0.98, W + 0.5, 0.14, run * Math.SQRT2 * 0.98, -k * Math.PI / 4, 0, 0);
+    put('toon', 'box', '#d8a46a', 0, 0.25 + H, 0, W - 0.04, D / Math.SQRT2, D / Math.SQRT2, Math.PI / 4, 0, 0); // gables
+    put('toon', 'box', '#9a948a', 0.75, 0.25 + H + 0.9, -0.3, 0.3, 0.7, 0.3); // chimney
+    put('toon', 'box', '#7a4428', -0.35, 0.78, f + 0.03, 0.62, 1.05, 0.06); // door
+    put('toon', 'sph', '#ffcf3a', -0.12, 0.8, f + 0.08, 0.035);
+    put('toon', 'cyl', '#f4e2b8', -0.35, 1.62, f + 0.05, 0.28, 0.05, 0.28, Math.PI / 2, 0, 0);
+    put('toon', 'cyl', '#ff3fb4', -0.35, 1.62, f + 0.07, 0.2, 0.06, 0.2, Math.PI / 2, 0, 0);
+    put('toon', 'box', '#6a4426', 0.65, 1.15, f + 0.03, 0.62, 0.55, 0.06); // window
+    put('glow', 'box', '#ffe2a0', 0.65, 1.15, f + 0.04, 0.48, 0.42, 0.06);
+    put('toon', 'box', '#7a4428', 0.65, 0.82, f + 0.15, 0.5, 0.2, 0.25);
+    for (let i = 0; i < 4; i++) put('toon', 'sph', ['#ff6ad5', '#ffd23a', '#5ab4ff', '#ffffff'][i], 0.47 + i * 0.12, 0.95, f + 0.15, 0.06);
+    put('toon', 'box', '#a8a296', -0.35, 0.06, f + 0.32, 1.0, 0.12, 0.45); // step
+    put('toon', 'box', '#b0703e', 0.75, 0.32, f + 0.45, 0.9, 0.08, 0.3); // bench
+    for (const bx of [0.4, 1.1]) put('toon', 'box', '#7a4428', bx, 0.15, f + 0.45, 0.06, 0.3, 0.25);
+    put('glow', 'sph', '#ffd890', -0.85, 1.32, f + 0.3, 0.09);
+    put('toon', 'cyl', '#3a3640', -W / 2 + 0.3, 0.25 + H + 1.25, 0, 0.025, 0.9, 0.025); // flag
+    put('toon', 'box', '#ff3fb4', -W / 2 + 0.56, 0.25 + H + 1.52, 0, 0.5, 0.32, 0.03);
+  },
+  scarecrow() {
+    put('toon', 'cyl', '#7a4428', 0, 0.9, 0, 0.05, 1.8, 0.05);
+    put('toon', 'box', '#7a4428', 0, 1.35, 0, 1.2, 0.06, 0.06);
+    put('toon', 'box', '#4a7ae0', 0, 1.2, 0, 0.5, 0.55, 0.3);
+    put('toon', 'sph', '#f0d890', 0, 1.75, 0, 0.2);
+    put('toon', 'cyl', '#c8a048', 0, 1.9, 0, 0.32, 0.06, 0.32);
+    put('toon', 'cyl', '#c8a048', 0, 2.02, 0, 0.18, 0.22, 0.18);
+  },
+};
+const MODEL_CACHE = {};
+const model = (key, fn) => (MODEL_CACHE[key] ||= buildGroup(fn)).clone();
+const GHOST_OK = new THREE.MeshBasicMaterial({ color: '#7aff6a', transparent: true, opacity: 0.45, depthWrite: false });
+const GHOST_BAD = new THREE.MeshBasicMaterial({ color: '#ff5a5a', transparent: true, opacity: 0.45, depthWrite: false });
+
+// one group per plot, rebuilt whenever its crops change stage or its buildings change
+const plotViews = new Map();
+PLOTS.forEach((p) => {
+  const sign = buildGroup(() => {
+    put('toon', 'cyl', '#7a4428', 0, 0.75, 0, 0.06, 1.5, 0.06);
+    put('toon', 'box', '#b0703e', 0, 1.35, 0, 1.5, 0.6, 0.1);
+    put('toon', 'box', '#e8c890', 0, 1.35, 0.06, 1.35, 0.45, 0.03);
+  });
+  sign.position.set(p.sign.x, 0, p.sign.z);
+  if (p.side === 'n') sign.rotation.y = Math.PI;
+  scene.add(sign);
+  const tag = document.createElement('div');
+  tag.className = 'tag wood plot';
+  labelsEl.appendChild(tag);
+  plotViews.set(p.id, { group: null, sig: '', tag, label: '', blocked: [] });
+});
+function plotSig(f) {
+  if (!f) return '';
+  const now = Date.now();
+  return f.owner + '|' + Object.entries(f.crops || {}).map(([k, c]) => k + c.k + stageOf(cropProgress(f, c, now))).join() + '|' + (f.builds || []).map((b) => b.k + b.i + b.j + b.r).join();
+}
+function rebuildPlot(p, f) {
+  const v = plotViews.get(p.id);
+  if (v.group) scene.remove(v.group);
+  v.blocked.forEach(([x, y]) => { blocked[y][x] = false; });
+  v.blocked = [];
+  const g = new THREE.Group();
+  if (f) {
+    const now = Date.now();
+    for (const [key, c] of Object.entries(f.crops || {})) {
+      if (!CROPS[c.k]) continue;
+      const [i, j] = key.split(',').map(Number), st = stageOf(cropProgress(f, c, now)), m = model(c.k + st, () => cropBuild(c.k, st));
+      m.position.set(p.i0 + i + 0.5, 0, p.j0 + j + 0.5);
+      m.rotation.y = hash(i, j, 603) * 6.28;
+      g.add(m);
+    }
+    for (const b of f.builds || []) {
+      const it = BUILDS[b.k];
+      if (!it) continue;
+      const m = model(b.k, BUILD_MODELS[b.k]);
+      m.position.set(p.i0 + b.i + it.size / 2, 0, p.j0 + b.j + it.size / 2);
+      m.rotation.y = (b.r || 0) * Math.PI / 2;
+      g.add(m);
+      for (let y = b.j; y < b.j + it.size; y++) for (let x = b.i; x < b.i + it.size; x++) {
+        const bx = p.i0 + x, by = p.j0 + y;
+        if (!blocked[by][bx]) { blocked[by][bx] = true; v.blocked.push([bx, by]); }
+      }
+    }
+  }
+  scene.add(g);
+  v.group = g;
+}
+
+// ---- HUD: seed bar on your plot, build bar in build mode, owner signs
+function renderSeedBar() {
+  $('seedBar').innerHTML = '<div class="h">SEEDS</div>' + SEEDS.map((k, n) => {
+    const c = CROPS[k], have = field.bag[k + '_seed'] || 0, g = c.grow / FAST;
+    return `<div class="seed ${k === selSeed ? 'on' : ''}"><kbd>${n + 1}</kbd><div class="e">${c.emoji}</div><b>${c.name}</b><i>ready in ${g >= 60 ? g / 60 + ' hour' : g >= 1 ? g + ' min' : Math.round(g * 60) + ' s'}</i><span class="n">x${have}</span></div>`;
+  }).join('');
+}
+function renderBuildBar() {
+  $('buildBar').innerHTML = BUILD_KEYS.map((k, n) => {
+    const it = BUILDS[k], count = myFarm.builds.filter((b) => b.k === k).length;
+    return `<div class="seed ${k === building.k ? 'on' : ''}"><kbd>${n + 1}</kbd><div class="e">${it.emoji}</div><b>${it.name}</b><i>${it.size} x ${it.size} &middot; ${it.about}</i><span class="n">${count >= it.max ? 'max built' : it.cost + ' gold'}</span></div>`;
+  }).join('');
+}
+let farmTick = 0, seedBarSig = '';
+function updateFarm(dt, now) {
+  if (!PLOTS.length) return;
+  if ((farmTick -= dt) <= 0) {
+    farmTick = 0.5;
+    for (const p of PLOTS) {
+      const f = farms.get(p.id), v = plotViews.get(p.id), sig = plotSig(f);
+      if (sig !== v.sig || !v.group) { v.sig = sig; rebuildPlot(p, f); }
+      const label = f ? `${safeText(f.owner)}'s Farm<small>Plot ${p.id}${boosted(f) ? ' &middot; altar glowing' : ''}</small>` : `FOR CLAIM<small>Plot ${p.id} &middot; free</small>`;
+      if (v.label !== label) { v.label = label; v.tag.innerHTML = label; v.tag.classList.toggle('free', !f); }
+    }
+  }
+  for (const p of PLOTS) {
+    const v = plotViews.get(p.id), pos = Math.hypot(P.x - p.sign.x, P.z - p.sign.z) < 18 ? toScreen(p.sign.x, 2.2, p.sign.z) : null;
+    v.tag.hidden = !pos;
+    if (pos) v.tag.style.transform = `translate(${pos[0]}px, ${pos[1]}px) translate(-50%, -100%)`;
+  }
+  const mine = myFarm && onPlot(plotOf(myFarm.id));
+  if (building && !mine) setBuilding(false);
+  $('seedBar').hidden = !mine || !!building;
+  const ss = mine ? selSeed + SEEDS.map((k) => field.bag[k + '_seed'] || 0).join() : '';
+  if (mine && ss !== seedBarSig) { seedBarSig = ss; renderSeedBar(); }
+  if (building) {
+    const t = buildTarget(), it = BUILDS[building.k];
+    if (!building.ghost) {
+      building.ghost = model(building.k, BUILD_MODELS[building.k]);
+      building.ghost.traverse((o) => { if (o.isMesh) o.castShadow = false; });
+      scene.add(building.ghost);
+    }
+    building.ghost.position.set(t.p.i0 + t.i + it.size / 2, 0.02, t.p.j0 + t.j + it.size / 2);
+    building.ghost.rotation.y = building.r * Math.PI / 2;
+    const mat = t.why ? GHOST_BAD : GHOST_OK;
+    building.ghost.traverse((o) => { if (o.isMesh) o.material = mat; });
+    const txt = `BUILD MODE · Plot ${myFarm.id} · ${field.gold} gold`;
+    if ($('buildMode').textContent !== txt) $('buildMode').textContent = txt;
+  }
+}
+// chat commands for clubhouse owners: /invite name, /kick name, /members
+function farmCommand(txt) {
+  const [cmd, ...rest] = txt.trim().split(/\s+/), who = rest.join(' ');
+  if (!['/invite', '/kick', '/members'].includes(cmd)) return false;
+  if (!myFarm) { chatLine('', 'You need a plot (and a clubhouse) first.', true); return true; }
+  myFarm.members ||= [];
+  if (cmd === '/invite' && who && !myFarm.members.includes(who)) { myFarm.members.push(who); farmChanged(); }
+  if (cmd === '/kick') { myFarm.members = myFarm.members.filter((m) => m !== who); farmChanged(); }
+  chatLine('', `Clubhouse members: ${myFarm.members.length ? myFarm.members.join(', ') : 'nobody yet (type /invite name)'}`, true);
+  return true;
+}
+if (CLUB) {
+  const showOwner = () => { const f = farms.get(+PLOT_Q); if (f) { $('areaTitle').textContent = `${f.owner}'s Clubhouse`; document.title = `${f.owner}'s Clubhouse 3D`; } };
+  showOwner();
+  setTimeout(showOwner, 2500);
+  chatLine('', myFarm && myFarm.id === +PLOT_Q ? 'Your clubhouse. Type /invite name in chat to let a friend in (/kick name, /members).' : 'Welcome in! Walk out the door to go back to the Avenues.', true);
+}
+
 /* ---------- input: keyboard, drag to look, touch joystick on the left half ---------- */
 const keys = {};
 addEventListener('keydown', (e) => {
@@ -3025,6 +3474,7 @@ addEventListener('keydown', (e) => {
   if (e.code === 'KeyC') cycleCam();
   if (e.code === 'KeyF' && action) action.run();
   if (e.code === 'Escape') toggleBag(false);
+  farmKey(e.code);
 });
 addEventListener('keyup', (e) => { keys[e.code] = false; if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') shiftCancel = false; });
 addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
@@ -3058,7 +3508,12 @@ $('jumpBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); jump()
 $('sailBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); if (action) action.run(); });
 $('shopClose').addEventListener('click', closeModal);
 $('shopTabs').addEventListener('click', (e) => { const b = e.target.closest('[data-tab]'); if (b && modal) { modal.tab = b.dataset.tab; renderModal(); } });
-$('shopList').addEventListener('click', (e) => { const b = e.target.closest('button[data-act]'); if (b) shopAct(b.dataset.act, b.dataset.id, b.dataset.price || b.dataset.n || b.dataset.slot); });
+$('shopList').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-act]');
+  if (!b) return;
+  shopAct.n = b.dataset.act === 'buy' ? b.dataset.n : undefined; // how many to buy (x5 buttons)
+  shopAct(b.dataset.act, b.dataset.id, b.dataset.price || b.dataset.n || b.dataset.slot);
+});
 $('bagGrid').addEventListener('click', (e) => { const b = e.target.closest('[data-use]'); if (b) drink(b.dataset.use); });
 $('camBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); cycleCam(); });
 $('bagBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); toggleBag(); });
@@ -3124,6 +3579,7 @@ function update(dt, now) {
   attackCdL -= dt;
   inv -= dt;
   updateMultiplayer(dt, now);
+  updateFarm(dt, now);
 
   // monsters
   for (const mo of monsters) {
@@ -3305,7 +3761,7 @@ function update(dt, now) {
     if (d < nd) { nd = d; nearest = g; }
   });
   action = modal || fainted ? null : currentAction();
-  $('sailBtn').hidden = !action;
+  $('sailBtn').hidden = !action || !!action.info;
   if (action && $('sailBtn').dataset.label !== action.btn) { $('sailBtn').dataset.label = action.btn; $('sailBtn').innerHTML = `${action.btn}<kbd>F</kbd>`; }
   $('nearChip').hidden = !nearest && !action;
   if (action) $('nearText').textContent = action.text;
@@ -3336,7 +3792,7 @@ function update(dt, now) {
 
 SPAWN_LIST.forEach((type) => spawnMonster(type));
 // debug hook for tests and screenshots: __world3d.tp(x, z) teleports, .P is the player state
-window.__world3d = { P, ghosts, arena, hp: () => hp, mp, monsters, drops, field: () => field, hero: () => hero, fireballs, tp: (x, z, yaw) => { P.x = x; P.z = z; if (yaw !== undefined) camYaw = yaw; }, cam: (dist, pitch) => { camDistT = camDist = dist; camPitchT = camPitch = pitch; }, size: [MAP_W, MAP_H], info: () => { // one full frame's draw calls and triangles (all passes, shadows included)
+window.__world3d = { P, ghosts, arena, farms, myFarm: () => myFarm, farmTile: () => farmTile(), hp: () => hp, mp, monsters, drops, field: () => field, hero: () => hero, fireballs, tp: (x, z, yaw) => { P.x = x; P.z = z; if (yaw !== undefined) camYaw = yaw; }, cam: (dist, pitch) => { camDistT = camDist = dist; camPitchT = camPitch = pitch; }, size: [MAP_W, MAP_H], info: () => { // one full frame's draw calls and triangles (all passes, shadows included)
   renderer.info.autoReset = false; renderer.info.reset(); composer.render();
   const r = { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles };
   renderer.info.autoReset = true; return r;
