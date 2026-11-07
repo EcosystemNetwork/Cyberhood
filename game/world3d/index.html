@@ -3541,16 +3541,69 @@ function blockGeo(t) {
 }
 const blockMat = (t) => (BLOCK_MAT[t] ||= BLOCK_LOOK[t]());
 const BM = new THREE.Matrix4(), BQ = new THREE.Quaternion(), BV = new THREE.Vector3(), BS = new THREE.Vector3(1, 1, 1), UP = new THREE.Vector3(0, 1, 0);
+const ZERO = new THREE.Vector3(0, 0, 0), HINGE_A = new THREE.Matrix4().makeTranslation(-0.43, 0, 0), HINGE_B = new THREE.Matrix4().makeTranslation(0.43, 0, 0), SWING = new THREE.Matrix4();
+// One block's instance matrix: hidden blocks shrink to nothing; a door swings on its left edge.
+function writeBlock(p, e, hide, ang) {
+  BM.compose(BV.set(p.i0 + e.i + 0.5, e.k + 0.5, p.j0 + e.j + 0.5), BQ.setFromAxisAngle(UP, e.r * Math.PI / 2), hide ? ZERO : BS);
+  if (ang) BM.multiply(HINGE_A).multiply(SWING.makeRotationY(ang)).multiply(HINGE_B);
+  e.mesh.setMatrixAt(e.n, BM);
+  e.mesh.instanceMatrix.needsUpdate = true;
+}
+// Indoors (third person): hide the roof over you and anything between the camera and your head.
+const hiddenBlocks = new Set(); // 'plotId:i,j,k'
+const SEG = new THREE.Vector3();
+function updateIndoor(dt) {
+  const want = new Set();
+  const p = blockPlotAt(P.x, P.z);
+  if (p && farms.get(p.id) && !(typeof firstPerson !== 'undefined' && firstPerson)) {
+    const vox = voxOf(p), lx = P.x - p.i0, lz = P.z - p.j0, ci = Math.floor(lx), cj = Math.floor(lz);
+    let roofK = -1;
+    for (let k = 0; k < MAX_H && roofK < 0; k++) if (k + 1 > P.y + 1.6 && k <= P.y + 4 && vox.get(ci, cj, k)) roofK = k;
+    if (roofK >= 0) vox.forEach((i, j, k) => { if (k >= roofK && Math.hypot(i + 0.5 - lx, j + 0.5 - lz) <= 4) want.add(`${p.id}:${i},${j},${k}`); });
+    const hx = lx, hy = P.y + 1.4, hz = lz, cx = camera.position.x - p.i0, cy = camera.position.y, cz = camera.position.z - p.j0;
+    const len = Math.hypot(cx - hx, cy - hy, cz - hz);
+    for (let d = 0.6; d < len; d += 0.25) {
+      SEG.set(hx + (cx - hx) * d / len, hy + (cy - hy) * d / len, hz + (cz - hz) * d / len);
+      const i = Math.floor(SEG.x), j = Math.floor(SEG.z), k = Math.floor(SEG.y);
+      if (k >= 0 && k < MAX_H && vox.get(i, j, k)) { const c = vox.get(i, j, k); want.add(`${p.id}:${i},${j},${c.upper ? k - 1 : k}`); }
+    }
+  }
+  const changed = new Set([...want].filter((k) => !hiddenBlocks.has(k)).concat([...hiddenBlocks].filter((k) => !want.has(k))));
+  hiddenBlocks.clear();
+  want.forEach((k) => hiddenBlocks.add(k));
+  for (const key of changed) {
+    const [id, cell] = key.split(':'), q = plotOf(+id), v = plotViews.get(+id), e = v && v.entries && v.entries.get(cell);
+    if (e) writeBlock(q, e, want.has(key), (v.doorAng && v.doorAng.get(cell)) || 0);
+  }
+  // doors swing open while any hero is close
+  for (const q of PLOTS) {
+    const v = plotViews.get(q.id);
+    for (const e of (v && v.doors) || []) {
+      const dx = q.i0 + e.i + 0.5, dz = q.j0 + e.j + 0.5;
+      const open = [P, ...ghosts.values()].some((h) => Math.hypot(h.x - dx, h.z - dz) < 1.3 && Math.abs(h.y - e.k) < 2);
+      const cur = v.doorAng.get(e.key) || 0, target = open ? -Math.PI / 2 * 0.9 : 0, next = cur + (target - cur) * Math.min(1, dt * 12);
+      if (Math.abs(next - cur) > 1e-3) { v.doorAng.set(e.key, next); writeBlock(q, e, hiddenBlocks.has(`${q.id}:${e.key}`), next); }
+    }
+  }
+}
 function rebuildBlocks(p) {
   const v = plotViews.get(p.id);
   (v.blockMeshes || []).forEach((m) => { scene.remove(m); m.dispose(); });
   v.blockMeshes = [];
   v.blockLists = {};
+  v.entries = new Map(); // 'i,j,k' -> { t, n, i, j, k, r, mesh }
+  v.doors = [];
+  v.doorAng ||= new Map();
   if (!farms.get(p.id)) return;
   voxOf(p).forEach((i, j, k, t, r) => (v.blockLists[t] ||= []).push([i, j, k, r]));
   for (const [t, list] of Object.entries(v.blockLists)) {
     const im = new THREE.InstancedMesh(blockGeo(t), blockMat(t), list.length);
-    list.forEach(([i, j, k, r], n) => im.setMatrixAt(n, BM.compose(BV.set(p.i0 + i + 0.5, k + 0.5, p.j0 + j + 0.5), BQ.setFromAxisAngle(UP, r * Math.PI / 2), BS)));
+    list.forEach(([i, j, k, r], n) => {
+      const e = { t, n, i, j, k, r, mesh: im, key: `${i},${j},${k}` };
+      v.entries.set(e.key, e);
+      if (t === 'door') v.doors.push(e);
+      writeBlock(p, e, hiddenBlocks.has(`${p.id}:${e.key}`), v.doorAng.get(e.key) || 0);
+    });
     im.castShadow = !BLOCKS[t].see;
     im.receiveShadow = true;
     im.computeBoundingSphere();
@@ -3561,6 +3614,7 @@ function rebuildBlocks(p) {
 let farmTick = 0, seedBarSig = '';
 function updateFarm(dt, now) {
   if (!PLOTS.length) return;
+  updateIndoor(dt);
   if ((farmTick -= dt) <= 0) {
     farmTick = 0.5;
     for (const p of PLOTS) {
@@ -3968,7 +4022,7 @@ function update(dt, now) {
 
 SPAWN_LIST.forEach((type) => spawnMonster(type));
 // debug hook for tests and screenshots: __world3d.tp(x, z) teleports, .P is the player state
-window.__world3d = { P, ghosts, arena, farms, shopSpots, aimBlock, mouse, camera, building: () => building, toScreen, groundAt, solidAt, setBlocks, plots: PLOTS, placed, decorCrops, myFarm: () => myFarm, farmTile: () => farmTile(), hp: () => hp, mp, monsters, drops, field: () => field, hero: () => hero, fireballs, tp: (x, z, yaw) => { P.x = x; P.z = z; if (yaw !== undefined) camYaw = yaw; }, cam: (dist, pitch) => { camDistT = camDist = dist; camPitchT = camPitch = pitch; }, size: [MAP_W, MAP_H], info: () => { // one full frame's draw calls and triangles (all passes, shadows included)
+window.__world3d = { P, ghosts, arena, farms, hiddenBlocks, doorAngle: (id, i, j, k) => { const v = plotViews.get(id); return (v && v.doorAng && v.doorAng.get(`${i},${j},${k}`)) || 0; }, shopSpots, aimBlock, mouse, camera, building: () => building, toScreen, groundAt, solidAt, setBlocks, plots: PLOTS, placed, decorCrops, myFarm: () => myFarm, farmTile: () => farmTile(), hp: () => hp, mp, monsters, drops, field: () => field, hero: () => hero, fireballs, tp: (x, z, yaw) => { P.x = x; P.z = z; if (yaw !== undefined) camYaw = yaw; }, cam: (dist, pitch) => { camDistT = camDist = dist; camPitchT = camPitch = pitch; }, size: [MAP_W, MAP_H], info: () => { // one full frame's draw calls and triangles (all passes, shadows included)
   renderer.info.autoReset = false; renderer.info.reset(); composer.render();
   const r = { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles };
   renderer.info.autoReset = true; return r;
