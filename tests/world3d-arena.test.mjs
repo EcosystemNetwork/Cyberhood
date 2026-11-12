@@ -74,3 +74,24 @@ test('quicksand lives for ten seconds and every hazard is told 2.5s ahead', () =
   assert.equal(e.fireMs - e.tellMs, 2500);
   assert.equal(PERIOD_MS, 60000);
 });
+
+import { TOMATO_FLIGHT_MS, TOMATO_COOLDOWN_MS, TOMATO_GRAVITY, tomatoArc } from '../game/world3d/arena.js';
+
+test('a tomato thrown from the stands lands where it was aimed', () => {
+  const from = { x: CX, y: 4.2, z: CZ - (R + 3) }, to = { x: CX + 2, y: 0, z: CZ + 4 };
+  const { vx, vy, vz, flightMs } = tomatoArc(from, to);
+  assert.equal(flightMs, TOMATO_FLIGHT_MS);
+  const t = flightMs / 1000;
+  assert.ok(Math.abs(from.x + vx * t - to.x) < 1e-6);
+  assert.ok(Math.abs(from.z + vz * t - to.z) < 1e-6);
+  assert.ok(Math.abs(from.y + vy * t - TOMATO_GRAVITY * t * t / 2 - to.y) < 1e-6);
+});
+
+test('it actually arcs — it goes up before it comes down', () => {
+  const { vy } = tomatoArc({ x: CX, y: 4.2, z: CZ - 17 }, { x: CX, y: 0, z: CZ });
+  assert.ok(vy > 0, 'leaves the hand rising, not thrown flat downhill');
+});
+
+test('the cooldown stops a machine gun', () => {
+  assert.ok(TOMATO_COOLDOWN_MS >= 500);
+});

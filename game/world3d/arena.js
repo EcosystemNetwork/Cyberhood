@@ -138,3 +138,23 @@ export function eventsNear(tMs) {
   }
   return out;
 }
+
+/* ---------- tomatoes ----------
+   A spectator's throw is a lob, not a shot: it leaves the hand rising and drops
+   onto the spot they aimed at. Fixed flight time keeps the arc readable and
+   makes the maths a closed form. Gravity matches the page's own (P.vy -= 22).
+   Tomatoes never damage, slow, stun or push anyone — they are decoration. */
+
+export const TOMATO_FLIGHT_MS = 900;
+export const TOMATO_COOLDOWN_MS = 700;
+export const TOMATO_GRAVITY = 22;
+
+export function tomatoArc(from, to) {
+  const t = TOMATO_FLIGHT_MS / 1000;
+  return {
+    vx: (to.x - from.x) / t,
+    vy: (to.y - from.y + TOMATO_GRAVITY * t * t / 2) / t,
+    vz: (to.z - from.z) / t,
+    flightMs: TOMATO_FLIGHT_MS,
+  };
+}
