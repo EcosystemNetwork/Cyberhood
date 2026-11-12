@@ -49,6 +49,14 @@ try {
   // and a fighter still gets the straight line
   assert.equal(await B.ev(`(__world3d.aimPoint() || {}).hit !== 'tomato'`), true, 'the pit aims a shot');
 
+  // 7. the throw stays in the arena: the channel is global, the tomato is not
+  await B.go(`${BASE}/game/world3d/?area=city&hour=13`);
+  assert.ok(await ready(B));
+  await sleep(1200);
+  await A.ev('__world3d.throwTomato(); 1');
+  await sleep(600);
+  assert.equal(await B.ev('__world3d.tomatoes.length'), 0, 'no tomatoes in the city');
+
   console.log('PASS');
 } finally { kill(); }
 process.exit(0);

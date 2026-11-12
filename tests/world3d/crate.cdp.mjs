@@ -34,7 +34,10 @@ try {
   await sleep(700);
   assert.ok(await A.ev('__world3d.buff()'), 'the toucher gets it');
 
-  // 3. the loser does not
+  // 3. the loser does not — even if they smash their own copy and walk onto it
+  assert.equal(await B.ev('!!__world3d.hazards()[0].pickup'), true, 'the crate opened for everyone');
+  await B.ev(`__world3d.tp(${c.x}, ${c.z + 1.4}); __world3d.P.heading = Math.PI; 1`);
+  for (let i = 0; i < 8; i++) { await B.key('Quote', "'"); await sleep(260); }
   await B.ev(`__world3d.tp(${c.x}, ${c.z}); 1`);
   await sleep(900);
   assert.equal(await B.ev('__world3d.buff()'), null, 'one claim only');
@@ -42,6 +45,16 @@ try {
   // 4. it wears off
   await sleep(BUFF_MS + 800);
   assert.equal(await A.ev('__world3d.buff()'), null, 'the buff expires');
+
+  // 5. a player carrying two casters can still open a crate
+  const c2 = await pick(A, 'crate', c.n + 1);
+  await A.ev(`__world3d.hazardClock(${c2.fireMs + 100}); 1`);
+  await B.ev(`__world3d.hazardClock(${c2.fireMs + 100}); 1`);
+  await sleep(500);
+  await A.ev(`__world3d.tp(${c2.x}, ${c2.z + 3}); __world3d.P.heading = Math.PI; 1`);
+  await sleep(300);
+  for (let i = 0; i < 10; i++) { await A.key('Semicolon', ';'); await sleep(300); } // left hand: the staff
+  assert.equal(await A.ev('!!__world3d.hazards()[0].pickup'), true, 'a fireball opens the crate too');
 
   console.log('PASS');
 } finally { kill(); }

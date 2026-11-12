@@ -42,6 +42,18 @@ try {
   }
   assert.equal(await A.ev('__world3d.hp()'), 100, 'spectators cannot be hit');
 
+  // 6. the crowd watches the hazards happen, and is never touched by them
+  const pick = async (kind, from) => JSON.parse(await A.ev(
+    `JSON.stringify((() => { const a = __world3d.arenaMod; for (let n = ${from}; n < ${from} + 500; n++) { const x = a.eventAt(n); if (x.kind === '${kind}') return x; } })())`));
+  const fb = await pick('fireball', 0);
+  await A.ev(`__world3d.hazardClock(${fb.tellMs + 200}); 1`);
+  await sleep(400);
+  assert.equal(await A.ev('__world3d.hazards().length'), 1, 'the crowd sees what lands in the pit');
+  // even standing right where it lands, a spectator takes nothing
+  await A.ev(`__world3d.tp(${fb.x}, ${fb.z}); __world3d.hazardClock(${fb.fireMs + 100}); 1`);
+  await sleep(500);
+  assert.equal(await A.ev('__world3d.hp()'), 100, 'and is never hit by them');
+
   console.log('PASS');
 } finally { kill(); }
 process.exit(0);
