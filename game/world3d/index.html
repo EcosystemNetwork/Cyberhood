@@ -2416,6 +2416,10 @@ function computeStats3d() {
 const stats = computeStats3d();
 let hp = stats.hp, inv = 0, attackCd = 0, attackCdL = 0, pkb = { x: 0, z: 0, t: 0 };
 let safeUntil = 0; // arena: no damage until then (spawn shield)
+if (STANDS) { // you came to watch: look down into the pit, not back out at the gate
+  P.heading = Math.atan2(ARENA_X - P.x, ARENA_Z - P.z);
+  camYaw = P.heading + Math.PI;
+}
 if (ARENA) {
   const [x, z] = ARENA_PADS[Math.floor(Math.random() * ARENA_PADS.length)];
   P.x = x; P.z = z; P.heading = Math.atan2(ARENA_X - x, ARENA_Z - z); camYaw = P.heading + Math.PI;
