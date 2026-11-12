@@ -24,13 +24,14 @@ try {
   assert.ok(a.z > 24, `runs forward along +z (got ${a.z})`);
 
   // 2. turning the player turns the aim point
-  await A.ev('__world3d.tp(18, 24, Math.PI / 2 + Math.PI); __world3d.P.heading = Math.PI / 2; 1');
+  // (near the east wall, so the wall is well inside the staff's range)
+  await A.ev('__world3d.tp(32, 22, Math.PI / 2 + Math.PI); __world3d.P.heading = Math.PI / 2; 1');
   await sleep(400);
   const b = JSON.parse(await A.ev('JSON.stringify(__world3d.aimPoint())'));
-  assert.ok(b.x > 18.5, `swings with the player (got ${b.x})`);
+  assert.ok(b.x > 32.5, `swings with the player (got ${b.x})`);
 
   // 3. the pit wall stops it short of the staff's full range
-  assert.ok(b.dist < 30, `stops at the arena wall (got ${b.dist})`);
+  assert.ok(b.dist < 5, `stops at the arena wall (got ${b.dist})`);
   assert.equal(b.hit, 'wall');
 
   // 4. the marker is on screen in third person

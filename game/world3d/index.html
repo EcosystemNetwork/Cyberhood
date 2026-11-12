@@ -175,6 +175,9 @@
   #aimRing { position: fixed; z-index: 3; width: 26px; height: 26px; margin: -13px 0 0 -13px; pointer-events: none;
     border: 3px solid var(--lime); border-radius: 50%; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55), inset 0 0 0 1px rgba(0, 0, 0, 0.45); }
   #aimRing.on-target { border-color: #ff4a3a; }
+  #aimRing.lob { border-color: #ffd23a; }
+  #aimArc { position: fixed; inset: 0; z-index: 3; pointer-events: none; }
+  #aimArc i { position: absolute; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: #ffd23a; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5); }
   #viewBtn { padding: 6px 12px; border-radius: 999px; font-size: 15px; }
   .actions .touch { padding: 6px 12px; border-radius: 999px; font-size: 14px; background: linear-gradient(#ffd27a, #e89a2a); box-shadow: 0 3px 0 #8a4a10; }
   .actions .touch.on { background: linear-gradient(#ff8a8a, #e04a4a); box-shadow: 0 3px 0 #8a1a1a; }
@@ -247,6 +250,7 @@ else if (!localStorage.getItem('taproot_character')) window.location.replace('/g
 <div class="help"><b>WASD</b> move &middot; <b>Drag / Q E</b> look &middot; <b>Space</b> jump &middot; <b>'</b> / <b>J</b> right hand &middot; <b>;</b> left hand &middot; <b>Shift</b> nitro &middot; <b>C</b> camera &middot; <b>F</b> use &middot; <b>H</b> potion &middot; <b>B</b> bag &middot; <b>U</b> sprint toggle &middot; <b>V</b> first person &middot; <b>T</b> chat</div>
 <div id="crosshair" hidden></div>
 <div id="aimRing" hidden></div>
+<div id="aimArc" hidden></div>
 <div id="chat">
   <div id="chatLog"></div>
   <div id="chatRow" hidden><input id="chatIn" type="text" placeholder="Say something..." maxlength="200" autocomplete="off"><button id="chatSend" type="button">Send</button></div>
@@ -303,7 +307,7 @@ import { loadBlenderHero, makeBlenderHero } from '/game/lib/blenderhero.js';
 import { SHOPS, SELL, RECIPES, CONSUMABLES } from './shops.js';
 import { CROPS, BUILDS, ALTAR, FARM_ITEMS } from './farm.js';
 import { BLOCKS, BLOCK_IDS, MAX_H, unpack, pack, standHeight, blockedAt, raycast, canPlace } from './blocks.js';
-import { ARENA_CENTER, ARENA_RADIUS, standY, standBlocked } from './arena.js';
+import { ARENA_CENTER, ARENA_RADIUS, standY, standBlocked, tomatoArc, TOMATO_GRAVITY, TOMATO_COOLDOWN_MS } from './arena.js';
 for (const id of BLOCK_IDS) FARM_ITEMS['block_' + id] = { name: BLOCKS[id].name, emoji: BLOCKS[id].emoji, info: 'Building block · place it on your plot in build mode (G)' };
 
 const AREA = new URLSearchParams(location.search).get('area');
@@ -2639,6 +2643,7 @@ function jump() {
 
 // hand 'R' (J, K or ') or 'L' (;): each hand has its own weapon, swing and cooldown (dual wield)
 function swing(hand = 'R') {
+  if (STANDS) { throwTomato(); return; } // a spectator has no fight to swing at
   const L = hand === 'L', caster = L ? hero.casterL : hero.caster;
   if (fainted || modal || (L ? attackCdL : attackCd) > 0) return;
   if (L) { attackCdL = caster ? caster.cd : 0.36; P.atkL = 0; mp.atkL = Math.round(performance.now()); }
@@ -2699,6 +2704,11 @@ function castBall(hand = 'R') {
 // player's heading (castBall aims both hands at a point 8 tiles ahead), so this marches that
 // same line with the same stop tests updateFireballs uses, and the HUD draws a ring there.
 function aimPoint() {
+  if (STANDS) {
+    if (fainted) return null;
+    const to = tomatoTarget();
+    return { x: to.x, y: 0, z: to.z, dist: Math.hypot(to.x - P.x, to.z - P.z), hit: 'tomato' };
+  }
   const c = hero.caster || hero.casterL;
   if (!c || fainted || firstPerson) return null;
   const dx = Math.sin(P.heading), dz = Math.cos(P.heading), y = clamp(P.y + 1.05, 0.7, 1.4);
@@ -2719,6 +2729,84 @@ function aimPoint() {
   }
   return { x: P.x + dx * c.range, y, z: P.z + dz * c.range, dist: c.range, hit: 'range' };
 }
+/* ---------- tomatoes ----------
+   A spectator's only verb. It lobs over the rail, splats on whoever it hits, and does
+   nothing else: no damage, no slow, no knockback, no stamina. The thrower broadcasts the
+   two end points and everyone else plays the same arc, so the pit agrees on what it saw. */
+const tomatoes = [];
+const TOMATO_GEO = new THREE.SphereGeometry(1, 10, 8);
+let lastThrow = -1e9;
+
+// where the camera is pointing, flattened onto the sand and kept inside the pit
+function tomatoTarget() {
+  AIM.setFromCamera(AIM_NDC.set(mouse.has && !firstPerson ? mouse.x : 0, mouse.has && !firstPerson ? mouse.y : 0), camera);
+  const o = AIM.ray.origin, d = AIM.ray.direction;
+  const t = d.y < -0.01 ? -o.y / d.y : 60;
+  let x = o.x + d.x * t, z = o.z + d.z * t;
+  const dx = x - ARENA_X, dz = z - ARENA_Z, r = Math.hypot(dx, dz);
+  if (r > ARENA_R - 1) { x = ARENA_X + dx / r * (ARENA_R - 1); z = ARENA_Z + dz / r * (ARENA_R - 1); }
+  return { x, y: 0, z };
+}
+
+function spawnTomato(from, to) {
+  const m = new THREE.Mesh(TOMATO_GEO, new THREE.MeshBasicMaterial({ color: '#d8372a' }));
+  m.scale.setScalar(0.16);
+  m.position.set(from.x, from.y, from.z);
+  scene.add(m);
+  const v = tomatoArc(from, to);
+  tomatoes.push({ m, x: from.x, y: from.y, z: from.z, vx: v.vx, vy: v.vy, vz: v.vz, age: 0 });
+}
+
+function throwTomato() {
+  if (!STANDS || fainted || modal) return;
+  const now = performance.now();
+  if (now - lastThrow < TOMATO_COOLDOWN_MS) return;
+  lastThrow = now;
+  const from = { x: P.x, y: P.y + 1.1, z: P.z }, to = tomatoTarget();
+  spawnTomato(from, to);
+  if (mp.live) mp.channel.send({ type: 'broadcast', event: 'tomato', payload: {
+    id: mp.id, fx: +from.x.toFixed(2), fy: +from.y.toFixed(2), fz: +from.z.toFixed(2),
+    tx: +to.x.toFixed(2), ty: 0, tz: +to.z.toFixed(2) } });
+}
+
+function splat(t) {
+  burst(t.x, t.y, t.z, '#d8372a', 10);
+  burst(t.x, t.y, t.z, '#8ad84a', 3); // a little stalk green in the mess
+  scene.remove(t.m);
+  t.m.material.dispose();
+}
+
+function updateTomatoes(dt) {
+  for (let i = tomatoes.length - 1; i >= 0; i--) {
+    const t = tomatoes[i];
+    t.age += dt;
+    t.vy -= TOMATO_GRAVITY * dt;
+    t.x += t.vx * dt; t.y += t.vy * dt; t.z += t.vz * dt;
+    t.m.position.set(t.x, t.y, t.z);
+    let on = t.y <= 0.05;
+    if (!on && t.age > 0.12) { // a body in the way wears it
+      for (const g of ghosts.values()) if (Math.hypot(g.x - t.x, g.z - t.z) < 0.6 && t.y > g.y && t.y < g.y + 1.9) on = true;
+      if (!STANDS && Math.hypot(P.x - t.x, P.z - t.z) < 0.6 && t.y > P.y && t.y < P.y + 1.9) on = true;
+    }
+    if (on || t.age > 4) { splat(t); tomatoes.splice(i, 1); }
+  }
+}
+
+const ARC_DOTS = 9;
+function drawAimArc(a) {
+  const box = $('aimArc');
+  if (!a) { if (!box.hidden) box.hidden = true; return; }
+  while (box.children.length < ARC_DOTS) box.appendChild(document.createElement('i'));
+  const from = { x: P.x, y: P.y + 1.1, z: P.z }, v = tomatoArc(from, a), T = v.flightMs / 1000;
+  for (let i = 0; i < ARC_DOTS; i++) {
+    const t = (i + 1) / (ARC_DOTS + 1) * T, dot = box.children[i];
+    const at = toScreen(from.x + v.vx * t, from.y + v.vy * t - TOMATO_GRAVITY * t * t / 2, from.z + v.vz * t);
+    dot.style.display = at ? 'block' : 'none';
+    if (at) { dot.style.left = `${at[0]}px`; dot.style.top = `${at[1]}px`; dot.style.opacity = 0.35 + 0.65 * (i / ARC_DOTS); }
+  }
+  if (box.hidden) box.hidden = false;
+}
+
 function explode(fb) {
   const { x, y, z, c } = fb;
   burst(x, y, z, c.color, 14);
@@ -2997,6 +3085,9 @@ if (window.supabase) {
     .on('broadcast', { event: 'move' }, ({ payload }) => onState(payload))
     .on('broadcast', { event: 'leave' }, ({ payload }) => { const g = ghosts.get(payload.id); if (g) chatLine('', `${g.name} left`, true); removeGhost(payload.id); })
     .on('broadcast', { event: 'farm' }, ({ payload }) => onFarm(payload))
+    .on('broadcast', { event: 'tomato' }, ({ payload }) => {
+      if (payload.id !== mp.id) spawnTomato({ x: payload.fx, y: payload.fy, z: payload.fz }, { x: payload.tx, y: payload.ty, z: payload.tz });
+    })
     .on('broadcast', { event: 'hit' }, ({ payload }) => onHit(payload))
     .on('broadcast', { event: 'ouch' }, ({ payload }) => onOuch(payload))
     .on('broadcast', { event: 'ko' }, ({ payload }) => onKo(payload))
@@ -4046,6 +4137,7 @@ function update(dt, now) {
 
   // effects
   updateFireballs(dt, t);
+  updateTomatoes(dt);
   for (let i = sparks.length - 1; i >= 0; i--) {
     const s = sparks[i];
     s.age += dt;
@@ -4119,14 +4211,16 @@ function update(dt, now) {
     camera.lookAt(lookAt);
   }
   if ($('crosshair').hidden === firstPerson) $('crosshair').hidden = !firstPerson;
-  { // the third-person aim ring, drawn in the world at the spot a shot would stop
+  { // the aim indicator: a ring where the shot stops, and for a lob the arc it travels
     const el = $('aimRing'), a = aimPoint(), at = a && toScreen(a.x, a.y, a.z);
     if (at) {
       el.style.left = `${at[0]}px`;
       el.style.top = `${at[1]}px`;
       el.classList.toggle('on-target', a.hit === 'player' || a.hit === 'monster');
+      el.classList.toggle('lob', a.hit === 'tomato');
     }
     if (el.hidden !== !at) el.hidden = !at;
+    drawAimArc(a && a.hit === 'tomato' && at ? a : null);
   }
   for (const g of gates) if (g.arch) {
     const c = camera.position;
@@ -4205,7 +4299,7 @@ function update(dt, now) {
 
 SPAWN_LIST.forEach((type) => spawnMonster(type));
 // debug hook for tests and screenshots: __world3d.tp(x, z) teleports, .P is the player state
-window.__world3d = { P, ghosts, arena, farms, updateIndoor, aimPoint, spectating: () => STANDS, drawnBlocks: (id) => ((plotViews.get(id) || {}).blockMeshes || []).reduce((n, m) => n + m.count, 0), getPitch: () => fpPitch, firstPerson: () => firstPerson, setPitch: (v) => { fpPitch = v; }, openShop, hiddenBlocks, doorAngle: (id, i, j, k) => { const v = plotViews.get(id); return (v && v.doorAng && v.doorAng.get(`${i},${j},${k}`)) || 0; }, shopSpots, aimBlock, mouse, camera, building: () => building, toScreen, groundAt, solidAt, setBlocks, plots: PLOTS, placed, decorCrops, myFarm: () => myFarm, farmTile: () => farmTile(), hp: () => hp, mp, monsters, drops, field: () => field, hero: () => hero, fireballs, tp: (x, z, yaw) => { P.x = x; P.z = z; if (yaw !== undefined) camYaw = yaw; }, cam: (dist, pitch) => { camDistT = camDist = dist; camPitchT = camPitch = pitch; }, size: [MAP_W, MAP_H], info: () => { // one full frame's draw calls and triangles (all passes, shadows included)
+window.__world3d = { P, ghosts, arena, farms, updateIndoor, aimPoint, spectating: () => STANDS, tomatoes, throwTomato, drawnBlocks: (id) => ((plotViews.get(id) || {}).blockMeshes || []).reduce((n, m) => n + m.count, 0), getPitch: () => fpPitch, firstPerson: () => firstPerson, setPitch: (v) => { fpPitch = v; }, openShop, hiddenBlocks, doorAngle: (id, i, j, k) => { const v = plotViews.get(id); return (v && v.doorAng && v.doorAng.get(`${i},${j},${k}`)) || 0; }, shopSpots, aimBlock, mouse, camera, building: () => building, toScreen, groundAt, solidAt, setBlocks, plots: PLOTS, placed, decorCrops, myFarm: () => myFarm, farmTile: () => farmTile(), hp: () => hp, mp, monsters, drops, field: () => field, hero: () => hero, fireballs, tp: (x, z, yaw) => { P.x = x; P.z = z; if (yaw !== undefined) camYaw = yaw; }, cam: (dist, pitch) => { camDistT = camDist = dist; camPitchT = camPitch = pitch; }, size: [MAP_W, MAP_H], info: () => { // one full frame's draw calls and triangles (all passes, shadows included)
   renderer.info.autoReset = false; renderer.info.reset(); composer.render();
   const r = { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles };
   renderer.info.autoReset = true; return r;
