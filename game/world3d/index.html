@@ -303,6 +303,7 @@ import { loadBlenderHero, makeBlenderHero } from '/game/lib/blenderhero.js';
 import { SHOPS, SELL, RECIPES, CONSUMABLES } from './shops.js';
 import { CROPS, BUILDS, ALTAR, FARM_ITEMS } from './farm.js';
 import { BLOCKS, BLOCK_IDS, MAX_H, unpack, pack, standHeight, blockedAt, raycast, canPlace } from './blocks.js';
+import { ARENA_CENTER, ARENA_RADIUS, standY, standBlocked } from './arena.js';
 for (const id of BLOCK_IDS) FARM_ITEMS['block_' + id] = { name: BLOCKS[id].name, emoji: BLOCKS[id].emoji, info: 'Building block · place it on your plot in build mode (G)' };
 
 const AREA = new URLSearchParams(location.search).get('area');
@@ -475,8 +476,9 @@ const AREAS = {
       { edge: 'n', range: [22, 26], href: '/game/world3d/?area=avenues&from=city', name: 'Taproot Avenues' },
     ],
     doors: [{ x: 7, y: 8, w: 1, h: 1, href: '/game/world3d/?area=workshop&from=city', name: 'Workshop' },
-      { x: 40, y: 8, w: 1, h: 1, href: '/game/world3d/?area=arena&from=city', name: 'Taproot Arena' }],
-    arrive: { world: { x: 23.5, y: 30.5 }, woods: { x: 4, y: 17.5 }, avenues: { x: 23.5, y: 4 }, workshop: { x: 7, y: 10 }, arena: { x: 40, y: 10 },
+      { x: 40, y: 8, w: 1, h: 1, href: '/game/world3d/?area=arena&from=city', name: 'Taproot Arena' },
+      { x: 42, y: 8, w: 1, h: 1, href: '/game/world3d/?area=stands&from=city', name: 'Arena Stands' }],
+    arrive: { world: { x: 23.5, y: 30.5 }, woods: { x: 4, y: 17.5 }, avenues: { x: 23.5, y: 4 }, workshop: { x: 7, y: 10 }, arena: { x: 40, y: 10 }, stands: { x: 42, y: 10 },
       respawn: { x: 23.5, y: 21 } }, // the plaza, where arena fighters come back after a knockout
     spawn: [],
   },
@@ -504,13 +506,29 @@ const AREAS = {
   // city. Player hits only do damage in here. Built in code below (see ARENA).
   arena: {
     title: 'Taproot Arena',
-    size: [36, 36],
+    size: [44, 44],
     arena: true,
     town: true,
     sky: 'day',
     paths: [], ponds: [], tall: [], objects: [], bushes: [], stumps: [], flowers: [], trees: [], treeKind: () => 'tree_pine',
-    start: { x: 17, y: 30 },
-    exits: [{ edge: 's', range: [16, 19], href: '/game/world3d/?area=city&from=arena', name: 'Taproot City' }],
+    start: { x: 21, y: 38 },
+    exits: [{ edge: 's', range: [20, 23], href: '/game/world3d/?area=city&from=arena', name: 'Taproot City' }],
+    arrive: {},
+    spawn: [],
+  },
+
+  // The spectators' half of the arena: the same pit at the same coordinates, but you walk on the
+  // tiers instead of the sand and the rail keeps you there. Its own gate on the north side means
+  // you are a fighter or a spectator by the door you came through, and switching is a walk round.
+  stands: {
+    title: 'Arena Stands',
+    size: [44, 44],
+    stands: true,
+    town: true,
+    sky: 'day',
+    paths: [], ponds: [], tall: [], objects: [], bushes: [], stumps: [], flowers: [], trees: [], treeKind: () => 'tree_pine',
+    start: { x: 22, y: 22 - 18.8 },
+    exits: [{ edge: 'n', range: [20, 23], href: '/game/world3d/?area=city&from=stands', name: 'Taproot City' }],
     arrive: {},
     spawn: [],
   },
@@ -715,7 +733,9 @@ const TOWN = !!A.town;
 const INDOOR = !!A.indoor; // a room: plank floor, walls, warm lamps, no sky     // city areas use the Phaser town look: timber cottages, cobbles, no neon
 const UNDER = !!A.map;      // underground: no sky, dark fog, torches and a lantern
 const ARENA = !!A.arena;    // PvP: player hits do damage here
-const [ARENA_X, ARENA_Z] = [18, 17], ARENA_R = 14; // pit centre and radius, in tiles
+const STANDS = !!A.stands;  // the spectators' side of the same pit: no damage either way
+const PIT = ARENA || STANDS;
+const [ARENA_X, ARENA_Z] = ARENA_CENTER, ARENA_R = ARENA_RADIUS; // pit centre and radius, in tiles
 const ARENA_PADS = [0, Math.PI / 2, Math.PI, -Math.PI / 2 + 0.6].map((a) => [ARENA_X + Math.cos(a) * 10.5, ARENA_Z + Math.sin(a) * 10.5]);
 const ARENA_COLS = [1, 3, 5, 7].map((k) => [ARENA_X + Math.cos(k * Math.PI / 4) * 6.5, ARENA_Z + Math.sin(k * Math.PI / 4) * 6.5]);
 const CAVE = UNDER ? (await (await fetch(A.map)).json()).rows : null;
@@ -850,9 +870,12 @@ if (INDOOR) {
 }
 if (ARENA) { // everything outside the pit wall, except the gate passage south to the exit
   for (let y = 0; y < MAP_H; y++) for (let x = 0; x < MAP_W; x++) {
-    const out = Math.hypot(x + 0.5 - ARENA_X, y + 0.5 - ARENA_Z) > ARENA_R - 0.6, gate = x >= 16 && x <= 19 && y >= ARENA_Z + 10;
+    const out = Math.hypot(x + 0.5 - ARENA_X, y + 0.5 - ARENA_Z) > ARENA_R - 0.6, gate = x >= 20 && x <= 23 && y >= ARENA_Z + 10;
     blocked[y][x] = out && !gate;
   }
+}
+if (STANDS) { // the tiers and the gate wedge are walkable; the pit and the back are not
+  for (let y = 0; y < MAP_H; y++) for (let x = 0; x < MAP_W; x++) blocked[y][x] = standBlocked(x + 0.5, y + 0.5);
 }
 (A.doors || []).forEach((d) => { for (let y = d.y; y < d.y + d.h; y++) for (let x = d.x; x < d.x + d.w; x++) blocked[y][x] = false; });
 FENCES.forEach(([x1, x2, row]) => { block(x1, row, x2 - x1 + 1, 1); placed.push({ key: 'fence', tx: x1, ty: row, w: x2 - x1 + 1, h: 1 }); });
@@ -1745,7 +1768,7 @@ if (INDOOR) {
 
 // arena: stone pit wall, three tiers of stands with a crowd, a gatehouse on the south side,
 // broken columns for cover, braziers, red and blue banners and glowing spawn pads
-if (ARENA) {
+if (PIT) {
   const R = ARENA_R, gap = (a, half) => Math.abs(wrapAngle(a - Math.PI / 2)) < half; // the gate faces south (+z)
   const ring = (n, rad, fn, half = 0) => { for (let i = 0; i < n; i++) { const a = (i / n) * Math.PI * 2; if (!half || !gap(a, half)) fn(a, ARENA_X + Math.cos(a) * rad, ARENA_Z + Math.sin(a) * rad, i); } };
   const along = (a) => -a - Math.PI / 2; // turns a box so its x axis runs along the ring
@@ -1808,6 +1831,20 @@ if (ARENA) {
     put('toon', 'box', team, x, 1.55, z, 1.0, 1.6, 0.06, 0, along(a));
     put('toon', 'box', '#e0b450', x - Math.cos(a) * 0.04, 1.7, z - Math.sin(a) * 0.04, 0.4, 0.4, 0.06, 0, along(a));
   }, 0.5);
+  // the spectators' gatehouse on the north side, and the ramp up to the back row
+  const sz = ARENA_Z - (R + 5.6) - 0.6;
+  for (const sx of [-1, 1]) {
+    put('toon', 'box', '#8a847a', ARENA_X + sx * 3.2, 2.6, sz, 1.4, 5.2, 1.4);
+    put('flat', 'pyr', '#6a4a8a', ARENA_X + sx * 3.2, 5.9, sz, 1.1, 1.1, 1.1, 0, Math.PI / 4, 0);
+  }
+  put('toon', 'box', '#9a948a', ARENA_X, 4.6, sz, 7.8, 1.0, 1.2);
+  put('toon', 'box', '#3a5ad8', ARENA_X, 4.6, sz - 0.64, 2.6, 0.7, 0.05);
+  put('toon', 'box', '#e0b450', ARENA_X, 4.6, sz - 0.67, 0.5, 0.5, 0.05);
+  for (let i = 0; i <= 12; i++) { // the ramp deck, drawn as steps
+    const t = i / 12, rr = ARENA_R + 5.6 + 2.4 * t;
+    put('toon', 'box', i % 2 ? '#b4aea2' : '#a8a296', ARENA_X, 5.0 * (1 - t) / 2, ARENA_Z - rr, 5.0, Math.max(0.08, 5.0 * (1 - t)), 0.3);
+  }
+
   // spawn pads
   ARENA_PADS.forEach(([x, z]) => {
     put('glow', 'tor', '#5affc8', x, 0.06, z, 0.9, 0.9, 0.35, Math.PI / 2);
@@ -2162,7 +2199,7 @@ function grassMesh(spots, height, width, baseCol, tipCol) {
   if (green.length) grassMesh(green, 0.65, 0.06, '#2a8a22', '#d8ff4a');
   if (dry.length) grassMesh(dry, 0.6, 0.06, '#9a7a2a', '#ffe08a');
   // loose tufts scattered over open grass
-  for (let n = 0, tries = 0; n < (CAVE || INDOOR || ARENA ? 0 : 420) && tries < 6000; tries++) {
+  for (let n = 0, tries = 0; n < (CAVE || INDOOR || PIT ? 0 : 420) && tries < 6000; tries++) {
     const x = hash(tries, 1, 321) * MAP_W, z = hash(tries, 2, 322) * MAP_H, cx = Math.floor(x), cy = Math.floor(z);
     if (blocked[cy][cx] || tallType(cx, cy) || pathEdge(x * T, z * T) < 0.25 || waterAt(x * T, z * T) >= 0 || (A.beach && A.beach(x, z)) || gridKind(x, z) || plotAt(x, z)) continue;
     for (let i = 0; i < 4; i++) tuftSpots.push([x + (hash(n, i, 323) - 0.5) * 0.18, z + (hash(n, i, 324) - 0.5) * 0.18, 1]);
@@ -2883,7 +2920,7 @@ function drawMinimap(now) {
    tile coordinates. Each client sends its position about 8 times a second while moving (and a
    ping every 3 s); others ease toward it, so their heroes walk and turn smoothly. Players in the
    mine or the workshop only see each other there (the 'room' field). */
-const MP_ROOM = UNDER ? 'cave' : CLUB ? `clubhouse-${PLOT_Q}` : INDOOR || ARENA ? AREA : 'world';
+const MP_ROOM = UNDER ? 'cave' : CLUB ? `clubhouse-${PLOT_Q}` : PIT ? 'arena' : INDOOR ? AREA : 'world';
 const mp = { id: Math.random().toString(36).slice(2, 10), live: false, last: 0, sent: null, atk: 0, atkL: 0 };
 mp.name = (charData && charData.name && charData.name.trim()) || 'Wanderer';
 const ghosts = new Map();
@@ -2917,8 +2954,8 @@ function addGhost(d) {
   let g = ghosts.get(d.id);
   if (!g) {
     const tag = document.createElement('div');
-    tag.className = ARENA ? 'tag player foe' : 'tag player';
-    tag.innerHTML = safeText(d.name || 'Wanderer') + (ARENA ? '<div class="thp"><i></i></div>' : '');
+    tag.className = PIT ? 'tag player foe' : 'tag player';
+    tag.innerHTML = safeText(d.name || 'Wanderer') + (PIT ? '<div class="thp"><i></i></div>' : '');
     labelsEl.appendChild(tag);
     g = { id: d.id, name: d.name || 'Wanderer', hero: makeHero(d.char || DEFAULT_CHAR), tag, bubble: { el: null, until: 0 }, x: d.x, z: d.z, y: 0, h: d.h || 0, tx: d.x, tz: d.z, ty: 0, th: d.h || 0, atk: -1, atkSeen: d.atk || 0, atkL: -1, atkLSeen: d.atkL || 0 };
     g.bar = tag.querySelector('.thp i');
@@ -3032,10 +3069,11 @@ function updateMultiplayer(dt, now) {
   }
   placeBubble(myBubble, firstPerson ? null : toScreen(P.x, HERO_H + 0.6 + P.y, P.z), now);
   const n = 1 + [...ghosts.values()].length;
-  if (ARENA) {
-    const k = `⚔ ${arena.kills} kill${arena.kills === 1 ? '' : 's'}`, d = `☠ ${arena.deaths} death${arena.deaths === 1 ? '' : 's'}`, f = `${n} fighter${n === 1 ? '' : 's'}`;
-    if ($('arenaK').textContent !== k) $('arenaK').textContent = k;
-    if ($('arenaD').textContent !== d) $('arenaD').textContent = d;
+  if (PIT) {
+    const inPit = STANDS ? [...ghosts.values()].filter((g) => g.y <= 2).length : n;
+    const k = `⚔ ${arena.kills} kill${arena.kills === 1 ? '' : 's'}`, d = `☠ ${arena.deaths} death${arena.deaths === 1 ? '' : 's'}`, f = `${inPit} fighter${inPit === 1 ? '' : 's'}`;
+    if (!STANDS && $('arenaK').textContent !== k) $('arenaK').textContent = k;
+    if (!STANDS && $('arenaD').textContent !== d) $('arenaD').textContent = d;
     if ($('arenaN').textContent !== f) $('arenaN').textContent = f;
   }
   const txt = mp.live ? `${mp.name} · Online here: ${n}` : window.supabase ? 'Connecting...' : 'Offline';
@@ -3065,6 +3103,7 @@ function goTo(href) {
 }
 function hitPlayer(g, power, hand, magic) {
   if (!ARENA || !mp.live || g.dead || fainted) return;
+  if (g.y > 2) return; // they are up in the stands: spectators are not in the fight
   mp.channel.send({ type: 'broadcast', event: 'hit', payload: {
     to: g.id, by: mp.id, name: mp.name, dmg: Math.max(1, Math.round(power + Math.random() * 4)),
     x: +P.x.toFixed(2), z: +P.z.toFixed(2), weapon: weaponName(hand), magic: !!magic } });
@@ -3129,6 +3168,12 @@ if (ARENA) {
   $('arenaBar').hidden = false;
   chatLine('', 'Welcome to the arena: player hits do damage in here. Walk out the south gate to leave.', true);
 }
+if (STANDS) {
+  $('arenaBar').hidden = false;
+  $('arenaK').textContent = '';
+  $('arenaD').textContent = '';
+  chatLine('', 'You are in the crowd: nothing down there can touch you, and you cannot touch it. Out the north gate and round to the arena door if you would rather fight.', true);
+}
 
 /* ---------- farming: player plots, crops and plot buildings ----------
    Six fenced plots in the Avenues. Walk up to a FOR CLAIM sign and press F to make one yours (one
@@ -3179,6 +3224,7 @@ function voxOf(p) {
 // the plot whose soil (plus a hitbox margin) covers (x, z)
 const blockPlotAt = (x, z) => PLOTS.find((p) => x > p.i0 - 0.5 && x < p.i0 + p.nx + 0.5 && z > p.j0 - 0.5 && z < p.j0 + p.nz + 0.5);
 function groundAt(x, z, feetY) {
+  if (STANDS) return standY(x, z);
   const p = blockPlotAt(x, z);
   return p && farms.get(p.id) ? standHeight(voxOf(p), x - p.i0, z - p.j0, feetY) : 0;
 }
@@ -4159,7 +4205,7 @@ function update(dt, now) {
 
 SPAWN_LIST.forEach((type) => spawnMonster(type));
 // debug hook for tests and screenshots: __world3d.tp(x, z) teleports, .P is the player state
-window.__world3d = { P, ghosts, arena, farms, updateIndoor, aimPoint, drawnBlocks: (id) => ((plotViews.get(id) || {}).blockMeshes || []).reduce((n, m) => n + m.count, 0), getPitch: () => fpPitch, firstPerson: () => firstPerson, setPitch: (v) => { fpPitch = v; }, openShop, hiddenBlocks, doorAngle: (id, i, j, k) => { const v = plotViews.get(id); return (v && v.doorAng && v.doorAng.get(`${i},${j},${k}`)) || 0; }, shopSpots, aimBlock, mouse, camera, building: () => building, toScreen, groundAt, solidAt, setBlocks, plots: PLOTS, placed, decorCrops, myFarm: () => myFarm, farmTile: () => farmTile(), hp: () => hp, mp, monsters, drops, field: () => field, hero: () => hero, fireballs, tp: (x, z, yaw) => { P.x = x; P.z = z; if (yaw !== undefined) camYaw = yaw; }, cam: (dist, pitch) => { camDistT = camDist = dist; camPitchT = camPitch = pitch; }, size: [MAP_W, MAP_H], info: () => { // one full frame's draw calls and triangles (all passes, shadows included)
+window.__world3d = { P, ghosts, arena, farms, updateIndoor, aimPoint, spectating: () => STANDS, drawnBlocks: (id) => ((plotViews.get(id) || {}).blockMeshes || []).reduce((n, m) => n + m.count, 0), getPitch: () => fpPitch, firstPerson: () => firstPerson, setPitch: (v) => { fpPitch = v; }, openShop, hiddenBlocks, doorAngle: (id, i, j, k) => { const v = plotViews.get(id); return (v && v.doorAng && v.doorAng.get(`${i},${j},${k}`)) || 0; }, shopSpots, aimBlock, mouse, camera, building: () => building, toScreen, groundAt, solidAt, setBlocks, plots: PLOTS, placed, decorCrops, myFarm: () => myFarm, farmTile: () => farmTile(), hp: () => hp, mp, monsters, drops, field: () => field, hero: () => hero, fireballs, tp: (x, z, yaw) => { P.x = x; P.z = z; if (yaw !== undefined) camYaw = yaw; }, cam: (dist, pitch) => { camDistT = camDist = dist; camPitchT = camPitch = pitch; }, size: [MAP_W, MAP_H], info: () => { // one full frame's draw calls and triangles (all passes, shadows included)
   renderer.info.autoReset = false; renderer.info.reset(); composer.render();
   const r = { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles };
   renderer.info.autoReset = true; return r;

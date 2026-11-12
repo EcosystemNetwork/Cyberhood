@@ -10,7 +10,10 @@
    y up. The pit is a circle of radius ARENA_RADIUS around ARENA_CENTER.
    ============================================================================ */
 
-export const ARENA_CENTER = [18, 17];
+// The pit sits here in both the fighters' area and the spectators' one: the two
+// share a coordinate frame so a spectator sees a fighter where the fighter is.
+// The stands reach R + 5.6 tiles out, which is why the centre is not nearer a corner.
+export const ARENA_CENTER = [22, 22];
 export const ARENA_RADIUS = 14;
 
 const [CX, CZ] = ARENA_CENTER, R = ARENA_RADIUS;
@@ -30,25 +33,36 @@ export const STAND_TIERS = [0, 1, 2].map((t) => ({
 export const STAND_GATE_ANGLE = -Math.PI / 2;
 const GATE_HALF = 0.3; // radians either side of the gate angle that stay open
 
-const radiusAt = (x, z) => Math.hypot(x - CX, z - CZ);
-const inGate = (x, z) => {
-  const a = Math.atan2(z - CZ, x - CX), d = Math.abs(((a - STAND_GATE_ANGLE + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+// `center` defaults to the pit, but the stands are served as their own, larger map
+// whose pit sits elsewhere, so both take it as an argument
+const radiusAt = (x, z, c) => Math.hypot(x - c[0], z - c[1]);
+const inGate = (x, z, c) => {
+  const a = Math.atan2(z - c[1], x - c[0]), d = Math.abs(((a - STAND_GATE_ANGLE + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
   return d < GATE_HALF;
 };
 
 // the walkable height at (x, z), or 0 where there is no seating
-export function standY(x, z) {
-  const r = radiusAt(x, z);
+export const GATE_RAMP = 2.4; // tiles the gate wedge takes to fall from the back row to the ground
+
+export function standY(x, z, c = ARENA_CENTER) {
+  const r = radiusAt(x, z, c);
   const tier = STAND_TIERS.find((t) => r >= t.r0 && r < t.r1);
-  return tier ? tier.top : 0;
+  if (tier) return tier.top;
+  // the way in: a ramp in the gate wedge, so arriving and leaving is a walk and
+  // not a five-unit snap up onto the back row
+  const back = STAND_TIERS[STAND_TIERS.length - 1];
+  if (r >= back.r1 && r < back.r1 + GATE_RAMP && inGate(x, z, c)) {
+    return back.top * (1 - (r - back.r1) / GATE_RAMP);
+  }
+  return 0;
 }
 
 // the rail: spectators cannot drop into the pit, and cannot wander off the back,
 // except through the gate they came in by
-export function standBlocked(x, z) {
-  const r = radiusAt(x, z);
+export function standBlocked(x, z, c = ARENA_CENTER) {
+  const r = radiusAt(x, z, c);
   if (r < STAND_TIERS[0].r0) return true;
-  if (r > STAND_TIERS[2].r1) return !inGate(x, z);
+  if (r > STAND_TIERS[2].r1) return !inGate(x, z, c);
   return false;
 }
 

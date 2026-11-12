@@ -6,7 +6,7 @@ const [CX, CZ] = ARENA_CENTER, R = ARENA_RADIUS;
 const at = (r, a = 0) => [CX + Math.cos(a) * r, CZ + Math.sin(a) * r];
 
 test('arena constants match the page', () => {
-  assert.deepEqual(ARENA_CENTER, [18, 17]);
+  assert.deepEqual(ARENA_CENTER, [22, 22]);
   assert.equal(ARENA_RADIUS, 14);
   assert.deepEqual(STAND_TIERS.map((t) => t.top), [2.6, 3.8, 5.0]);
 });
@@ -94,4 +94,21 @@ test('it actually arcs — it goes up before it comes down', () => {
 
 test('the cooldown stops a machine gun', () => {
   assert.ok(TOMATO_COOLDOWN_MS >= 500);
+});
+
+test('the stand surface can sit around a centre other than the pit default', () => {
+  const c = [100, 100];
+  assert.equal(standY(100, 100 - (R + 1.5), c), 2.6, 'tiers follow the centre they are given');
+  assert.equal(standY(100, 100 - (R + 1.5)), 0, 'the default centre knows nothing of them');
+  assert.equal(standBlocked(100, 100 - (R - 1), c), true, 'the pit is still blocked');
+  assert.equal(standBlocked(100, 100 - (R + 8), c), false, 'the north gate still opens');
+});
+
+test('the gate wedge ramps down to the ground so you can walk in and out', () => {
+  const top = STAND_TIERS[2];
+  const ramp = (r) => standY(CX, CZ - r);
+  assert.equal(ramp(top.r1 - 0.1), top.top, 'the back row is the full height');
+  assert.ok(ramp(top.r1 + 1.2) > 0.5 && ramp(top.r1 + 1.2) < top.top - 0.5, 'halfway down the ramp');
+  assert.equal(ramp(top.r1 + 2.4), 0, 'ground level at the gate mouth');
+  assert.equal(standY(CX + 9, CZ - (top.r1 + 1.2)), 0, 'and nowhere else outside the stands');
 });
