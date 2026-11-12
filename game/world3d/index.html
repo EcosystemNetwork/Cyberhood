@@ -307,7 +307,9 @@ import { loadBlenderHero, makeBlenderHero } from '/game/lib/blenderhero.js';
 import { SHOPS, SELL, RECIPES, CONSUMABLES } from './shops.js';
 import { CROPS, BUILDS, ALTAR, FARM_ITEMS } from './farm.js';
 import { BLOCKS, BLOCK_IDS, MAX_H, unpack, pack, standHeight, blockedAt, raycast, canPlace } from './blocks.js';
-import { ARENA_CENTER, ARENA_RADIUS, standY, standBlocked, tomatoArc, TOMATO_GRAVITY, TOMATO_COOLDOWN_MS } from './arena.js';
+import { ARENA_CENTER, ARENA_RADIUS, standY, standBlocked, tomatoArc, TOMATO_GRAVITY, TOMATO_COOLDOWN_MS,
+  HAZARDS, TELL_MS, eventsNear } from './arena.js';
+import * as arenaMod from './arena.js';
 for (const id of BLOCK_IDS) FARM_ITEMS['block_' + id] = { name: BLOCKS[id].name, emoji: BLOCKS[id].emoji, info: 'Building block · place it on your plot in build mode (G)' };
 
 const AREA = new URLSearchParams(location.search).get('area');
@@ -3069,7 +3071,7 @@ function onState(d) {
   if (d.atk && d.atk !== g.atkSeen) { g.atkSeen = d.atk; g.atk = 0; }
   if (d.atkL && d.atkL !== g.atkLSeen) { g.atkLSeen = d.atkL; g.atkL = 0; }
 }
-if (window.supabase) {
+if (window.supabase && !new URLSearchParams(location.search).has('nomp')) {
   const sb = window.supabase.createClient('https://azvdqigaqwbeakjieaps.supabase.co',
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF6dmRxaWdhcXdiZWFramllYXBzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0OTE0NjEsImV4cCI6MjA5OTA2NzQ2MX0.QXBpcGKsot8A8w6rq76F6lvGjCVJN0NytDmfmE8C-Dw');
   // local dev / test runs get their own channel, so they never show up for players on the live site
@@ -3177,6 +3179,186 @@ function placeBubble(b, pos, now) {
   if (on) b.el.style.transform = `translate(${pos[0]}px, ${pos[1]}px) translate(-50%, -100%)`;
 }
 
+/* ---------- arena hazards ----------
+   Entropy in the pit, and only in the pit. Every client reads the schedule off the clock
+   (arena.js eventsNear), so two browsers raise the same fireball over the same patch of
+   sand without talking to each other. Nothing here is broadcast: your own game decides a
+   hazard hit you and then reports the damage through the ordinary `ouch` path, exactly
+   like a sword hit. Every hazard shows itself on the sand for TELL_MS before it commits. */
+const HAZ = { views: new Map(), pinned: null, offset: 0 };
+const hazardNow = () => (HAZ.pinned !== null ? HAZ.pinned : Date.now() + HAZ.offset);
+const HZ_RING = new THREE.TorusGeometry(1, 0.055, 8, 40);
+const HZ_DISC = new THREE.CircleGeometry(1, 36);
+const HZ_BOX = new THREE.BoxGeometry(1, 1, 1);
+const HZ_CONE = new THREE.ConeGeometry(1, 1, 6);
+const flat = (m) => { m.rotation.x = -Math.PI / 2; return m; };
+const basic = (color, opacity = 1) => new THREE.MeshBasicMaterial({ color, transparent: opacity < 1, opacity, depthWrite: opacity >= 1 });
+
+function hazardHurt(power, weapon) {
+  if (fainted || performance.now() < safeUntil) return;
+  const dmg = Math.max(1, Math.round(power * 50 / (50 + stats.def)));
+  hp = Math.max(0, hp - dmg);
+  hero.hurt();
+  shake = 0.22;
+  floatText(P.x, 1.5, P.z, `-${dmg}`, '#ff6b6b');
+  updateHud();
+  if (mp.live) mp.channel.send({ type: 'broadcast', event: 'ouch', payload: { id: mp.id, dmg, hp, mhp: stats.hp } });
+  if (hp <= 0) knockedOut({ by: '', name: 'The arena', weapon, magic: false });
+}
+
+// how long the quicksand under your feet has left, or 0 when you are on dry sand
+function slowed() {
+  const t = hazardNow();
+  for (const v of HAZ.views.values()) {
+    if (v.e.kind !== 'quicksand' || !v.fired) continue;
+    if (Math.hypot(P.x - v.e.x, P.z - v.e.z) < 3 && P.y < 0.6) return Math.max(0, (v.e.endMs - t) / 1000);
+  }
+  return 0;
+}
+
+function makeHazard(e) {
+  const g = new THREE.Group();
+  g.position.set(e.x, 0, e.z);
+  scene.add(g);
+  const v = { e, g, fired: false, parts: [], circles: [], light: null, pickup: null, hitOnce: false };
+  const add = (mesh) => { g.add(mesh); v.parts.push(mesh); return mesh; };
+  if (e.kind === 'fireball') {
+    v.ring = add(flat(new THREE.Mesh(HZ_RING, basic('#ff5a3a', 0.9))));
+    v.ring.scale.set(3, 3, 1);
+    v.ring.position.y = 0.04;
+    v.shadow = add(flat(new THREE.Mesh(HZ_DISC, basic('#1a1008', 0.45))));
+    v.shadow.position.y = 0.03;
+    v.rock = add(new THREE.Mesh(FB_GEO, basic('#ff8a2a')));
+    v.rock.scale.setScalar(0.9);
+  } else if (e.kind === 'quicksand') {
+    v.disc = add(flat(new THREE.Mesh(HZ_DISC, basic('#6a4a22', 0.2))));
+    v.disc.position.y = 0.035;
+    v.disc.scale.setScalar(3);
+  } else if (e.kind === 'boulder') {
+    v.lane = add(flat(new THREE.Mesh(HZ_BOX, basic('#ff5a3a', 0.35))));
+    v.lane.scale.set(2.4, ARENA_R * 2, 1);
+    v.lane.rotation.z = -e.angle;
+    v.lane.position.y = 0.02;
+    v.rock = add(new THREE.Mesh(FB_GEO, new THREE.MeshStandardMaterial({ color: '#8a847a', roughness: 0.9 })));
+    v.rock.scale.setScalar(1.1);
+    v.rock.visible = false;
+  } else if (e.kind === 'spikes') {
+    v.cracks = add(flat(new THREE.Mesh(HZ_DISC, basic('#3a2a16', 0.5))));
+    v.cracks.position.y = 0.03;
+    v.cracks.scale.setScalar(2.5);
+    v.spikes = [0, 1, 2, 3, 4, 5, 6].map((i) => {
+      const a = (i / 7) * Math.PI * 2, r = i ? 1.5 : 0;
+      const m = add(new THREE.Mesh(HZ_CONE, new THREE.MeshStandardMaterial({ color: '#b0aa9e', roughness: 0.8 })));
+      m.position.set(Math.cos(a) * r, 0, Math.sin(a) * r);
+      m.scale.set(0.42, 1.7, 0.42);
+      m.visible = false;
+      return m;
+    });
+  } else if (e.kind === 'crate') {
+    v.shadow = add(flat(new THREE.Mesh(HZ_DISC, basic('#1a1008', 0.4))));
+    v.shadow.position.y = 0.03;
+    v.shadow.scale.setScalar(1.1);
+    v.crate = add(new THREE.Mesh(HZ_BOX, new THREE.MeshStandardMaterial({ color: '#b07a3a', roughness: 0.85 })));
+    v.crate.scale.set(1.1, 1.1, 1.1);
+    v.crate.visible = false;
+    v.hp = 3;
+  }
+  return v;
+}
+
+function commitHazard(v) {
+  const e = v.e, near = Math.hypot(P.x - e.x, P.z - e.z);
+  if (e.kind === 'fireball') {
+    for (const m of [v.ring, v.shadow, v.rock]) m.visible = false;
+    burst(e.x, 0.6, e.z, '#ff8a2a', 18);
+    burst(e.x, 0.6, e.z, '#fff4c0', 8);
+    const b = new THREE.Mesh(FB_GEO, new THREE.MeshBasicMaterial({ color: '#ff8a2a', transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false }));
+    b.position.set(e.x, 0.7, e.z);
+    scene.add(b);
+    blasts.push({ m: b, age: 0, r: 2.6 });
+    const l = FB_LIGHTS.find((x) => !x.userData.busy);
+    if (l) { l.userData.busy = true; v.light = l; l.color.set('#ff8a2a'); l.intensity = 9; l.position.set(e.x, 1.6, e.z); }
+    if (near < 3 && P.y < 1.2) hazardHurt(30 * (near < 1.5 ? 1 : 0.5), 'falling fireball');
+  } else if (e.kind === 'quicksand') {
+    v.disc.material.opacity = 0.85;
+  } else if (e.kind === 'boulder') {
+    v.lane.material.opacity = 0.12;
+    v.rock.visible = true;
+  } else if (e.kind === 'spikes') {
+    v.cracks.material.opacity = 0.25;
+    for (const m of v.spikes) m.visible = true;
+    v.circles = v.spikes.map((m) => [e.x + m.position.x, e.z + m.position.z, 0.45]);
+    circles.push(...v.circles);
+    if (near < 2.5 && P.y < 1.2) hazardHurt(18, 'stone spikes');
+  } else if (e.kind === 'crate') {
+    v.shadow.visible = false;
+    v.crate.visible = true;
+    v.crate.position.y = 0.55;
+  }
+}
+
+function tickHazard(v, t, dt) {
+  const e = v.e, prog = clamp((t - e.tellMs) / TELL_MS, 0, 1);
+  if (t < e.fireMs) { // the tell
+    if (e.kind === 'fireball') {
+      v.rock.position.y = 20 * (1 - prog) + 0.7;
+      v.shadow.scale.setScalar(1.2 + prog * 1.8);
+      v.ring.scale.set(3, 3, 1);
+      v.ring.material.opacity = 0.55 + 0.45 * Math.abs(Math.sin(t / 110));
+    } else if (e.kind === 'quicksand') {
+      v.disc.material.opacity = 0.2 + prog * 0.25;
+      v.disc.rotation.z += dt * 0.6;
+    } else if (e.kind === 'boulder') {
+      v.lane.material.opacity = 0.2 + 0.25 * Math.abs(Math.sin(t / 110));
+    } else if (e.kind === 'spikes') {
+      v.cracks.material.opacity = 0.3 + 0.3 * Math.abs(Math.sin(t / 130));
+    } else if (e.kind === 'crate') {
+      v.shadow.scale.setScalar(0.8 + prog * 0.8);
+    }
+    return;
+  }
+  if (!v.fired) { v.fired = true; commitHazard(v); return; }
+  const since = t - e.fireMs;
+  if (e.kind === 'quicksand') {
+    v.disc.rotation.z += dt * 1.6;
+  } else if (e.kind === 'boulder') {
+    const span = HAZARDS.boulder.life, f = clamp(since / span, 0, 1);
+    const dx = Math.sin(e.angle), dz = Math.cos(e.angle), s = (f - 0.5) * ARENA_R * 2.4;
+    v.rock.position.set(dx * s, 1.1, dz * s);
+    v.rock.rotation.x += dt * 4;
+    const wx = e.x + dx * s, wz = e.z + dz * s;
+    if (!v.hitOnce && Math.hypot(P.x - wx, P.z - wz) < 1.5 && P.y < 1.4) {
+      v.hitOnce = true;
+      hazardHurt(14, 'rolling boulder');
+      const d = Math.hypot(P.x - wx, P.z - wz) || 1;
+      pkb = { x: (P.x - wx) / d * 11, z: (P.z - wz) / d * 11, t: 0.2 };
+    }
+  } else if (e.kind === 'spikes') {
+    const rise = clamp(since / 300, 0, 1);
+    v.spikes.forEach((m) => { m.scale.y = 1.7 * rise; m.position.y = 0.85 * rise; });
+  } else if (e.kind === 'crate') {
+    v.crate.rotation.y += dt * 0.6;
+  }
+}
+
+function disposeHazard(v) {
+  scene.remove(v.g);
+  v.g.traverse((o) => { if (o.material) o.material.dispose(); });
+  if (v.light) { v.light.userData.busy = false; v.light.intensity = 0; v.light = null; }
+  for (const c of v.circles) { const i = circles.indexOf(c); if (i >= 0) circles.splice(i, 1); }
+}
+
+function updateHazards(dt) {
+  if (!ARENA) return;
+  const t = hazardNow(), live = eventsNear(t), want = new Set(live.map((e) => e.n));
+  for (const [n, v] of HAZ.views) if (!want.has(n)) { disposeHazard(v); HAZ.views.delete(n); }
+  for (const e of live) {
+    let v = HAZ.views.get(e.n);
+    if (!v) { v = makeHazard(e); HAZ.views.set(e.n, v); }
+    tickHazard(v, t, dt);
+  }
+}
+
 /* ---------- arena PvP ----------
    The attacker's game decides a hit (sword reach or fireball contact against where it sees the other
    player) and sends 'hit'. The target applies its own defence, owns its HP and tells everyone
@@ -3239,7 +3421,7 @@ function knockedOut(d) {
   fainted = true;
   arena.deaths++;
   saveArena();
-  mp.channel.send({ type: 'broadcast', event: 'ko', payload: { id: mp.id, name: mp.name, by: d.by, byName: d.name, weapon: d.weapon, magic: d.magic } });
+  if (mp.live) mp.channel.send({ type: 'broadcast', event: 'ko', payload: { id: mp.id, name: mp.name, by: d.by, byName: d.name, weapon: d.weapon, magic: d.magic } });
   killFeed(d.name, d.magic, mp.name, false, true);
   burst(P.x, 0.8, P.z, '#ff5a5a', 16);
   $('deathBy').textContent = `${d.name}'s ${d.weapon}`;
@@ -4025,7 +4207,7 @@ function update(dt, now) {
   if (moving) {
     const sy = Math.sin(camYaw), cy = Math.cos(camYaw);
     let mx = -sy * fy + cy * fx, mz = -cy * fy - sy * fx;
-    const len = Math.hypot(mx, mz), speed = (boosting ? 7.4 : 4.2) * Math.min(1, len);
+    const len = Math.hypot(mx, mz), speed = (boosting ? 7.4 : 4.2) * Math.min(1, len) * (slowed() > 0 ? 0.35 : 1);
     mx /= len; mz /= len;
     if (free(P.x + mx * speed * dt, P.z)) P.x += mx * speed * dt;
     if (free(P.x, P.z + mz * speed * dt)) P.z += mz * speed * dt;
@@ -4138,6 +4320,7 @@ function update(dt, now) {
   // effects
   updateFireballs(dt, t);
   updateTomatoes(dt);
+  updateHazards(dt);
   for (let i = sparks.length - 1; i >= 0; i--) {
     const s = sparks[i];
     s.age += dt;
@@ -4299,7 +4482,8 @@ function update(dt, now) {
 
 SPAWN_LIST.forEach((type) => spawnMonster(type));
 // debug hook for tests and screenshots: __world3d.tp(x, z) teleports, .P is the player state
-window.__world3d = { P, ghosts, arena, farms, updateIndoor, aimPoint, spectating: () => STANDS, tomatoes, throwTomato, drawnBlocks: (id) => ((plotViews.get(id) || {}).blockMeshes || []).reduce((n, m) => n + m.count, 0), getPitch: () => fpPitch, firstPerson: () => firstPerson, setPitch: (v) => { fpPitch = v; }, openShop, hiddenBlocks, doorAngle: (id, i, j, k) => { const v = plotViews.get(id); return (v && v.doorAng && v.doorAng.get(`${i},${j},${k}`)) || 0; }, shopSpots, aimBlock, mouse, camera, building: () => building, toScreen, groundAt, solidAt, setBlocks, plots: PLOTS, placed, decorCrops, myFarm: () => myFarm, farmTile: () => farmTile(), hp: () => hp, mp, monsters, drops, field: () => field, hero: () => hero, fireballs, tp: (x, z, yaw) => { P.x = x; P.z = z; if (yaw !== undefined) camYaw = yaw; }, cam: (dist, pitch) => { camDistT = camDist = dist; camPitchT = camPitch = pitch; }, size: [MAP_W, MAP_H], info: () => { // one full frame's draw calls and triangles (all passes, shadows included)
+window.__world3d = { P, ghosts, arena, farms, updateIndoor, aimPoint, spectating: () => STANDS, tomatoes, throwTomato,
+  arenaMod, hazards: () => [...HAZ.views.values()], hazardClock: (ms) => { HAZ.pinned = ms === undefined || ms === null ? null : ms; }, slowed, setHp: (n) => { hp = n; updateHud(); }, drawnBlocks: (id) => ((plotViews.get(id) || {}).blockMeshes || []).reduce((n, m) => n + m.count, 0), getPitch: () => fpPitch, firstPerson: () => firstPerson, setPitch: (v) => { fpPitch = v; }, openShop, hiddenBlocks, doorAngle: (id, i, j, k) => { const v = plotViews.get(id); return (v && v.doorAng && v.doorAng.get(`${i},${j},${k}`)) || 0; }, shopSpots, aimBlock, mouse, camera, building: () => building, toScreen, groundAt, solidAt, setBlocks, plots: PLOTS, placed, decorCrops, myFarm: () => myFarm, farmTile: () => farmTile(), hp: () => hp, mp, monsters, drops, field: () => field, hero: () => hero, fireballs, tp: (x, z, yaw) => { P.x = x; P.z = z; if (yaw !== undefined) camYaw = yaw; }, cam: (dist, pitch) => { camDistT = camDist = dist; camPitchT = camPitch = pitch; }, size: [MAP_W, MAP_H], info: () => { // one full frame's draw calls and triangles (all passes, shadows included)
   renderer.info.autoReset = false; renderer.info.reset(); composer.render();
   const r = { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles };
   renderer.info.autoReset = true; return r;
