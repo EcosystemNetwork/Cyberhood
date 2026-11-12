@@ -112,3 +112,21 @@ test('the gate wedge ramps down to the ground so you can walk in and out', () =>
   assert.equal(ramp(top.r1 + 2.4), 0, 'ground level at the gate mouth');
   assert.equal(standY(CX + 9, CZ - (top.r1 + 1.2)), 0, 'and nowhere else outside the stands');
 });
+
+import { BUFFS, buffAt } from '../game/world3d/arena.js';
+
+test('every crate drops a buff both clients agree on', () => {
+  for (let n = 0; n < 500; n++) {
+    const b = buffAt(n);
+    assert.ok(BUFFS[b], `n=${n} unknown buff ${b}`);
+    assert.equal(b, buffAt(n), 'pure in n');
+  }
+});
+
+test('buffs only scale what the hit model already reads', () => {
+  for (const k of Object.keys(BUFFS)) {
+    assert.ok(['atk', 'mag', 'def'].includes(BUFFS[k].stat), `${k} touches ${BUFFS[k].stat}`);
+    assert.ok(BUFFS[k].ms > 0);
+    assert.ok(BUFFS[k].mul > 1);
+  }
+});

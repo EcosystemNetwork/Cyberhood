@@ -24,6 +24,13 @@ try {
   assert.equal(await A.ev('__world3d.hazards().length'), 1, 'telegraphed');
   assert.equal(await A.ev('__world3d.hp()'), 100, 'no damage during the tell');
 
+  // 1b. unpinned, the schedule reads Date.now() plus a measured server offset and nothing else
+  await A.ev('__world3d.hazardClock(null); 1');
+  const drift = await A.ev('Math.abs(__world3d.hazardNow() - (Date.now() + __world3d.clockOffset()))');
+  assert.ok(drift < 60, `the clock is Date.now() + offset (drift ${drift})`);
+  const off = await A.ev('__world3d.clockOffset()');
+  assert.ok(Number.isFinite(off) && Math.abs(off) < 120000, `the offset is a sane correction (${off})`);
+
   // 2. standing in it when it commits costs HP
   await A.ev(`__world3d.tp(${fb.x}, ${fb.z}); 1`);
   await A.ev(`__world3d.hazardClock(${fb.fireMs + 100}); 1`);

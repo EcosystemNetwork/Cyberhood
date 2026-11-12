@@ -308,7 +308,7 @@ import { SHOPS, SELL, RECIPES, CONSUMABLES } from './shops.js';
 import { CROPS, BUILDS, ALTAR, FARM_ITEMS } from './farm.js';
 import { BLOCKS, BLOCK_IDS, MAX_H, unpack, pack, standHeight, blockedAt, raycast, canPlace } from './blocks.js';
 import { ARENA_CENTER, ARENA_RADIUS, standY, standBlocked, tomatoArc, TOMATO_GRAVITY, TOMATO_COOLDOWN_MS,
-  HAZARDS, TELL_MS, eventsNear } from './arena.js';
+  HAZARDS, TELL_MS, eventsNear, BUFFS, buffAt } from './arena.js';
 import * as arenaMod from './arena.js';
 for (const id of BLOCK_IDS) FARM_ITEMS['block_' + id] = { name: BLOCKS[id].name, emoji: BLOCKS[id].emoji, info: 'Building block · place it on your plot in build mode (G)' };
 
@@ -2655,10 +2655,11 @@ function swing(hand = 'R') {
   setTimeout(() => {
     const hx = P.x + Math.sin(P.heading) * 0.75, hz = P.z + Math.cos(P.heading) * 0.75;
     for (const m of monsters) if (!m.dead && Math.hypot(m.x - hx, m.z - hz) < (m.cfg.big ? 1.25 : 0.95)) hitMonster(m);
-    if (ARENA) for (const g of ghosts.values()) if (Math.hypot(g.x - hx, g.z - hz) < 0.95 && Math.abs(g.y - P.y) < 1.2) hitPlayer(g, stats.atk, hand);
+    if (ARENA) for (const g of ghosts.values()) if (Math.hypot(g.x - hx, g.z - hz) < 0.95 && Math.abs(g.y - P.y) < 1.2) hitPlayer(g, statNow('atk'), hand);
+    if (ARENA) smashCrate(hx, hz);
   }, 110);
 }
-function hitMonster(m, power = stats.atk) {
+function hitMonster(m, power = statNow('atk')) {
   const dmg = Math.max(1, Math.round(power + Math.random() * 4));
   m.hp -= dmg;
   m.flash = 0.09;
@@ -2817,8 +2818,8 @@ function explode(fb) {
   b.position.set(x, y, z);
   scene.add(b);
   blasts.push({ m: b, age: 0, r: 0.6 + c.aoe * 0.6 });
-  if (c.aoe) for (const m of monsters) if (!m.dead && Math.hypot(m.x - x, m.z - z) < c.aoe) hitMonster(m, stats.atk * 0.5 + stats.mag * 0.8);
-  if (c.aoe && ARENA) for (const g of ghosts.values()) if (g !== fb.foe && Math.hypot(g.x - x, g.z - z) < c.aoe) hitPlayer(g, stats.atk * 0.5 + stats.mag * 0.8, fb.hand, true);
+  if (c.aoe) for (const m of monsters) if (!m.dead && Math.hypot(m.x - x, m.z - z) < c.aoe) hitMonster(m, statNow('atk') * 0.5 + statNow('mag') * 0.8);
+  if (c.aoe && ARENA) for (const g of ghosts.values()) if (g !== fb.foe && Math.hypot(g.x - x, g.z - z) < c.aoe) hitPlayer(g, statNow('atk') * 0.5 + statNow('mag') * 0.8, fb.hand, true);
   scene.remove(fb.g);
   fb.g.traverse((o) => o.material && o.material.dispose());
   if (fb.light) { fb.light.userData.busy = false; fb.light.intensity = 0; }
@@ -2842,8 +2843,8 @@ function updateFireballs(dt, t) {
     const wall = cx < 0 || cz < 0 || cx >= MAP_W || cz >= MAP_H || (blocked[cz][cx] && waterAt(fb.x * T, fb.z * T) < 0)
       || circles.some(([x, z, r]) => Math.hypot(fb.x - x, fb.z - z) < r);
     if (ARENA) for (const g of ghosts.values()) if (!g.dead && Math.hypot(g.x - fb.x, g.z - fb.z) < 0.7 && fb.y > g.y && fb.y < g.y + 1.8) { fb.foe = g; break; }
-    if (hit) hitMonster(hit, stats.atk * 0.6 + stats.mag * 1.4);
-    if (fb.foe) hitPlayer(fb.foe, stats.atk * 0.6 + stats.mag * 1.4, fb.hand, true);
+    if (hit) hitMonster(hit, statNow('atk') * 0.6 + statNow('mag') * 1.4);
+    if (fb.foe) hitPlayer(fb.foe, statNow('atk') * 0.6 + statNow('mag') * 1.4, fb.hand, true);
     const landed = fb.y <= 0.05 || fb.y <= groundAt(fb.x, fb.z, fb.y) + 0.05 || blockCellAt(fb.x, fb.y, fb.z);
     if (hit || fb.foe || wall || landed || fb.dist > fb.c.range) { explode(fb); fireballs.splice(i, 1); }
   }
@@ -3087,6 +3088,10 @@ if (window.supabase && !new URLSearchParams(location.search).has('nomp')) {
     .on('broadcast', { event: 'move' }, ({ payload }) => onState(payload))
     .on('broadcast', { event: 'leave' }, ({ payload }) => { const g = ghosts.get(payload.id); if (g) chatLine('', `${g.name} left`, true); removeGhost(payload.id); })
     .on('broadcast', { event: 'farm' }, ({ payload }) => onFarm(payload))
+    .on('broadcast', { event: 'claim' }, ({ payload }) => {
+      const v = HAZ.views.get(payload.n);
+      if (v && v.pickup) { claimPickup(v, payload.id); v.pickup.visible = false; }
+    })
     .on('broadcast', { event: 'tomato' }, ({ payload }) => {
       if (payload.id !== mp.id) spawnTomato({ x: payload.fx, y: payload.fy, z: payload.fz }, { x: payload.tx, y: payload.ty, z: payload.tz });
     })
@@ -3187,6 +3192,19 @@ function placeBubble(b, pos, now) {
    like a sword hit. Every hazard shows itself on the sand for TELL_MS before it commits. */
 const HAZ = { views: new Map(), pinned: null, offset: 0 };
 const hazardNow = () => (HAZ.pinned !== null ? HAZ.pinned : Date.now() + HAZ.offset);
+// Browser clocks drift, and a 2.5 s telegraph does not survive a five-second disagreement.
+// One HEAD request at load gives a shared reference: every client's schedule is then read
+// off the same wall clock. If it fails we keep the local clock, which is usually NTP-close.
+if (window.supabase && !new URLSearchParams(location.search).has('nomp')) {
+  (async () => {
+    try {
+      const t0 = Date.now();
+      const r = await fetch('https://azvdqigaqwbeakjieaps.supabase.co/rest/v1/', { method: 'HEAD' });
+      const d = Date.parse(r.headers.get('date') || '');
+      if (Number.isFinite(d)) HAZ.offset = d + (Date.now() - t0) / 2 - Date.now(); // half the round trip
+    } catch (e) {}
+  })();
+}
 const HZ_RING = new THREE.TorusGeometry(1, 0.055, 8, 40);
 const HZ_DISC = new THREE.CircleGeometry(1, 36);
 const HZ_BOX = new THREE.BoxGeometry(1, 1, 1);
@@ -3194,9 +3212,13 @@ const HZ_CONE = new THREE.ConeGeometry(1, 1, 6);
 const flat = (m) => { m.rotation.x = -Math.PI / 2; return m; };
 const basic = (color, opacity = 1) => new THREE.MeshBasicMaterial({ color, transparent: opacity < 1, opacity, depthWrite: opacity >= 1 });
 
+let buff = null; // { id, stat, mul, until, from } — the crate prize, see claimPickup
+const statNow = (k) => stats[k] * (buff && buff.stat === k && performance.now() < buff.until ? buff.mul : 1);
+function buffNow() { return buff && performance.now() < buff.until ? buff : null; }
+
 function hazardHurt(power, weapon) {
   if (fainted || performance.now() < safeUntil) return;
-  const dmg = Math.max(1, Math.round(power * 50 / (50 + stats.def)));
+  const dmg = Math.max(1, Math.round(power * 50 / (50 + statNow('def'))));
   hp = Math.max(0, hp - dmg);
   hero.hurt();
   shake = 0.22;
@@ -3337,8 +3359,56 @@ function tickHazard(v, t, dt) {
     const rise = clamp(since / 300, 0, 1);
     v.spikes.forEach((m) => { m.scale.y = 1.7 * rise; m.position.y = 0.85 * rise; });
   } else if (e.kind === 'crate') {
-    v.crate.rotation.y += dt * 0.6;
+    if (v.pickup && v.pickup.visible) {
+      v.pickup.position.y = 0.6 + Math.sin(t / 240) * 0.12;
+      v.pickup.rotation.y += dt * 2;
+      if (!v.claimedBy && Math.hypot(P.x - e.x, P.z - e.z) < 0.7 && P.y < 1.2 && !fainted) claimPickup(v, mp.id);
+    } else if (!v.pickup) {
+      v.crate.rotation.y += dt * 0.6;
+    }
   }
+}
+
+// a weapon swing that lands on the crate; three hits open it
+function smashCrate(hx, hz) {
+  for (const v of HAZ.views.values()) {
+    if (v.e.kind !== 'crate' || !v.fired || v.pickup || v.hp <= 0) continue;
+    if (Math.hypot(v.e.x - hx, v.e.z - hz) > 1.3) continue;
+    v.hp -= 1;
+    burst(v.e.x, 0.8, v.e.z, '#b07a3a', 6);
+    if (v.hp <= 0) openCrate(v);
+  }
+}
+
+// the crate breaks and the prize drops out; it grants nothing until somebody touches it
+function openCrate(v) {
+  v.crate.visible = false;
+  burst(v.e.x, 0.8, v.e.z, '#e0b450', 16);
+  const cfg = BUFFS[buffAt(v.e.n)];
+  const m = new THREE.Mesh(FB_GEO, new THREE.MeshBasicMaterial({ color: cfg.color }));
+  m.scale.setScalar(0.3);
+  m.position.set(0, 0.6, 0);
+  v.g.add(m);
+  v.parts.push(m);
+  v.pickup = m;
+  v.claimedBy = null;
+  floatText(v.e.x, 1.8, v.e.z, cfg.name, cfg.color);
+}
+
+// first touch wins; two clients that both claim settle on the lower id, so they agree
+function claimPickup(v, id) {
+  if (v.claimedBy && v.claimedBy <= id) return;
+  const won = v.claimedBy === mp.id && id !== mp.id;
+  v.claimedBy = id;
+  if (won && buff && buff.from === v.e.n) buff = null; // somebody beat me to it after all
+  if (id !== mp.id) return;
+  const cfg = BUFFS[buffAt(v.e.n)];
+  buff = { id: buffAt(v.e.n), stat: cfg.stat, mul: cfg.mul, until: performance.now() + cfg.ms, from: v.e.n };
+  v.pickup.visible = false;
+  burst(v.e.x, 1.0, v.e.z, cfg.color, 14);
+  floatText(P.x, 2.0, P.z, `${cfg.name}!`, cfg.color);
+  hero.emote && hero.emote('happy', 1);
+  if (mp.live) mp.channel.send({ type: 'broadcast', event: 'claim', payload: { id: mp.id, n: v.e.n } });
 }
 
 function disposeHazard(v) {
@@ -3383,7 +3453,7 @@ function hitPlayer(g, power, hand, magic) {
 }
 function onHit(d) {
   if (!ARENA || d.to !== mp.id || fainted || performance.now() < safeUntil) return;
-  const dmg = Math.max(1, Math.round(d.dmg * 50 / (50 + stats.def)));
+  const dmg = Math.max(1, Math.round(d.dmg * 50 / (50 + statNow('def'))));
   hp = Math.max(0, hp - dmg);
   const dx = P.x - d.x, dz = P.z - d.z, dist = Math.hypot(dx, dz) || 1;
   pkb = { x: dx / dist * 7, z: dz / dist * 7, t: 0.14 };
@@ -4483,7 +4553,7 @@ function update(dt, now) {
 SPAWN_LIST.forEach((type) => spawnMonster(type));
 // debug hook for tests and screenshots: __world3d.tp(x, z) teleports, .P is the player state
 window.__world3d = { P, ghosts, arena, farms, updateIndoor, aimPoint, spectating: () => STANDS, tomatoes, throwTomato,
-  arenaMod, hazards: () => [...HAZ.views.values()], hazardClock: (ms) => { HAZ.pinned = ms === undefined || ms === null ? null : ms; }, slowed, setHp: (n) => { hp = n; updateHud(); }, drawnBlocks: (id) => ((plotViews.get(id) || {}).blockMeshes || []).reduce((n, m) => n + m.count, 0), getPitch: () => fpPitch, firstPerson: () => firstPerson, setPitch: (v) => { fpPitch = v; }, openShop, hiddenBlocks, doorAngle: (id, i, j, k) => { const v = plotViews.get(id); return (v && v.doorAng && v.doorAng.get(`${i},${j},${k}`)) || 0; }, shopSpots, aimBlock, mouse, camera, building: () => building, toScreen, groundAt, solidAt, setBlocks, plots: PLOTS, placed, decorCrops, myFarm: () => myFarm, farmTile: () => farmTile(), hp: () => hp, mp, monsters, drops, field: () => field, hero: () => hero, fireballs, tp: (x, z, yaw) => { P.x = x; P.z = z; if (yaw !== undefined) camYaw = yaw; }, cam: (dist, pitch) => { camDistT = camDist = dist; camPitchT = camPitch = pitch; }, size: [MAP_W, MAP_H], info: () => { // one full frame's draw calls and triangles (all passes, shadows included)
+  arenaMod, buff: () => buffNow(), hazardNow, clockOffset: () => HAZ.offset, hazards: () => [...HAZ.views.values()], hazardClock: (ms) => { HAZ.pinned = ms === undefined || ms === null ? null : ms; }, slowed, setHp: (n) => { hp = n; updateHud(); }, drawnBlocks: (id) => ((plotViews.get(id) || {}).blockMeshes || []).reduce((n, m) => n + m.count, 0), getPitch: () => fpPitch, firstPerson: () => firstPerson, setPitch: (v) => { fpPitch = v; }, openShop, hiddenBlocks, doorAngle: (id, i, j, k) => { const v = plotViews.get(id); return (v && v.doorAng && v.doorAng.get(`${i},${j},${k}`)) || 0; }, shopSpots, aimBlock, mouse, camera, building: () => building, toScreen, groundAt, solidAt, setBlocks, plots: PLOTS, placed, decorCrops, myFarm: () => myFarm, farmTile: () => farmTile(), hp: () => hp, mp, monsters, drops, field: () => field, hero: () => hero, fireballs, tp: (x, z, yaw) => { P.x = x; P.z = z; if (yaw !== undefined) camYaw = yaw; }, cam: (dist, pitch) => { camDistT = camDist = dist; camPitchT = camPitch = pitch; }, size: [MAP_W, MAP_H], info: () => { // one full frame's draw calls and triangles (all passes, shadows included)
   renderer.info.autoReset = false; renderer.info.reset(); composer.render();
   const r = { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles };
   renderer.info.autoReset = true; return r;

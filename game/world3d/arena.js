@@ -172,3 +172,18 @@ export function tomatoArc(from, to) {
     flightMs: TOMATO_FLIGHT_MS,
   };
 }
+
+/* ---------- the drop crate's prize ----------
+   Smashing the crate does not hand you anything: it lets the prize out, and whoever
+   touches it first claims it. The buff only scales a stat the hit model already reads
+   (atk, mag or def), because the page rebuilds `stats` from equipment whenever gear
+   changes and anything else would need a second system. */
+
+export const BUFFS = {
+  fury:  { name: 'Fury',  stat: 'atk', mul: 1.6, ms: 15000, color: '#ff6a3a' },
+  focus: { name: 'Focus', stat: 'mag', mul: 1.7, ms: 15000, color: '#6ad0ff' },
+  guard: { name: 'Guard', stat: 'def', mul: 2.2, ms: 18000, color: '#c8ff2e' },
+};
+const BUFF_IDS = Object.keys(BUFFS);
+
+export const buffAt = (n) => BUFF_IDS[Math.floor(hash01(n, 6) * BUFF_IDS.length)];
