@@ -69,6 +69,25 @@ try {
   const open = await A.ev(`[[0.6, 0], [-0.6, 0], [0, 0.6], [0, -0.6]].filter(([dx, dz]) => __world3d.free(__world3d.P.x + dx, __world3d.P.z + dz)).length`);
   assert.ok(open >= 2, `and can walk away from it (${open} of 4 directions open)`);
 
+  // 8. no sub-tile cliffs: collision is per tile, so the floor must be per tile too, or you
+  //    stand at the edge of a walkable tile, read a height from off its edge and drop through
+  await A.go(`${BASE}/game/world3d/?area=stands&from=city&hour=13`);
+  assert.ok(await ready(A));
+  await sleep(1200);
+  const cliffs = JSON.parse(await A.ev(`JSON.stringify((() => {
+    const bad = [];
+    for (let x = 1; x < 43; x++) for (let z = 1; z < 43; z++) {
+      const cx = x + 0.5, cz = z + 0.5;
+      if (!__world3d.free(cx, cz)) continue;
+      const mid = __world3d.groundAt(cx, cz, 9);
+      for (const [ox, oz] of [[-0.28, -0.2], [0.28, -0.2], [-0.28, 0.2], [0.28, 0.2]]) {
+        if (Math.abs(__world3d.groundAt(cx + ox, cz + oz, 9) - mid) > 0.01) { bad.push([cx, cz]); break; }
+      }
+    }
+    return bad.slice(0, 6);
+  })())`));
+  assert.deepEqual(cliffs, [], 'the floor under a walkable tile is the same all across it');
+
   console.log('PASS');
 } finally { kill(); }
 process.exit(0);

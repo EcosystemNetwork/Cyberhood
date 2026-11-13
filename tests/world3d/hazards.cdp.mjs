@@ -32,7 +32,10 @@ try {
   assert.ok(Number.isFinite(off) && Math.abs(off) < 120000, `the offset is a sane correction (${off})`);
 
   // 2. standing in it when it commits costs HP
-  await A.ev(`__world3d.tp(${fb.x}, ${fb.z}); 1`);
+  //    (re-pin the tell first: unpinning above dropped the view, and a view built after the
+  //    tell has passed is a late join, which deliberately does not hit you)
+  await A.ev(`__world3d.tp(${fb.x}, ${fb.z}); __world3d.hazardClock(${fb.tellMs}); 1`);
+  await sleep(300);
   await A.ev(`__world3d.hazardClock(${fb.fireMs + 100}); 1`);
   await sleep(500);
   const hurt = await A.ev('__world3d.hp()');

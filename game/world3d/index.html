@@ -57,6 +57,7 @@
   .tilt { display: flex; gap: 8px; pointer-events: none; }
   .tilt button { padding: 5px 13px; border-radius: 999px; font-size: 13px; background: #241040; box-shadow: 0 3px 0 #12031a; pointer-events: auto; }
   .actions button { cursor: pointer; touch-action: manipulation; border: 3px solid #2a0a3a; color: #fff; text-shadow: 0 2px 0 rgba(0, 0, 0, 0.4); }
+  #leaveBtn { padding: 7px 16px; border-radius: 999px; font: 15px 'Lilita One', sans-serif; background: linear-gradient(#ffd27a, #e89a2a); color: #3a1a00; text-shadow: none; box-shadow: 0 3px 0 #8a4a10; }
   #camBtn { padding: 6px 12px; border-radius: 999px; font-size: 15px; background: #241040; box-shadow: 0 3px 0 #12031a, 0 0 12px rgba(255, 63, 180, 0.4); }
   .toast { top: auto; bottom: 90px; padding: 8px 18px; }
   #bagBtn { padding: 6px 12px; border-radius: 999px; font-size: 15px; color: #1e3000; text-shadow: none; background: linear-gradient(#e6ff7a, #a8e000); box-shadow: 0 3px 0 var(--lime-dk), 0 0 12px rgba(200, 255, 46, 0.5); }
@@ -242,6 +243,7 @@ else if (!localStorage.getItem('taproot_character')) window.location.replace('/g
 <div class="actions">
   <button id="sailBtn" type="button" tabindex="-1" hidden>&#9973; Set sail<kbd>F</kbd></button>
   <button id="chatBtn" type="button" tabindex="-1" aria-label="Chat">&#128172;<kbd>T</kbd></button>
+  <button id="leaveBtn" type="button" tabindex="-1" hidden>&#128682; Leave</button>
   <button id="camBtn" type="button" tabindex="-1" aria-label="Camera view">&#127909;<kbd>C</kbd></button>
   <div class="tilt"><button id="camUpBtn" type="button" tabindex="-1" aria-label="Camera higher">&#9650;</button><button id="camDownBtn" type="button" tabindex="-1" aria-label="Camera lower">&#9660;</button></div>
   <button id="viewBtn" type="button" tabindex="-1" aria-label="First or third person">&#128065;<kbd>V</kbd></button>
@@ -1938,6 +1940,26 @@ if (PIT) {
     put('toon', 'box', i % 2 ? '#b4aea2' : '#a8a296', ARENA_X, 5.0 * (1 - t) / 2, ARENA_Z - rr, 5.0, Math.max(0.08, 5.0 * (1 - t)), 0.3);
   }
 
+  /* A lit lane of chevrons pointing at the way out. The fighters' lane is painted on the
+     sand; the crowd's climbs the tiers and the ramp, so each chevron sits at the height of
+     the step it is on — sampled at the tile centre, the same basis the floor uses. */
+  {
+    const dir = STANDS ? -1 : 1; // the crowd leaves north, the fighters south
+    const chev = (x, y, z, flip) => {
+      for (const sx of [-1, 1]) put('glow', 'box', '#ffd23a', x + sx * 0.75, y, z, 1.5, 0.04, 0.34, 0, sx * flip * 0.62);
+    };
+    if (STANDS) {
+      for (let i = 0; i < 9; i++) {
+        const rad = R + 1.2 + i * 0.9, z = ARENA_Z - rad;
+        const y = standY(Math.floor(ARENA_X) + 0.5, Math.floor(z) + 0.5);
+        chev(ARENA_X, y + 0.07, z, -1);
+      }
+    } else {
+      for (let i = 0; i < 7; i++) chev(ARENA_X, 0.05, ARENA_Z + R - 5.5 + i * 1.7, 1);
+    }
+    put('glow', 'box', '#ffd23a', ARENA_X, 5.6, ARENA_Z + dir * (R + 0.4), 3.2, 0.5, 0.08); // a lit bar over the arch
+  }
+
   // spawn pads
   ARENA_PADS.forEach(([x, z]) => {
     put('glow', 'tor', '#5affc8', x, 0.06, z, 0.9, 0.9, 0.35, Math.PI / 2);
@@ -2474,6 +2496,7 @@ function setFirstPerson(on) {
   toast(on ? 'First person (V to switch back)' : `Camera: ${CAM_MODES[camMode].name}`);
 }
 if (INDOOR) { camDist = camDistT = 7.5; camPitch = camPitchT = 0.95; }
+if (STANDS) { camDist = camDistT = 11; camPitch = camPitchT = 0.62; } // looking down at the sand
 function makePlayerHero(look) {
   if (!BLENDER_HERO) return makeHero(look);
   const h = makeBlenderHero(look);
@@ -3671,15 +3694,20 @@ function knockedOut(d) {
   $('againBtn').onclick = () => goTo('/game/world3d/?area=arena&from=city');
   $('cityBtn').onclick = () => goTo(CITY);
 }
+if (PIT) { // one tap out, so leaving is never a hunt for the gate
+  const way = A.exits[0];
+  $('leaveBtn').hidden = false;
+  $('leaveBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); goTo(way.href); });
+}
 if (ARENA) {
   $('arenaBar').hidden = false;
-  chatLine('', 'Welcome to the arena: player hits do damage in here. Walk out the south gate to leave.', true);
+  chatLine('', 'Welcome to the arena: player hits do damage in here. Follow the arrows out the south gate, or tap Leave.', true);
 }
 if (STANDS) {
   $('arenaBar').hidden = false;
   $('arenaK').textContent = '';
   $('arenaD').textContent = '';
-  chatLine('', 'You are in the crowd: nothing down there can touch you, and you cannot touch it. Out the north gate and round to the arena door if you would rather fight.', true);
+  chatLine('', 'You are in the crowd: nothing down there can touch you, and you cannot touch it. Follow the arrows out the north gate, or tap Leave, and come back round to the arena door if you would rather fight.', true);
 }
 
 /* ---------- farming: player plots, crops and plot buildings ----------
@@ -3731,7 +3759,10 @@ function voxOf(p) {
 // the plot whose soil (plus a hitbox margin) covers (x, z)
 const blockPlotAt = (x, z) => PLOTS.find((p) => x > p.i0 - 0.5 && x < p.i0 + p.nx + 0.5 && z > p.j0 - 0.5 && z < p.j0 + p.nz + 0.5);
 function groundAt(x, z, feetY) {
-  if (STANDS) return standY(x, z);
+  // Per TILE, not per point. `blocked` is built from each tile's centre, so a floor read
+  // from the exact position disagrees with it at the tile edges — and standing on the rim
+  // of a walkable tier tile would read the ground off its edge and drop you through.
+  if (STANDS) return standY(Math.floor(x) + 0.5, Math.floor(z) + 0.5);
   const p = blockPlotAt(x, z);
   return p && farms.get(p.id) ? standHeight(voxOf(p), x - p.i0, z - p.j0, feetY) : 0;
 }
@@ -4671,14 +4702,28 @@ function update(dt, now) {
     // Don't sit behind the scenery. Cast from the player's head out to where the camera
     // wants to be, and if a wall is in the way, come in short of it. Without this the
     // stands swallow the view whenever you sit with a tier behind you.
-    CAM_DIR.copy(want).sub(target);
-    const reach = CAM_DIR.length();
-    if (reach > 0.4) {
-      CAM_RAY.set(target, CAM_DIR.divideScalar(reach));
+    // Line of sight. Try the shot we want; if scenery is in the way, climb — a higher angle
+    // clears a tier or a wall without giving up the distance — and only hug in if even the
+    // steepest angle is blocked. Hugging was leaving the camera in your back on the top row.
+    const clearAt = (pitch) => {
+      const c = Math.cos(pitch);
+      CAM_DIR.set(P.x + Math.sin(camYaw) * camDist * c, target.y + Math.sin(pitch) * camDist + 0.6, P.z + Math.cos(camYaw) * camDist * c).sub(target);
+      const reach = CAM_DIR.length();
+      if (reach < 0.4) return { ok: true, reach };
+      CAM_RAY.set(target, CAM_DIR.clone().divideScalar(reach));
       CAM_RAY.far = reach;
       const hit = CAM_RAY.intersectObjects(worldMeshes, false)[0];
-      if (hit && hit.distance < reach - 0.2) want.copy(CAM_RAY.ray.direction).multiplyScalar(Math.max(1.9, hit.distance - 0.4)).add(target);
+      return { ok: !hit || hit.distance >= reach - 0.2, reach, hit: hit && hit.distance, dir: CAM_RAY.ray.direction.clone() };
+    };
+    let shot = clearAt(camPitch);
+    for (const extra of [0.22, 0.44, 0.66, 0.9]) {
+      if (shot.ok) break;
+      const p = Math.min(1.45, camPitch + extra);
+      const t = clearAt(p);
+      if (t.ok) { shot = t; want.set(P.x + Math.sin(camYaw) * camDist * Math.cos(p), target.y + Math.sin(p) * camDist + 0.6, P.z + Math.cos(camYaw) * camDist * Math.cos(p)); }
+      else shot = t;
     }
+    if (!shot.ok && shot.dir) want.copy(shot.dir).multiplyScalar(Math.max(1.9, shot.hit - 0.4)).add(target);
     // snap in to a wall, ease back out, so a pillar you pass doesn't yank the camera
     if (first) { camPos.copy(want); first = false; }
     else camPos.lerp(want, Math.min(1, dt * (want.distanceTo(target) < camPos.distanceTo(target) ? 26 : 8)));
