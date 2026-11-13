@@ -25,16 +25,32 @@ try {
     assert.equal(await canMove(A), true, `can move after arriving at ${url} (${at})`);
   }
 
-  // both gates lead where they say
-  await A.go(`${BASE}/game/world3d/?area=city&from=arena&hour=13`);
+  // both gates can be WALKED into from where you come back out of them — not teleported onto,
+  // which is how an earlier version passed this test while nobody could actually get in
+  const walkInto = async (gate, expect, from) => {
+    await A.go(`${BASE}/game/world3d/?area=city&from=${from}&hour=13`);
+    assert.ok(await ready(A)); await sleep(1000);
+    const g = JSON.parse(await A.ev(`JSON.stringify(__world3d.colosseum().${gate})`));
+    // point the camera so that W walks straight at the gate
+    await A.ev(`(() => { const dx = ${g[0]} - __world3d.P.x, dz = ${g[1]} - __world3d.P.z; __world3d.tp(__world3d.P.x, __world3d.P.z, Math.atan2(-dx, -dz)); })(); 1`);
+    await sleep(200);
+    await A.down('KeyW', 'w');
+    for (let i = 0; i < 30 && !(await A.ev('location.search')).includes(expect); i++) await sleep(150);
+    await A.up('KeyW', 'w');
+    await sleep(1500);
+    assert.equal(await A.ev('location.search'), `?${expect}`, `walking into the ${gate} gate from outside it`);
+  };
+  await walkInto('arena', 'area=arena&from=city', 'arena');
+  await walkInto('stands', 'area=stands&from=city', 'stands');
+  // and the arena gate is straight down the street: walk east along the road's middle
+  await A.go(`${BASE}/game/world3d/?area=city&hour=13`);
   assert.ok(await ready(A)); await sleep(1000);
-  const gates = JSON.parse(await A.ev(`JSON.stringify(__world3d.colosseum())`));
-  await A.ev(`__world3d.tp(${gates.arena[0]}, ${gates.arena[1]}); 1`); await sleep(2500);
-  assert.equal(await A.ev('location.search'), '?area=arena&from=city', 'the red gate leads to the sand');
-  await A.go(`${BASE}/game/world3d/?area=city&from=arena&hour=13`);
-  assert.ok(await ready(A)); await sleep(1000);
-  await A.ev(`__world3d.tp(${gates.stands[0]}, ${gates.stands[1]}); 1`); await sleep(2500);
-  assert.equal(await A.ev('location.search'), '?area=stands&from=city', 'the blue gate leads to the seats');
+  await A.ev(`__world3d.tp(138, 70.5, -Math.PI / 2); 1`); await sleep(200);
+  await A.down('KeyW', 'w');
+  for (let i = 0; i < 40 && !(await A.ev('location.search')).includes('area=arena'); i++) await sleep(150);
+  await A.up('KeyW', 'w');
+  await sleep(1500);
+  assert.equal(await A.ev('location.search'), '?area=arena&from=city', 'straight down the main street takes you in');
 
   console.log('PASS');
 } finally { kill(); }
