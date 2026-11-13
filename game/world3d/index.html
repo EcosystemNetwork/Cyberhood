@@ -77,6 +77,13 @@
   .bag-head span { display: flex; align-items: center; gap: 4px; font-size: 16px; color: var(--gold); }
   .bag-head img, .bag-item img { image-rendering: pixelated; }
   .bag-head img { width: 20px; height: 20px; }
+  #gearBtn { margin-left: auto; margin-right: 10px; padding: 5px 12px; border-radius: 999px; border: 2px solid #2a0a3a; cursor: pointer;
+    font: 14px 'Lilita One', sans-serif; color: #2a1200; background: linear-gradient(#ffd27a, #e89a2a); box-shadow: 0 2px 0 #8a4a10; }
+  /* the Armory from the pre-game page, laid over the world when you open Gear */
+  #armoryOverlay { position: fixed; inset: 0; z-index: 20; background: rgba(10, 4, 20, 0.6); display: flex; }
+  #armoryOverlay iframe { flex: 1; border: 0; background: transparent; }
+  #armoryClose { position: absolute; top: 12px; right: 14px; z-index: 1; padding: 6px 14px; border-radius: 999px; border: 2px solid #2a0a3a;
+    font: 15px 'Lilita One', sans-serif; color: #fff; background: #241040; cursor: pointer; }
   .bag-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
   .bag-item { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 4px 6px; background: #1a0828; border: 2px solid #4a1a62; border-radius: 10px; font: 800 12px/1.2 'Nunito', sans-serif; }
   .bag-item img { width: 30px; height: 30px; flex: none; }
@@ -273,7 +280,7 @@ else if (!localStorage.getItem('taproot_character')) window.location.replace('/g
   <div class="shop-list" id="shopList"></div>
 </div>
 <div class="panel bag" id="bagPanel" hidden>
-  <div class="bag-head">Bag <span id="bagGold"></span></div>
+  <div class="bag-head">Bag <button id="gearBtn" type="button">&#128737; Gear</button><span id="bagGold"></span></div>
   <div class="bag-grid" id="bagGrid"></div>
 </div>
 <div class="panel" id="arenaBar" hidden><b>ARENA</b><span class="k" id="arenaK"></span><span class="d" id="arenaD"></span><span id="arenaN"></span></div>
@@ -2835,6 +2842,12 @@ function equip(id, slot) {
   eq[slot] = id;
   charData.equipment = eq;
   try { localStorage.setItem(HAD_CHAR ? 'taproot_character' : 'taproot3d_look', JSON.stringify(charData)); } catch (e) {}
+  dressHero(charData);
+  floatText(P.x, 2, P.z, `Equipped ${it.name}`, '#c8ff2e');
+}
+// rebuild the 3D hero, the stats and the portrait from a look (its equipment, hair, skin...)
+function dressHero(look) {
+  charData = look;
   const pos = hero.root.position.clone(), ry = hero.root.rotation.y;
   hero.dispose();
   hero.root.removeFromParent();
@@ -2845,7 +2858,6 @@ function equip(id, slot) {
   Object.assign(stats, computeStats3d());
   hp = Math.max(1, Math.min(stats.hp, hp + Math.max(0, stats.hp - before)));
   document.querySelector('.avatar').style.background = `url(${SPRITE.renderDir(charData, 'down', 0, true).toDataURL()}) center 18% / 150% no-repeat, radial-gradient(circle at 35% 30%, #d8ff5a, #7ac400)`;
-  floatText(P.x, 2, P.z, `Equipped ${it.name}`, '#c8ff2e');
 }
 function drink(id) {
   const c = CONSUMABLES[id];
@@ -3305,6 +3317,38 @@ function updateHud() {
   $('goldText').textContent = field.gold;
   $('killText').textContent = field.kills;
 }
+/* ---------- Gear: the pre-game Armory, opened over the world ----------
+   The same screen you dress your character in before you play, shown in an overlay so you don't
+   leave the world or lose your place. It saves your choice to taproot_character; when it closes,
+   the hero is rebuilt from that. */
+function openArmory() {
+  if ($('armoryOverlay')) return;
+  exitLock();
+  for (const k in keys) keys[k] = false; // stop walking: the overlay takes the keyboard from here
+  toggleBag(false);
+  const wrap = document.createElement('div');
+  wrap.id = 'armoryOverlay';
+  wrap.innerHTML = '<iframe id="armoryFrame" title="Gear" src="/game/?armory=1&embed=1"></iframe><button id="armoryClose" type="button">Done</button>';
+  document.body.appendChild(wrap);
+  // Done goes through the Armory's own Back, so it saves to your account the same way
+  $('armoryClose').addEventListener('click', () => {
+    const back = $('armoryFrame').contentDocument && $('armoryFrame').contentDocument.getElementById('armBack');
+    const shown = back && !back.closest('[hidden]');
+    if (shown) back.click(); else closeArmory();
+  });
+}
+function closeArmory() {
+  const wrap = $('armoryOverlay');
+  if (!wrap) return;
+  wrap.remove();
+  let c = null;
+  try { c = JSON.parse(localStorage.getItem('taproot_character')); } catch (e) {}
+  if (c && c.equipment) dressHero(c);
+}
+addEventListener('message', (e) => {
+  if (e.origin === location.origin && e.data && e.data.type === 'taproot-armory-closed') closeArmory();
+});
+
 function toggleBag(open) {
   const panel = $('bagPanel');
   panel.hidden = open === undefined ? !panel.hidden : !open;
@@ -4727,6 +4771,7 @@ $('shopList').addEventListener('click', (e) => {
   shopAct(b.dataset.act, b.dataset.id, b.dataset.price || b.dataset.n || b.dataset.slot);
 });
 $('bagGrid').addEventListener('click', (e) => { const b = e.target.closest('[data-use]'); if (b) useItem(b.dataset.use); });
+$('gearBtn').addEventListener('click', openArmory);
 $('camBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); cycleCam(); });
 // hold to tilt: the same axis Q/E give you sideways, now up and down
 for (const [id, dir] of [['camUpBtn', 1], ['camDownBtn', -1]]) {
@@ -5115,7 +5160,7 @@ SPAWN_LIST.forEach((type) => spawnMonster(type));
 // debug hook for tests and screenshots: __world3d.tp(x, z) teleports, .P is the player state
 window.__world3d = { P, ghosts, arena, farms, updateIndoor, aimPoint, spectating: () => STANDS, tomatoes, throwTomato,
   arenaMod, buff: () => buffNow(), free,
-  equip: (id, slot) => equip(id, slot), nitro: () => nitro, setNitro: (v) => { nitro = v; nitroLock = false; }, jump,
+  equip: (id, slot) => equip(id, slot), gearOf: (slot) => gear(slot), nitro: () => nitro, setNitro: (v) => { nitro = v; nitroLock = false; }, jump,
   spawn: (type, x, z) => { spawnMonster(type); const m = monsters[monsters.length - 1]; m.x = x; m.z = z; m.t = 99; m.vx = m.vz = 0; return monsters.length - 1; },
   foeCast: (i) => castFoeBall(monsters[i]), chilled, smoked: () => Math.max(0, (smokeUntil - performance.now()) / 1000), colosseum: () => COLO && { arena: [A.doors.find((d) => /area=arena/.test(d.href)).x + 0.5, A.doors.find((d) => /area=arena/.test(d.href)).y + 0.5], stands: [A.doors.find((d) => /area=stands/.test(d.href)).x + 0.5, A.doors.find((d) => /area=stands/.test(d.href)).y + 0.5] }, hazardNow, clockOffset: () => HAZ.offset, hazards: () => [...HAZ.views.values()], hazardClock: (ms) => { HAZ.pinned = ms === undefined || ms === null ? null : ms; }, slowed, setHp: (n) => { hp = n; updateHud(); }, drawnBlocks: (id) => ((plotViews.get(id) || {}).blockMeshes || []).reduce((n, m) => n + m.count, 0), getPitch: () => fpPitch, firstPerson: () => firstPerson, setPitch: (v) => { fpPitch = v; }, openShop, hiddenBlocks, doorAngle: (id, i, j, k) => { const v = plotViews.get(id); return (v && v.doorAng && v.doorAng.get(`${i},${j},${k}`)) || 0; }, shopSpots, aimBlock, mouse, camera, building: () => building, toScreen, groundAt, solidAt, setBlocks, plots: PLOTS, placed, decorCrops, myFarm: () => myFarm, farmTile: () => farmTile(), hp: () => hp, mp, monsters, drops, field: () => field, hero: () => hero, fireballs, tp: (x, z, yaw) => { P.x = x; P.z = z; P.vx = P.vz = 0; if (yaw !== undefined) camYaw = yaw; }, cam: (dist, pitch) => { camDistT = camDist = dist; camPitchT = camPitch = pitch; }, size: [MAP_W, MAP_H], info: () => { // one full frame's draw calls and triangles (all passes, shadows included)
   renderer.info.autoReset = false; renderer.info.reset(); composer.render();

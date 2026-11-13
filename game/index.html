@@ -210,6 +210,7 @@
   .icard.legendary .icard-rarity { background: rgba(232, 196, 106, 0.25); color: #e8c46a; }
   .icard[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); box-shadow: 0 0 12px rgba(212, 169, 79, 0.2); }
   .icard.unequip { border-style: dashed; }
+  body.embed #landing { visibility: hidden; }
   .icard.unequip:hover { border-color: var(--dim); transform: translateY(-2px); }
   .arm-footer { display: flex; align-items: center; margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line); }
 
@@ -476,7 +477,8 @@
       $('name').value = S.name;
       update();
       renderHome();
-      show('home');
+      if (QS.has('armory')) { armDirty = false; $('armSaved').textContent = ''; renderArmory(); show('armory'); }
+      else show('home');
     } else {
       update();
       show('creator');
@@ -504,7 +506,12 @@
   $('authSwap').addEventListener('click', () => setMode(mode === 'login' ? 'signup' : 'login'));
   // Sent here from the 3D world without a character (?create=1): go straight to the creator
   // (enterGame shows it when the account has no character), or to sign-in if the session is gone.
-  if (new URLSearchParams(location.search).has('create')) $('enter').click();
+  // ?armory=1 goes straight to the Armory; the 3D world's Gear button opens it that way, inside an
+  // overlay (?embed=1), and then Back hands control back to the world instead of going Home.
+  const QS = new URLSearchParams(location.search);
+  const EMBED = QS.has('embed');
+  if (EMBED) document.body.classList.add('embed');
+  if (QS.has('create') || QS.has('armory')) $('enter').click();
   $('authClose').addEventListener('click', () => { $('auth').hidden = true; });
   $('authForm').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -607,7 +614,13 @@
   });
   $('armoryBtn').addEventListener('click', () => { armDirty = false; $('armSaved').textContent = ''; renderArmory(); show('armory'); });
   $('armBack').addEventListener('click', () => {
+    const saving = armDirty;
     if (armDirty) persistArmory();
+    if (EMBED) { // back to the world, once the save to your account has gone through
+      const done = () => parent.postMessage({ type: 'taproot-armory-closed' }, location.origin);
+      (saving ? saveQueue : Promise.resolve()).then(done, done);
+      return;
+    }
     renderHome(); update(); show('home');
   });
 

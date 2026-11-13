@@ -443,6 +443,59 @@ def oak_staff(c):
         c.px(x, y, hx("9fe6ff"))
 
 
+def _staff(c, shaft, orb, spark, length=16, x0=3, y0=21, glint=WHITE):
+    """A diagonal shaft from bottom-left with a glowing orb at the top-right end."""
+    for i in range(length):
+        x, y = x0 + i, y0 - i
+        c.px(x, y, shaft[3]); c.px(x + 1, y, shaft[2]); c.px(x + 1, y + 1, shaft[1])
+    ox, oy = x0 + length + 0.5, y0 - length + 0.5
+    blob(c, ox, oy, 3.4, 3.4, orb)
+    c.px(round(ox - 2), round(oy - 2), glint)
+    for dx, dy in ((3, -4), (-4, -3), (4, 3)):
+        c.px(round(ox + dx), round(oy + dy), spark)
+
+
+@icon
+def inferno_staff(c):
+    _staff(c, ramp("2a1410", "3a1a14", "5a2a1a", "7a3a22"), FIRE[1:], FIRE[4])
+    for k in (5, 10):
+        c.px(3 + k, 21 - k, GOLD[3]); c.px(4 + k, 21 - k, GOLD[2])
+
+
+@icon
+def thunder_staff(c):
+    _staff(c, DARK[1:] + [hx("6a6878")], ramp("8a7a10", "d8c020", "fff27a", "fffbd0"), hx("fff27a"))
+    for x, y in ((14, 2), (15, 3), (14, 4), (15, 5)):  # a little zigzag of lightning
+        c.px(x, y, hx("fffbd0"))
+
+
+@icon
+def apprentice_wand(c):
+    _staff(c, WOOD[1:], ramp("1a5a7a", "3aa0c8", "6fd8ff", "d0f6ff"), hx("9fe6ff"), length=11, x0=6, y0=19)
+
+
+@icon
+def fire_wand(c):
+    _staff(c, ramp("2a1410", "4a2418", "6a3420", "8a4a2c"), FIRE[1:], FIRE[4], length=11, x0=6, y0=19)
+
+
+@icon
+def ice_wand(c):
+    _staff(c, ramp("7a8a98", "a8bccc", "cfe2ee", "f2fbff"), ramp("2a6a8a", "5ab8d8", "9ae8ff", "e8fbff"), hx("e8fbff"), length=11, x0=6, y0=19)
+    for x, y in ((21, 4), (19, 2), (22, 7)):  # frost flecks
+        c.px(x, y, WHITE)
+
+
+@icon
+def boomerang(c):
+    for i in range(10):  # two arms meeting at a rounded elbow, top-right
+        c.px(4 + i, 18 - i // 3, WOOD[3]); c.px(4 + i, 19 - i // 3, WOOD[2]); c.px(4 + i, 20 - i // 3, WOOD[1])
+        c.px(18 - i // 3, 4 + i, WOOD[3]); c.px(19 - i // 3, 4 + i, WOOD[2]); c.px(20 - i // 3, 4 + i, WOOD[1])
+    blob(c, 16, 15, 2.6, 2.6, WOOD[1:])
+    for x, y in ((6, 18), (8, 17), (18, 6), (17, 8)):  # painted bands
+        c.px(x, y, RED[2]); c.px(x, y + 1, RED[1])
+
+
 def _bow(c, limb, recurve=False):
     for y in range(1, 23):
         k = abs(y - 11.5)
@@ -539,6 +592,15 @@ def aegis(c):
     for a in range(8):
         ang = a * math.pi / 4
         c.px(round(11.5 + math.cos(ang) * 4.6), round(10 + math.sin(ang) * 4.6), GOLD[4])
+
+
+@icon
+def mirror_shield(c):
+    blob(c, 11.5, 11.5, 9.0, 9.4, ramp("6a8aa0", "a8c8dc", "dff3ff", "ffffff"))
+    for k in range(-5, 3):  # a bright diagonal glint across the polished face
+        c.px(11 + k, 9 - k, WHITE); c.px(12 + k, 9 - k, hx("eef8ff"))
+    ring(c, 11.5, 11.5, 9.4, 1.4, GOLD[3], GOLD[1])
+    blob(c, 11.5, 11.5, 1.8, 1.8, GOLD[2:])
 
 
 @icon
@@ -670,6 +732,32 @@ def winged_boots(c):
 
 
 @icon
+def hermes_sandals(c):
+    """Gold sandals with a white wing at each ankle."""
+    gold_strap = GOLD[1:]
+    for ox, oy, dim in ((9, -1, 0.25), (3, 4, 0.0)):
+        strap = [mix(col, BLACK, dim) for col in gold_strap]
+        for x in range(0, 10):
+            c.px(ox + x, oy + 17, LEATHER[1]); c.px(ox + x, oy + 16, mix(GOLD[2], BLACK, dim))
+        for y in range(9, 16):
+            c.px(ox + 2, oy + y, strap[3]); c.px(ox + 3, oy + y, strap[1])
+        for x in range(3, 9):
+            c.px(ox + x, oy + 14, strap[2] if x < 6 else strap[1])
+        for f, (length, rise) in enumerate(((4, 3), (3, 1))):
+            for k in range(length):
+                c.px(ox - k, oy + 9 + f * 2 - (k * rise) // max(1, length), WHITE if k < length - 1 else hx("e8f2ff"))
+
+
+@icon
+def windrunner_boots(c):
+    _pair(c, ramp("124a54", "1e7a88", "3ab8c8", "8ae8f0"), hx("0e2a30"), 12, cuff=[hx("e8fbff"), WHITE])
+    for ox, oy in ((9, -1), (3, 4)):  # speed lines trailing behind each boot
+        for k, y in enumerate((11, 13, 15)):
+            for x in range(ox - 4 + k, ox - 1):
+                c.px(x, oy + y, hx("bff4fa"))
+
+
+@icon
 def dragons_stride(c):
     scale = ramp("3a0a10", "6a1420", "9a2a2a", "c84a3a")
     _pair(c, scale, GOLD[1], 11)
@@ -777,8 +865,9 @@ ICONS = [
     round_specs, shadow_visor, mystic_monocle, dragons_gaze, eyepatch, sun_goggles,
     steel_armor, mage_robe, ranger_tunic, rogue_tunic, leather_vest, phoenix_plate, chainmail, pirate_coat,
     iron_sword, oak_staff, hunter_bow, shadow_dagger, composite_bow, ember_blade, void_blade, cutlass, trident,
-    wooden_shield, iron_buckler, tome_of_sparks, lantern, tower_shield, crystal_orb, aegis, ships_compass, captains_hook,
-    leather_boots, swift_sandals, iron_greaves, winged_boots, dragons_stride, sea_boots, shadow_treads,
+    inferno_staff, thunder_staff, apprentice_wand, fire_wand, ice_wand, boomerang,
+    wooden_shield, iron_buckler, tome_of_sparks, lantern, tower_shield, crystal_orb, aegis, ships_compass, captains_hook, mirror_shield,
+    leather_boots, swift_sandals, iron_greaves, winged_boots, dragons_stride, sea_boots, shadow_treads, hermes_sandals, windrunner_boots,
     baby_slime, forest_fox, ember_sprite, void_familiar, parrot, baby_kraken,
 ]
 
