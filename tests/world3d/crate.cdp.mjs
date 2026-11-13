@@ -12,6 +12,7 @@ try {
   assert.ok(await ready(A));
   assert.ok(await ready(B));
   await sleep(2500);
+  for (const p of [A, B]) await p.ev('__world3d.monsters.forEach((m) => { m.dead = true; }); 1'); // only the crate matters here
 
   const pick = async (p, kind, from) => JSON.parse(await p.ev(
     `JSON.stringify((() => { const a = __world3d.arenaMod; for (let n = ${from}; n < ${from} + 500; n++) { const x = a.eventAt(n); if (x.kind === '${kind}') return x; } })())`));

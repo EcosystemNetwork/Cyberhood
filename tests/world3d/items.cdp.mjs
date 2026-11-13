@@ -8,6 +8,21 @@ try {
   const A = await player('Red'), B = await player('Blue');
   await A.ev(`localStorage.removeItem('taproot3d_fp'); 1`);
 
+  /* ---------- local dev: you own everything, and a weapon you pick survives a reload ---------- */
+  await A.go(`${BASE}/game/world3d/?area=fields&hour=13&nomp=1`);
+  await A.ev(`new Promise((r) => { const t = setInterval(() => { if (window.__world3d) { clearInterval(t); r(1); } }, 200); })`);
+  await sleep(1500);
+  const missing = await A.ev(`(() => { const own = JSON.parse(localStorage.getItem('taproot_owned') || '[]'); return Object.keys(GAME.ITEMS).filter((k) => !own.includes(k)); })()`);
+  assert.deepEqual(missing, [], 'local dev: every item is owned');
+  assert.ok(await A.ev('__world3d.field().bag.smoke_bomb') >= 5, 'local dev: with smoke bombs in the bag');
+  await A.ev(`__world3d.equip('ice_wand', 'rhand'); 1`);
+  await A.go(`${BASE}/game/world3d/?area=fields&hour=13&nomp=1`);
+  await A.ev(`new Promise((r) => { const t = setInterval(() => { if (window.__world3d) { clearInterval(t); r(1); } }, 200); })`);
+  await sleep(1500);
+  assert.equal(await A.ev(`JSON.parse(localStorage.getItem('taproot_character')).equipment.rhand`), 'ice_wand',
+    'local dev: the weapon you chose is still in your hand after a reload');
+  await A.ev(`(() => { const c = JSON.parse(localStorage.getItem('taproot_character')); c.equipment = {}; localStorage.setItem('taproot_character', JSON.stringify(c)); })(); 1`);
+
   /* ---------- in the fields: movement items and the weapons against monsters ---------- */
   await A.go(`${BASE}/game/world3d/?area=fields&hour=13&nomp=1`);
   await A.ev(`new Promise((r) => { const t = setInterval(() => { if (window.__world3d) { clearInterval(t); r(1); } }, 200); })`);

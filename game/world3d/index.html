@@ -2460,21 +2460,23 @@ let charData = (() => {
     return d;
   } catch (e) { return null; }
 })();
-// Local testing: on the local server your character always holds the iron sword and the Inferno Staff,
-// one in each hand (both hand slots); whichever one is missing goes in a free or non-weapon hand.
-if (/^(localhost|127\.0\.0\.1)$/.test(location.hostname) && charData) {
+// Local testing only (never the live site): you own every item in the game, and an empty hand is
+// filled with the iron sword or the Inferno Staff so a fresh character can fight straight away.
+// A hand that already holds something keeps it — this used to swap your chosen weapon back out
+// on every reload, which made it impossible to try anything else.
+const LOCAL_DEV = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+if (LOCAL_DEV && charData) {
   const e = Object.assign({}, charData.equipment);
-  const want = ['iron_sword', 'inferno_staff'];
-  for (const id of want) {
+  for (const id of ['iron_sword', 'inferno_staff']) {
     if (e.rhand === id || e.lhand === id) continue;
-    const hand = !want.includes(e.rhand) ? 'rhand' : 'lhand';
-    e[hand] = id;
+    if (!e.rhand) e.rhand = id;
+    else if (!e.lhand) e.lhand = id;
   }
   charData.equipment = e;
   try {
     localStorage.setItem('taproot_character', JSON.stringify(charData));
     const own = JSON.parse(localStorage.getItem('taproot_owned') || '[]');
-    for (const id of want) if (!own.includes(id)) own.push(id);
+    for (const id of Object.keys(GAME.ITEMS)) if (!own.includes(id)) own.push(id);
     localStorage.setItem('taproot_owned', JSON.stringify(own));
   } catch (err) {}
 }
@@ -2647,6 +2649,7 @@ let field = null;
 try { field = JSON.parse(localStorage.getItem(FIELD_KEY)); } catch (e) {}
 field = Object.assign({ xp: 0, kills: 0, gold: 0 }, field);
 if (!field.bag || typeof field.bag !== 'object') field.bag = {};
+if (LOCAL_DEV) field.bag.smoke_bomb = Math.max(field.bag.smoke_bomb || 0, 5); // local testing: always a few to hand
 const saveField = () => { try { localStorage.setItem(FIELD_KEY, JSON.stringify(field)); } catch (e) {} };
 
 // player hitbox: 0.56 x 0.4 tiles at the feet, checked against the tile grid
