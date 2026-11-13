@@ -7,7 +7,7 @@ try {
   const A = await player('Red'), B = await player('Blue');
   await A.go(`${BASE}/game/world3d/?area=city&hour=13`);
   assert.ok(await ready(A));
-  await A.ev(`__world3d.tp(136.5, 60.5); 1`); await sleep(2500);
+  await A.ev(`__world3d.tp(118.5, 90.5); 1`); await sleep(2500); // the colosseum's red gate
   assert.equal(await A.ev('location.search'), '?area=arena&from=city');
   await B.go(`${BASE}/game/world3d/?area=arena&from=city&hour=13`);
   assert.ok(await ready(A)); assert.ok(await ready(B));

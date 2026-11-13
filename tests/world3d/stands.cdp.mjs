@@ -60,7 +60,7 @@ try {
   await A.ev(`__world3d.hazardClock(null); __world3d.tp(22, 4, 0); 1`);
   await sleep(400);
   for (let i = 0; i < 30 && !/area=city/.test(await A.ev('location.search')); i++) await A.key('KeyW', 'w', 60);
-  assert.match(await A.ev('location.search'), /area=city&from=stands/, 'the north gate leads to the city');
+  assert.match(await A.ev('location.search'), /area=city&from=stands/, 'the north gate leads back outside');
   assert.ok(await ready(A));
   await sleep(1200);
   const at = JSON.parse(await A.ev('JSON.stringify([__world3d.P.x, __world3d.P.z])'));
