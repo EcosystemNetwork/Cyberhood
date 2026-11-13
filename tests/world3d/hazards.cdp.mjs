@@ -13,6 +13,7 @@ try {
   await A.go(`${BASE}/game/world3d/?area=arena&from=city&hour=13`);
   assert.ok(await ready(A));
   await sleep(1500);
+  await A.ev('__world3d.monsters.forEach((m) => { m.dead = true; }); 1'); // only hazards may hurt here
 
   const pick = async (kind, from) => JSON.parse(await A.ev(
     `JSON.stringify((() => { const a = __world3d.arenaMod; for (let n = ${from}; n < ${from} + 500; n++) { const x = a.eventAt(n); if (x.kind === '${kind}') return x; } })())`));

@@ -74,3 +74,14 @@ export const ready = (p) => p.ev(`new Promise((r) => { const t = setInterval(() 
 // The prompt in the near-chip (F actions), or '' when hidden.
 export const near = (p) => p.ev(`document.getElementById('nearChip').hidden ? '' : document.getElementById('nearText').textContent`);
 export const AVENUES = `${BASE}/game/world3d/?area=avenues&farmfast=1&hour=13`;
+
+// For arena tests that measure a fighter's HP: stand the Gladiator down and park the hazard
+// clock in a gap between events, so the only damage is the damage the test causes.
+export const calm = (p) => p.ev(`(() => {
+  for (const m of __world3d.monsters) m.dead = true;
+  const a = __world3d.arenaMod;
+  let n = Math.round(Date.now() / a.PERIOD_MS);
+  while (a.eventAt(n).endMs + 2000 >= a.eventAt(n + 1).tellMs) n++;
+  __world3d.hazardClock(a.eventAt(n).endMs + 1000);
+  return true;
+})()`);

@@ -1,7 +1,7 @@
 // Spectators throw tomatoes into the pit: the throw is broadcast, it arcs and splats,
 // it is rate limited, and it never touches a fighter's HP.
 import assert from 'node:assert/strict';
-import { launch, ready, sleep, BASE } from './harness.mjs';
+import { launch, ready, sleep, calm, BASE } from './harness.mjs';
 
 const { player, kill } = await launch();
 try {
@@ -12,6 +12,7 @@ try {
   assert.ok(await ready(A));
   assert.ok(await ready(B));
   await sleep(2500);
+  await calm(B); // so a drop in B's HP can only have come from a tomato
 
   // 1. a throw spawns a tomato, and it clears once it lands
   assert.equal(await A.ev('__world3d.throwTomato(); __world3d.tomatoes.length'), 1);

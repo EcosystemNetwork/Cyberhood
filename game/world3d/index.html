@@ -734,18 +734,18 @@ function stitch(title, size, parts) {
     { a: south, ox: 0, oy: 88 },
   ]);
   for (let y = 54; y < 86; y += 2) for (let x = 144; x < 158; x += 2) if (x === 156 || hash(x, y, 91) < 0.75) world.trees.push([x, y, hash(x, y, 61) > 0.5 ? 'tree_pine' : 'tree_oak']);
-  /* The colosseum: a real ring, not a frontage, standing at the end of the road that leaves
-     the city's south gate (which comes out at world x 119.5). Its two gates face that road.
-     You never walk inside it — the pit and the stands are their own areas behind those gates —
-     so its footprint is simply blocked, as a circle rather than the usual square, which keeps
-     the mine entrance south-east of it reachable. */
-  world.colosseum = { x: 119.5, z: 106, r: 16 };
+  /* The colosseum: a small ring at the end of the short road that runs south off the main
+     street, just below Hero Hall (that road ends at world z 77, x 136.5). Its two gates face
+     up the road. You never go inside it — the pit and the stands are their own areas behind
+     those gates — so its footprint is blocked, as a circle. Keep it clear of the overworld's
+     spawn point and every arrival spot: the first version stood on the fields' spawn and
+     trapped anyone who loaded in there. */
+  world.colosseum = { x: 136.5, z: 83, r: 6 };
   world.doors.push(
-    { x: 118, y: 90, w: 1, h: 1, href: '/game/world3d/?area=arena&from=city', name: 'Taproot Arena' },
-    { x: 121, y: 90, w: 1, h: 1, href: '/game/world3d/?area=stands&from=city', name: 'Arena Stands' });
-  world.arrive.arena = { x: 118, y: 87.5 };
-  world.arrive.stands = { x: 121, y: 87.5 };
-  world.paths.push([119.5, 88, 119.5, 90, 3.0]); // the last stretch of road, up to the gates
+    { x: 134, y: 77, w: 1, h: 1, href: '/game/world3d/?area=arena&from=city', name: 'Taproot Arena' },
+    { x: 138, y: 77, w: 1, h: 1, href: '/game/world3d/?area=stands&from=city', name: 'Arena Stands' });
+  world.arrive.arena = { x: 134, y: 74.5 };
+  world.arrive.stands = { x: 138, y: 74.5 };
   world.grid.box[3] = 54.2; // the seam avenue and its sidewalk spill just past the Avenues' old edge
   for (const k of ['fields', 'city', 'avenues', 'woods', 'docks']) AREAS[k] = world;
 }
@@ -908,7 +908,7 @@ if (STANDS) { // the tiers and the gate wedge are walkable; the pit and the back
 }
 if (COLO) { // a round footprint, so the ground south-east of it stays walkable
   for (let y = 0; y < MAP_H; y++) for (let x = 0; x < MAP_W; x++) {
-    if (Math.hypot(x + 0.5 - COLO.x, y + 0.5 - COLO.z) <= COLO.r) blocked[y][x] = true;
+    if (Math.hypot(x + 0.5 - COLO.x, y + 0.5 - COLO.z) <= COLO.r + 1) blocked[y][x] = true;
   }
 }
 (A.doors || []).forEach((d) => { for (let y = d.y; y < d.y + d.h; y++) for (let x = d.x; x < d.x + d.w; x++) blocked[y][x] = false; });
@@ -1991,21 +1991,21 @@ if (PIT) {
    bay each, taller, flagged red for the sand and blue for the seats. */
 if (COLO) {
   const CX = COLO.x, CZ = COLO.z, RO = COLO.r;
-  const BAYS = 30, SH = 3.4, bw = (Math.PI * 2 * RO) / BAYS;
+  const BAYS = 16, SH = 2.3, bw = (Math.PI * 2 * RO) / BAYS;
   const STONE = ['#cfc3a6', '#c2b699', '#b5a98c'], TRIM = '#e4dbc6', DARK = '#5a5147';
   const along = (a) => -a - Math.PI / 2;
-  // north (towards the city road) is angle -PI/2, which is bay 22.5 of 30: these two straddle it
-  const GATES = [22, 23];
+  // north (up the road) is angle -PI/2, bay 12 of 16; the gates sit one bay either side of it
+  const GATES = [11, 13];
   const bayAngle = (i) => (i / BAYS) * Math.PI * 2;
   at(0, 0);
 
   // the stepped base it stands on
   for (let k = 0; k < 2; k++) {
-    const rad = RO + 1.4 - k * 0.7;
+    const rad = RO + 0.9 - k * 0.45;
     for (let i = 0; i < BAYS * 2; i++) {
       const a = (i / (BAYS * 2)) * Math.PI * 2;
       put('toon', 'box', k ? '#c6bdac' : '#b9b0a0', CX + Math.cos(a) * rad, 0.12 + k * 0.16, CZ + Math.sin(a) * rad,
-        bw * 0.54, 0.24 + k * 0.32, 1.5, 0, along(a));
+        bw * 0.54, 0.2 + k * 0.24, 1.0, 0, along(a));
     }
   }
 
@@ -2018,27 +2018,27 @@ if (COLO) {
       if (gate && t < 2) continue; // the gate takes the bottom two storeys as one opening
       // the piers either side, with an engaged column and its cap on the outer face
       for (const sy of [-1, 1]) {
-        const px = x + Math.cos(a + sy * (bw * 0.33) / RO) * RO, pz = z + Math.sin(a + sy * (bw * 0.33) / RO) * RO;
-        put('toon', 'box', face, px, y0 + SH / 2, pz, bw * 0.3, SH, 1.5, 0, ry);
-        put('toon', 'cyl', STONE[0], px + Math.cos(a) * 0.72, y0 + SH * 0.45, pz + Math.sin(a) * 0.72, bw * 0.1, SH * 0.82, bw * 0.1);
-        put('toon', 'cyl', TRIM, px + Math.cos(a) * 0.72, y0 + SH * 0.89, pz + Math.sin(a) * 0.72, bw * 0.13, SH * 0.07, bw * 0.13);
+        const px = CX + Math.cos(a + sy * (bw * 0.33) / RO) * RO, pz = CZ + Math.sin(a + sy * (bw * 0.33) / RO) * RO; // from the centre, not from x
+        put('toon', 'box', face, px, y0 + SH / 2, pz, bw * 0.3, SH, 1.0, 0, ry);
+        put('toon', 'cyl', STONE[0], px + Math.cos(a) * 0.48, y0 + SH * 0.45, pz + Math.sin(a) * 0.48, bw * 0.1, SH * 0.82, bw * 0.1);
+        put('toon', 'cyl', TRIM, px + Math.cos(a) * 0.48, y0 + SH * 0.89, pz + Math.sin(a) * 0.48, bw * 0.13, SH * 0.07, bw * 0.13);
       }
       // the opening: a dark recess with a round head
       put('toon', 'box', DARK, x + Math.cos(a) * 0.3, y0 + SH * 0.33, z + Math.sin(a) * 0.3, bw * 0.5, SH * 0.66, 0.5, 0, ry);
       put('toon', 'sph', DARK, x + Math.cos(a) * 0.3, y0 + SH * 0.66, z + Math.sin(a) * 0.3, bw * 0.25, bw * 0.28, 0.25, 0, ry);
-      put('toon', 'box', TRIM, x + Math.cos(a) * 0.1, y0 + SH - 0.12, z + Math.sin(a) * 0.1, bw * 1.02, 0.3, 1.8, 0, ry);
+      put('toon', 'box', TRIM, x + Math.cos(a) * 0.1, y0 + SH - 0.1, z + Math.sin(a) * 0.1, bw * 1.02, 0.22, 1.25, 0, ry);
     }
     if (gate) { // one tall arch, flagged for where it leads
       const band = i === GATES[0] ? '#a8302c' : '#3a5ad8';
       for (const sy of [-1, 1]) {
-        const px = x + Math.cos(a + sy * (bw * 0.36) / RO) * RO, pz = z + Math.sin(a + sy * (bw * 0.36) / RO) * RO;
-        put('toon', 'box', STONE[0], px, 0.4 + SH, pz, bw * 0.36, SH * 2, 1.7, 0, ry);
+        const px = CX + Math.cos(a + sy * (bw * 0.36) / RO) * RO, pz = CZ + Math.sin(a + sy * (bw * 0.36) / RO) * RO;
+        put('toon', 'box', STONE[0], px, 0.4 + SH, pz, bw * 0.36, SH * 2, 1.15, 0, ry);
       }
       put('toon', 'box', DARK, x + Math.cos(a) * 0.4, 0.4 + SH * 0.62, z + Math.sin(a) * 0.4, bw * 0.56, SH * 1.24, 0.5, 0, ry);
       put('toon', 'sph', DARK, x + Math.cos(a) * 0.4, 0.4 + SH * 1.24, z + Math.sin(a) * 0.4, bw * 0.28, bw * 0.34, 0.25, 0, ry);
-      put('toon', 'box', TRIM, x + Math.cos(a) * 0.1, 0.4 + SH * 2 - 0.15, z + Math.sin(a) * 0.1, bw * 1.04, 0.36, 2.0, 0, ry);
-      put('toon', 'box', band, x + Math.cos(a) * 0.95, 0.4 + SH * 1.62, z + Math.sin(a) * 0.95, bw * 0.46, 1.3, 0.08, 0, ry);
-      put('toon', 'box', '#e0b450', x + Math.cos(a) * 0.99, 0.4 + SH * 1.62, z + Math.sin(a) * 0.99, 0.4, 0.4, 0.06, 0, ry);
+      put('toon', 'box', TRIM, x + Math.cos(a) * 0.1, 0.4 + SH * 2 - 0.12, z + Math.sin(a) * 0.1, bw * 1.04, 0.28, 1.35, 0, ry);
+      put('toon', 'box', band, x + Math.cos(a) * 0.66, 0.4 + SH * 1.62, z + Math.sin(a) * 0.66, bw * 0.5, 0.9, 0.08, 0, ry);
+      put('toon', 'box', '#e0b450', x + Math.cos(a) * 0.7, 0.4 + SH * 1.62, z + Math.sin(a) * 0.7, 0.3, 0.3, 0.06, 0, ry);
     }
   }
 
@@ -2046,22 +2046,23 @@ if (COLO) {
   const top = 0.4 + 3 * SH;
   for (let i = 0; i < BAYS; i++) {
     const a = bayAngle(i), ry = along(a), x = CX + Math.cos(a) * RO, z = CZ + Math.sin(a) * RO;
-    put('toon', 'box', STONE[1], x, top + SH * 0.38, z, bw * 1.02, SH * 0.76, 1.3, 0, ry);
-    put('toon', 'box', STONE[0], x + Math.cos(a) * 0.2, top + SH * 0.38, z + Math.sin(a) * 0.2, bw * 0.18, SH * 0.76, 1.1, 0, ry);
-    if (i % 2 === 0) put('toon', 'box', DARK, x + Math.cos(a) * 0.62, top + SH * 0.45, z + Math.sin(a) * 0.62, bw * 0.28, SH * 0.24, 0.3, 0, ry);
-    put('toon', 'box', TRIM, x + Math.cos(a) * 0.12, top + SH * 0.8, z + Math.sin(a) * 0.12, bw * 1.04, 0.4, 1.7, 0, ry);
-    if (i % 3 === 0) {
-      put('toon', 'cyl', '#8a6a3a', x - Math.cos(a) * 0.3, top + SH * 0.8 + 1.4, z - Math.sin(a) * 0.3, 0.12, 2.6, 0.12);
-      put('toon', 'box', '#c8383a', x - Math.cos(a) * 0.3, top + SH * 0.8 + 2.7, z - Math.sin(a) * 0.3, 0.5, 0.5, 0.07, 0, ry);
+    put('toon', 'box', STONE[1], x, top + SH * 0.38, z, bw * 1.02, SH * 0.76, 0.9, 0, ry);
+    put('toon', 'box', STONE[0], x + Math.cos(a) * 0.14, top + SH * 0.38, z + Math.sin(a) * 0.14, bw * 0.18, SH * 0.76, 0.75, 0, ry);
+    if (i % 2 === 0) put('toon', 'box', DARK, x + Math.cos(a) * 0.43, top + SH * 0.45, z + Math.sin(a) * 0.43, bw * 0.28, SH * 0.24, 0.2, 0, ry);
+    put('toon', 'box', TRIM, x + Math.cos(a) * 0.08, top + SH * 0.8, z + Math.sin(a) * 0.08, bw * 1.04, 0.3, 1.2, 0, ry);
+    if (i % 2 === 0) {
+      put('toon', 'cyl', '#8a6a3a', x - Math.cos(a) * 0.2, top + SH * 0.8 + 0.9, z - Math.sin(a) * 0.2, 0.08, 1.7, 0.08);
+      put('toon', 'box', '#c8383a', x - Math.cos(a) * 0.2, top + SH * 0.8 + 1.75, z - Math.sin(a) * 0.2, 0.36, 0.36, 0.06, 0, ry);
     }
   }
   // the inner face, so looking in over the gate shows seating and not an empty shell
   for (let i = 0; i < BAYS * 2; i++) {
-    const a = (i / (BAYS * 2)) * Math.PI * 2, rad = RO - 2.6;
-    put('toon', 'box', STONE[2], CX + Math.cos(a) * rad, 3.0, CZ + Math.sin(a) * rad, bw * 0.54, 6.0, 1.4, 0, along(a));
-    put('toon', 'box', STONE[1], CX + Math.cos(a) * (rad - 1.3), 2.0, CZ + Math.sin(a) * (rad - 1.3), bw * 0.54, 4.0, 1.4, 0, along(a));
+    const a = (i / (BAYS * 2)) * Math.PI * 2, rad = RO - 1.5;
+    put('toon', 'box', STONE[2], CX + Math.cos(a) * rad, 2.2, CZ + Math.sin(a) * rad, bw * 0.54, 4.4, 1.0, 0, along(a));
+    put('toon', 'box', STONE[1], CX + Math.cos(a) * (rad - 1.0), 1.5, CZ + Math.sin(a) * (rad - 1.0), bw * 0.54, 3.0, 1.0, 0, along(a));
+    put('toon', 'box', '#d8b878', CX + Math.cos(a) * (rad - 2.0), 0.05, CZ + Math.sin(a) * (rad - 2.0), bw * 0.6, 0.1, 1.6, 0, along(a));
   }
-  circles.push([CX, CZ, RO + 0.2]);
+  put('toon', 'cyl', '#d8b878', CX, 0.06, CZ, RO - 3.2, 0.12, RO - 3.2); // a glimpse of sand inside
 }
 
 // flowers: little lollipops in clusters, like the 2D page
@@ -4923,7 +4924,7 @@ function update(dt, now) {
 SPAWN_LIST.forEach((type) => spawnMonster(type));
 // debug hook for tests and screenshots: __world3d.tp(x, z) teleports, .P is the player state
 window.__world3d = { P, ghosts, arena, farms, updateIndoor, aimPoint, spectating: () => STANDS, tomatoes, throwTomato,
-  arenaMod, buff: () => buffNow(), free, hazardNow, clockOffset: () => HAZ.offset, hazards: () => [...HAZ.views.values()], hazardClock: (ms) => { HAZ.pinned = ms === undefined || ms === null ? null : ms; }, slowed, setHp: (n) => { hp = n; updateHud(); }, drawnBlocks: (id) => ((plotViews.get(id) || {}).blockMeshes || []).reduce((n, m) => n + m.count, 0), getPitch: () => fpPitch, firstPerson: () => firstPerson, setPitch: (v) => { fpPitch = v; }, openShop, hiddenBlocks, doorAngle: (id, i, j, k) => { const v = plotViews.get(id); return (v && v.doorAng && v.doorAng.get(`${i},${j},${k}`)) || 0; }, shopSpots, aimBlock, mouse, camera, building: () => building, toScreen, groundAt, solidAt, setBlocks, plots: PLOTS, placed, decorCrops, myFarm: () => myFarm, farmTile: () => farmTile(), hp: () => hp, mp, monsters, drops, field: () => field, hero: () => hero, fireballs, tp: (x, z, yaw) => { P.x = x; P.z = z; P.vx = P.vz = 0; if (yaw !== undefined) camYaw = yaw; }, cam: (dist, pitch) => { camDistT = camDist = dist; camPitchT = camPitch = pitch; }, size: [MAP_W, MAP_H], info: () => { // one full frame's draw calls and triangles (all passes, shadows included)
+  arenaMod, buff: () => buffNow(), free, colosseum: () => COLO && { arena: [A.doors.find((d) => /area=arena/.test(d.href)).x + 0.5, A.doors.find((d) => /area=arena/.test(d.href)).y + 0.5], stands: [A.doors.find((d) => /area=stands/.test(d.href)).x + 0.5, A.doors.find((d) => /area=stands/.test(d.href)).y + 0.5] }, hazardNow, clockOffset: () => HAZ.offset, hazards: () => [...HAZ.views.values()], hazardClock: (ms) => { HAZ.pinned = ms === undefined || ms === null ? null : ms; }, slowed, setHp: (n) => { hp = n; updateHud(); }, drawnBlocks: (id) => ((plotViews.get(id) || {}).blockMeshes || []).reduce((n, m) => n + m.count, 0), getPitch: () => fpPitch, firstPerson: () => firstPerson, setPitch: (v) => { fpPitch = v; }, openShop, hiddenBlocks, doorAngle: (id, i, j, k) => { const v = plotViews.get(id); return (v && v.doorAng && v.doorAng.get(`${i},${j},${k}`)) || 0; }, shopSpots, aimBlock, mouse, camera, building: () => building, toScreen, groundAt, solidAt, setBlocks, plots: PLOTS, placed, decorCrops, myFarm: () => myFarm, farmTile: () => farmTile(), hp: () => hp, mp, monsters, drops, field: () => field, hero: () => hero, fireballs, tp: (x, z, yaw) => { P.x = x; P.z = z; P.vx = P.vz = 0; if (yaw !== undefined) camYaw = yaw; }, cam: (dist, pitch) => { camDistT = camDist = dist; camPitchT = camPitch = pitch; }, size: [MAP_W, MAP_H], info: () => { // one full frame's draw calls and triangles (all passes, shadows included)
   renderer.info.autoReset = false; renderer.info.reset(); composer.render();
   const r = { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles };
   renderer.info.autoReset = true; return r;
