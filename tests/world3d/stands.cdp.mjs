@@ -54,6 +54,19 @@ try {
   await sleep(500);
   assert.equal(await A.ev('__world3d.hp()'), 100, 'and is never hit by them');
 
+  // 7. walking out the north gate puts you back in the city somewhere you can actually walk
+  await A.ev(`__world3d.hazardClock(null); __world3d.tp(22, 4, 0); 1`);
+  await sleep(400);
+  for (let i = 0; i < 30 && !/area=city/.test(await A.ev('location.search')); i++) await A.key('KeyW', 'w', 60);
+  assert.match(await A.ev('location.search'), /area=city&from=stands/, 'the north gate leads to the city');
+  assert.ok(await ready(A));
+  await sleep(1200);
+  const at = JSON.parse(await A.ev('JSON.stringify([__world3d.P.x, __world3d.P.z])'));
+  assert.equal(await A.ev(`__world3d.free(__world3d.P.x, __world3d.P.z)`), true,
+    `you arrive somewhere you can stand (${at})`);
+  const open = await A.ev(`[[0.6, 0], [-0.6, 0], [0, 0.6], [0, -0.6]].filter(([dx, dz]) => __world3d.free(__world3d.P.x + dx, __world3d.P.z + dz)).length`);
+  assert.ok(open >= 2, `and can walk away from it (${open} of 4 directions open)`);
+
   console.log('PASS');
 } finally { kill(); }
 process.exit(0);

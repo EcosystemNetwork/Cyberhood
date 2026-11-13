@@ -484,7 +484,7 @@ const AREAS = {
     doors: [{ x: 7, y: 8, w: 1, h: 1, href: '/game/world3d/?area=workshop&from=city', name: 'Workshop' },
       { x: 40, y: 8, w: 1, h: 1, href: '/game/world3d/?area=arena&from=city', name: 'Taproot Arena' },
       { x: 42, y: 8, w: 1, h: 1, href: '/game/world3d/?area=stands&from=city', name: 'Arena Stands' }],
-    arrive: { world: { x: 23.5, y: 30.5 }, woods: { x: 4, y: 17.5 }, avenues: { x: 23.5, y: 4 }, workshop: { x: 7, y: 10 }, arena: { x: 40, y: 10 }, stands: { x: 42, y: 10 },
+    arrive: { world: { x: 23.5, y: 30.5 }, woods: { x: 4, y: 17.5 }, avenues: { x: 23.5, y: 4 }, workshop: { x: 7, y: 10 }, arena: { x: 40, y: 10 }, stands: { x: 41, y: 11 },
       respawn: { x: 23.5, y: 21 } }, // the plaza, where arena fighters come back after a knockout
     spawn: [],
   },
@@ -1026,7 +1026,7 @@ const groundChunks = []; // { canvas, glow, x, y } in texture pixels
           c = d <= 2 ? FOAM : mix(POOL[0], POOL[1], n2); g = d <= 2 ? G_FOAM : G_WATER;
         } else { c = mix(ROCK_F[0], ROCK_F[1], n2); if (hash(px >> 3, py >> 3, 77) > 0.93) c = mix(c, [255, 255, 255], 0.08); }
       }
-      if (ARENA) { // raked sand in the pit with a painted emblem in the middle; flagstones outside
+      if (PIT) { // raked sand in the pit with a painted emblem in the middle; flagstones outside
         const r = Math.hypot(px / T - ARENA_X, py / T - ARENA_Z);
         if (r < ARENA_R) {
           c = mix(SAND_A[0], SAND_A[1], vnoise(px, py, 8));
@@ -1779,34 +1779,78 @@ if (PIT) {
   const ring = (n, rad, fn, half = 0) => { for (let i = 0; i < n; i++) { const a = (i / n) * Math.PI * 2; if (!half || !gap(a, half)) fn(a, ARENA_X + Math.cos(a) * rad, ARENA_Z + Math.sin(a) * rad, i); } };
   const along = (a) => -a - Math.PI / 2; // turns a box so its x axis runs along the ring
   at(0, 0);
-  ring(64, R + 0.4, (a, x, z, i) => {
-    put('toon', 'box', i % 2 ? '#9a948a' : '#8a847a', x, 1.2, z, 1.45, 2.4, 0.8, 0, along(a));
-    put('toon', 'box', '#b8b2a6', x, 2.5, z, 1.5, 0.25, 0.95, 0, along(a));
+  // The podium: a smooth travertine barrier around the sand with a painted band and a
+  // cornice, the way the real thing separates the arena floor from the first row.
+  ring(72, R + 0.4, (a, x, z) => {
+    put('toon', 'box', '#d6cdb9', x, 1.15, z, 1.3, 2.3, 0.8, 0, along(a));
+    put('toon', 'box', '#a8302c', x, 1.75, z, 1.32, 0.5, 0.86, 0, along(a));  // the painted podium band
+    put('toon', 'box', '#efe7d4', x, 2.42, z, 1.34, 0.22, 1.02, 0, along(a)); // cornice
   }, 0.16);
-  const CROWD = ['#e05a4a', '#4a7ae0', '#f0c040', '#6ac86a', '#c86af0', '#f0a06a', '#ffffff'];
+
+  /* The outer facade: three storeys of arcades, each stepped back a little, with an attic
+     wall and the velarium masts on top. The arches are a dark recess with a round head, so
+     the rhythm of openings reads as a colosseum rather than a castle wall. */
+  const BAYS = 30, RO = R + 6.3, SH = 3.5;
+  const wedge = (a, half) => Math.abs(wrapAngle(a - Math.PI / 2)) < half || Math.abs(wrapAngle(a + Math.PI / 2)) < half;
+  const bayW = (Math.PI * 2 * RO) / BAYS;
+  for (let t = 0; t < 3; t++) {
+    const rad = RO - t * 0.35, y0 = t * SH, h = SH, open = h * (t === 2 ? 0.52 : 0.62);
+    for (let i = 0; i < BAYS; i++) {
+      const a = (i / BAYS) * Math.PI * 2;
+      if (wedge(a, 0.26)) continue;
+      const x = ARENA_X + Math.cos(a) * rad, z = ARENA_Z + Math.sin(a) * rad, ry = along(a);
+      put('toon', 'box', i % 2 ? '#d6cdb9' : '#cfc5af', x, y0 + h / 2, z, bayW * 0.34, h, 1.1, 0, ry); // pier
+      const ix = ARENA_X + Math.cos(a + Math.PI / BAYS) * (rad - 0.3), iz = ARENA_Z + Math.sin(a + Math.PI / BAYS) * (rad - 0.3);
+      const ia = a + Math.PI / BAYS;
+      put('toon', 'box', '#6b6051', ix, y0 + open * 0.42, iz, bayW * 0.52, open * 0.84, 0.5, 0, along(ia)); // the opening
+      put('toon', 'sph', '#6b6051', ix, y0 + open * 0.84, iz, bayW * 0.26, bayW * 0.26, 0.25, 0, along(ia)); // its round head
+      if (t < 2) put('toon', 'sph', '#e8dfc9', ix, y0 + h * 0.86, iz, 0.26, 0.26, 0.18, 0, along(ia)); // a shield between the storeys
+    }
+    // the cornice that caps each storey
+    ring(BAYS * 2, rad + 0.12, (a, x, z) => {
+      if (wedge(a, 0.24)) return;
+      put('toon', 'box', '#efe7d4', x, y0 + h - 0.1, z, bayW * 0.56, 0.3, 1.4, 0, along(a));
+    });
+  }
+  // attic wall and the velarium masts that carried the awning
+  ring(BAYS * 2, RO - 1.05, (a, x, z) => {
+    if (wedge(a, 0.24)) return;
+    put('toon', 'box', '#dbd2bd', x, SH * 3 + 0.9, z, bayW * 0.56, 1.8, 1.0, 0, along(a));
+  });
+  ring(16, RO - 1.0, (a, x, z) => {
+    if (wedge(a, 0.3)) return;
+    put('toon', 'cyl', '#8a6a3a', x, SH * 3 + 3.1, z, 0.12, 2.6, 0.12);
+    put('toon', 'box', '#c8383a', x, SH * 3 + 4.3, z, 0.5, 0.5, 0.08, 0, along(a));
+  });
+  // Three tiers of stone seating. The seats stay empty: the crowd is other players.
   for (let t = 0; t < 3; t++) {
     const rad = R + 1.6 + t * 1.6, top = 2.6 + t * 1.2;
     ring(72, rad, (a, x, z, i) => {
-      put('toon', 'box', t % 2 ? '#a8a296' : '#b4aea2', x, top / 2, z, rad * 0.092, top, 1.6, 0, along(a));
-      if (hash(i, t, 131) > 0.45) { // a spectator: body and head
-        const c = CROWD[Math.floor(hash(i, t, 132) * CROWD.length)], ox = Math.cos(a) * 0.2, oz = Math.sin(a) * 0.2;
-        put('toon', 'box', c, x + ox, top + 0.3, z + oz, 0.42, 0.6, 0.3, 0, along(a));
-        put('toon', 'sph', ['#f2c8a0', '#d8a070', '#a8704a'][i % 3], x + ox, top + 0.8, z + oz, 0.2);
-      }
+      put('toon', 'box', t % 2 ? '#c9c0ad' : '#d6cdb9', x, top / 2, z, rad * 0.092, top, 1.6, 0, along(a));
+      put('toon', 'box', '#b3a994', x, top + 0.04, z, rad * 0.092, 0.08, 1.62, 0, along(a)); // the lip of the row
     }, 0.24);
   }
   // gatehouse: two towers, a lintel and a raised portcullis over the passage south
-  const gz = ARENA_Z + R + 0.6;
-  for (const sx of [-1, 1]) {
-    put('toon', 'box', '#8a847a', ARENA_X + sx * 2.6, 3.1, gz, 1.6, 6.2, 1.6);
-    put('toon', 'box', '#b8b2a6', ARENA_X + sx * 2.6, 6.3, gz, 1.9, 0.3, 1.9);
-    put('flat', 'pyr', '#6a4a8a', ARENA_X + sx * 2.6, 7.0, gz, 1.25, 1.2, 1.25, 0, Math.PI / 4, 0);
-  }
-  put('toon', 'box', '#9a948a', ARENA_X, 5.0, gz, 6.8, 1.2, 1.4);
-  for (let i = 0; i < 7; i++) put('toon', 'box', '#3a3640', ARENA_X - 1.8 + i * 0.6, 3.95, gz - 0.1, 0.12, 1.3, 0.2);
-  put('toon', 'box', '#3a3640', ARENA_X, 3.4, gz - 0.1, 4.2, 0.12, 0.2);
-  put('toon', 'box', '#c8383a', ARENA_X, 5.0, gz - 0.72, 2.6, 0.7, 0.05);
-  put('toon', 'box', '#e0b450', ARENA_X, 5.0, gz - 0.75, 0.5, 0.5, 0.05);
+  // The two entrances: a Roman triumphal gate, not a castle turret. Piers, an arched
+  // head, an entablature and a painted panel over it; the fighters' one keeps its grille.
+  const gate = (gx, gz, flip, band, bars) => {
+    const f = flip ? -1 : 1;
+    for (const sx of [-1, 1]) {
+      put('toon', 'box', '#d6cdb9', gx + sx * 2.9, 3.4, gz, 1.7, 6.8, 1.8);
+      put('toon', 'box', '#efe7d4', gx + sx * 2.9, 6.95, gz, 2.0, 0.34, 2.1);
+      put('toon', 'cyl', '#cfc5af', gx + sx * 2.9, 7.35, gz, 0.9, 0.5, 0.9); // a drum, like a column cap
+    }
+    put('toon', 'sph', '#6b6051', gx, 4.0, gz - f * 0.12, 2.05, 2.05, 0.3); // the arch head
+    put('toon', 'box', '#d6cdb9', gx, 5.9, gz, 7.6, 1.5, 1.5);
+    put('toon', 'box', '#efe7d4', gx, 6.8, gz, 8.0, 0.36, 1.8);
+    put('toon', 'box', band, gx, 5.9, gz - f * 0.78, 3.0, 0.8, 0.06);
+    put('toon', 'box', '#e0b450', gx, 5.9, gz - f * 0.81, 0.55, 0.55, 0.06);
+    if (bars) {
+      for (let i = 0; i < 7; i++) put('toon', 'box', '#3a3640', gx - 1.8 + i * 0.6, 4.35, gz - f * 0.1, 0.12, 1.5, 0.2);
+      put('toon', 'box', '#3a3640', gx, 3.6, gz - f * 0.1, 4.2, 0.12, 0.2);
+    }
+  };
+  gate(ARENA_X, ARENA_Z + R + 0.6, false, '#a8302c', true);
   // broken columns
   ARENA_COLS.forEach(([x, z], i) => {
     const h = 1.6 + hash(i, 0, 133) * 1.4;
@@ -1837,15 +1881,9 @@ if (PIT) {
     put('toon', 'box', team, x, 1.55, z, 1.0, 1.6, 0.06, 0, along(a));
     put('toon', 'box', '#e0b450', x - Math.cos(a) * 0.04, 1.7, z - Math.sin(a) * 0.04, 0.4, 0.4, 0.06, 0, along(a));
   }, 0.5);
-  // the spectators' gatehouse on the north side, and the ramp up to the back row
+  // the spectators' entrance on the north side, and the ramp up to the back row
   const sz = ARENA_Z - (R + 5.6) - 0.6;
-  for (const sx of [-1, 1]) {
-    put('toon', 'box', '#8a847a', ARENA_X + sx * 3.2, 2.6, sz, 1.4, 5.2, 1.4);
-    put('flat', 'pyr', '#6a4a8a', ARENA_X + sx * 3.2, 5.9, sz, 1.1, 1.1, 1.1, 0, Math.PI / 4, 0);
-  }
-  put('toon', 'box', '#9a948a', ARENA_X, 4.6, sz, 7.8, 1.0, 1.2);
-  put('toon', 'box', '#3a5ad8', ARENA_X, 4.6, sz - 0.64, 2.6, 0.7, 0.05);
-  put('toon', 'box', '#e0b450', ARENA_X, 4.6, sz - 0.67, 0.5, 0.5, 0.05);
+  gate(ARENA_X, sz, true, '#3a5ad8', false);
   for (let i = 0; i <= 12; i++) { // the ramp deck, drawn as steps
     const t = i / 12, rr = ARENA_R + 5.6 + 2.4 * t;
     put('toon', 'box', i % 2 ? '#b4aea2' : '#a8a296', ARENA_X, 5.0 * (1 - t) / 2, ARENA_Z - rr, 5.0, Math.max(0.08, 5.0 * (1 - t)), 0.3);
@@ -2390,7 +2428,7 @@ function makePlayerHero(look) {
   return h;
 }
 let hero = makePlayerHero(charData || DEFAULT_CHAR);
-const P = { x: spawnAt.x + 0.5, z: spawnAt.y + 0.75, y: 0, vy: 0, heading: Math.PI, phase: 0, atk: -1, atkL: -1, grounded: 0 };
+const P = { x: spawnAt.x + 0.5, z: spawnAt.y + 0.75, y: 0, vy: 0, vx: 0, vz: 0, heading: Math.PI, phase: 0, atk: -1, atkL: -1, grounded: 0 };
 if (A.arrive[from]) { // arriving through a gate: face into the map, not back at the gate
   P.heading = Math.atan2(MAP_W / 2 - P.x, MAP_H / 2 - P.z);
   camYaw = P.heading + Math.PI;
@@ -2719,20 +2757,31 @@ function aimPoint() {
   const c = hero.caster || hero.casterL;
   if (!c || fainted || firstPerson) return null;
   const dx = Math.sin(P.heading), dz = Math.cos(P.heading), y = clamp(P.y + 1.05, 0.7, 1.4);
-  for (let dist = 0.25; dist <= c.range; dist += 0.25) {
+  const stopAt = (dist) => { // what the shot would run into at this distance, or null
     const x = P.x + dx * dist, z = P.z + dz * dist;
     for (const m of monsters) {
       if (m.dead) continue;
       const my = m.cfg.fly ? 1.1 : 0.5;
-      if (Math.hypot(m.x - x, m.z - z) < (m.cfg.big ? 1.3 : 0.75) && Math.abs(my - y) < 1.2) return { x, y, z, dist, hit: 'monster' };
+      if (Math.hypot(m.x - x, m.z - z) < (m.cfg.big ? 1.3 : 0.75) && Math.abs(my - y) < 1.2) return 'monster';
     }
     if (ARENA) for (const g of ghosts.values()) {
-      if (!g.dead && Math.hypot(g.x - x, g.z - z) < 0.7 && y > g.y && y < g.y + 1.8) return { x, y, z, dist, hit: 'player' };
+      if (!g.dead && Math.hypot(g.x - x, g.z - z) < 0.7 && y > g.y && y < g.y + 1.8) return 'player';
     }
     const cx = Math.floor(x), cz = Math.floor(z);
     if (cx < 0 || cz < 0 || cx >= MAP_W || cz >= MAP_H || (blocked[cz][cx] && waterAt(x * T, z * T) < 0)
-      || circles.some(([ox, oz, r]) => Math.hypot(x - ox, z - oz) < r)) return { x, y, z, dist, hit: 'wall' };
-    if (y <= groundAt(x, z, y) + 0.05 || blockCellAt(x, y, z)) return { x, y, z, dist, hit: 'ground' };
+      || circles.some(([ox, oz, r]) => Math.hypot(x - ox, z - oz) < r)) return 'wall';
+    if (y <= groundAt(x, z, y) + 0.05 || blockCellAt(x, y, z)) return 'ground';
+    return null;
+  };
+  const STEP = 0.25;
+  for (let dist = STEP; dist <= c.range; dist += STEP) {
+    const hit = stopAt(dist);
+    if (!hit) continue;
+    // binary search back over the last step, so the ring slides instead of snapping in
+    // quarter-tile jumps as you turn — that stepping is what reads as jerk
+    let lo = dist - STEP, hi = dist;
+    for (let i = 0; i < 5; i++) { const mid = (lo + hi) / 2; if (stopAt(mid)) hi = mid; else lo = mid; }
+    return { x: P.x + dx * hi, y, z: P.z + dz * hi, dist: hi, hit };
   }
   return { x: P.x + dx * c.range, y, z: P.z + dz * c.range, dist: c.range, hit: 'range' };
 }
@@ -2799,6 +2848,7 @@ function updateTomatoes(dt) {
   }
 }
 
+const aimSmooth = { on: false, x: 0, y: 0 };
 const ARC_DOTS = 9;
 function drawAimArc(a) {
   const box = $('aimArc');
@@ -4297,17 +4347,34 @@ function update(dt, now) {
   const boosting = moving && (sprintOn || ((keys.ShiftLeft || keys.ShiftRight) && !shiftCancel)) && !nitroLock && nitro > 0;
   if (boosting) { nitro -= dt * 0.12; if (nitro <= 0) { nitro = 0; nitroLock = true; } }
   else { nitro = Math.min(1, nitro + dt * 0.3); if (nitroLock && nitro > 0.25) nitroLock = false; }
-  if (moving) {
+  // Smoothing is frame-rate independent: damp(k, dt) is the fraction of the way to close
+  // this frame for a time constant 1/k, where a bare `dt * k` would snap at low frame rates
+  // and crawl at high ones. That difference is most of what reads as jerk.
+  {
     const sy = Math.sin(camYaw), cy = Math.cos(camYaw);
     let mx = -sy * fy + cy * fx, mz = -cy * fy - sy * fx;
-    const len = Math.hypot(mx, mz), speed = (boosting ? 7.4 : 4.2) * Math.min(1, len) * (slowed() > 0 ? 0.35 : 1);
-    mx /= len; mz /= len;
-    if (free(P.x + mx * speed * dt, P.z)) P.x += mx * speed * dt;
-    if (free(P.x, P.z + mz * speed * dt)) P.z += mz * speed * dt;
-    P.heading += wrapAngle(Math.atan2(mx, mz) - P.heading) * Math.min(1, dt * 14);
-    P.phase += dt * speed * 2.4;
+    const len = Math.hypot(mx, mz) || 1;
+    const speed = moving ? (boosting ? 7.4 : 4.2) * Math.min(1, len) * (slowed() > 0 ? 0.35 : 1) : 0;
+    const wantX = moving ? (mx / len) * speed : 0, wantZ = moving ? (mz / len) * speed : 0;
+    // ease into a run and coast out of it, rather than snapping between 0 and full speed
+    const k = moving ? 22 : 14;
+    P.vx = damp(P.vx, wantX, k, dt);
+    P.vz = damp(P.vz, wantZ, k, dt);
+    const sp = Math.hypot(P.vx, P.vz);
+    if (sp > 0.02) {
+      // brushing a wall only stops that axis for the frame; zeroing the speed would make
+      // you re-accelerate from nothing every time you scrape a doorframe
+      if (free(P.x + P.vx * dt, P.z)) P.x += P.vx * dt;
+      if (free(P.x, P.z + P.vz * dt)) P.z += P.vz * dt;
+      P.phase += dt * sp * 2.4;
+    } else { P.vx = P.vz = 0; }
+    // these two are a feedback loop — the camera chases the heading and the heading is read
+    // through the camera — so keep the heading quick and the camera lazy, or you walk in arcs
+    if (moving) P.heading = damp(P.heading, P.heading + wrapAngle(Math.atan2(mx, mz) - P.heading), 14, dt);
     // the camera drifts back behind the player unless they are steering it
-    if (!firstPerson && CAM_MODES[camMode].follow && fy >= 0 && now - lastDrag > 800) camYaw += wrapAngle(P.heading + Math.PI - camYaw) * Math.min(1, dt * 1.1);
+    if (moving && !firstPerson && CAM_MODES[camMode].follow && fy >= 0 && now - lastDrag > 800) {
+      camYaw = damp(camYaw, camYaw + wrapAngle(P.heading + Math.PI - camYaw), 1.1, dt);
+    }
   }
   if (firstPerson) P.heading = camYaw + Math.PI; // you face where you look
   if (pkb.t > 0) {
@@ -4488,7 +4555,10 @@ function update(dt, now) {
   }
   if ($('crosshair').hidden === firstPerson) $('crosshair').hidden = !firstPerson;
   { // the aim indicator: a ring where the shot stops, and for a lob the arc it travels
-    const el = $('aimRing'), a = aimPoint(), at = a && toScreen(a.x, a.y, a.z);
+    const el = $('aimRing'), a = aimPoint(), raw = a && toScreen(a.x, a.y, a.z);
+    // and one more pass of smoothing on screen, so a turn slides the ring across the sand
+    const at = !raw ? null : aimSmooth.on ? [damp(aimSmooth.x, raw[0], 26, dt), damp(aimSmooth.y, raw[1], 26, dt)] : raw;
+    if (at) { aimSmooth.on = true; aimSmooth.x = at[0]; aimSmooth.y = at[1]; } else { aimSmooth.on = false; }
     if (at) {
       el.style.left = `${at[0]}px`;
       el.style.top = `${at[1]}px`;
@@ -4576,7 +4646,7 @@ function update(dt, now) {
 SPAWN_LIST.forEach((type) => spawnMonster(type));
 // debug hook for tests and screenshots: __world3d.tp(x, z) teleports, .P is the player state
 window.__world3d = { P, ghosts, arena, farms, updateIndoor, aimPoint, spectating: () => STANDS, tomatoes, throwTomato,
-  arenaMod, buff: () => buffNow(), hazardNow, clockOffset: () => HAZ.offset, hazards: () => [...HAZ.views.values()], hazardClock: (ms) => { HAZ.pinned = ms === undefined || ms === null ? null : ms; }, slowed, setHp: (n) => { hp = n; updateHud(); }, drawnBlocks: (id) => ((plotViews.get(id) || {}).blockMeshes || []).reduce((n, m) => n + m.count, 0), getPitch: () => fpPitch, firstPerson: () => firstPerson, setPitch: (v) => { fpPitch = v; }, openShop, hiddenBlocks, doorAngle: (id, i, j, k) => { const v = plotViews.get(id); return (v && v.doorAng && v.doorAng.get(`${i},${j},${k}`)) || 0; }, shopSpots, aimBlock, mouse, camera, building: () => building, toScreen, groundAt, solidAt, setBlocks, plots: PLOTS, placed, decorCrops, myFarm: () => myFarm, farmTile: () => farmTile(), hp: () => hp, mp, monsters, drops, field: () => field, hero: () => hero, fireballs, tp: (x, z, yaw) => { P.x = x; P.z = z; if (yaw !== undefined) camYaw = yaw; }, cam: (dist, pitch) => { camDistT = camDist = dist; camPitchT = camPitch = pitch; }, size: [MAP_W, MAP_H], info: () => { // one full frame's draw calls and triangles (all passes, shadows included)
+  arenaMod, buff: () => buffNow(), free, hazardNow, clockOffset: () => HAZ.offset, hazards: () => [...HAZ.views.values()], hazardClock: (ms) => { HAZ.pinned = ms === undefined || ms === null ? null : ms; }, slowed, setHp: (n) => { hp = n; updateHud(); }, drawnBlocks: (id) => ((plotViews.get(id) || {}).blockMeshes || []).reduce((n, m) => n + m.count, 0), getPitch: () => fpPitch, firstPerson: () => firstPerson, setPitch: (v) => { fpPitch = v; }, openShop, hiddenBlocks, doorAngle: (id, i, j, k) => { const v = plotViews.get(id); return (v && v.doorAng && v.doorAng.get(`${i},${j},${k}`)) || 0; }, shopSpots, aimBlock, mouse, camera, building: () => building, toScreen, groundAt, solidAt, setBlocks, plots: PLOTS, placed, decorCrops, myFarm: () => myFarm, farmTile: () => farmTile(), hp: () => hp, mp, monsters, drops, field: () => field, hero: () => hero, fireballs, tp: (x, z, yaw) => { P.x = x; P.z = z; P.vx = P.vz = 0; if (yaw !== undefined) camYaw = yaw; }, cam: (dist, pitch) => { camDistT = camDist = dist; camPitchT = camPitch = pitch; }, size: [MAP_W, MAP_H], info: () => { // one full frame's draw calls and triangles (all passes, shadows included)
   renderer.info.autoReset = false; renderer.info.reset(); composer.render();
   const r = { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles };
   renderer.info.autoReset = true; return r;
