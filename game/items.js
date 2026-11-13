@@ -62,6 +62,9 @@
     apprentice_wand:{ name: 'Apprentice Wand', slot: 'rhand', rarity: 'common',  stats: { atk: 1, mag: 4 } },
     fire_wand:     { name: 'Fire Wand',     slot: 'rhand',  rarity: 'uncommon',  stats: { atk: 2, mag: 6 } },
     inferno_staff: { name: 'Inferno Staff', slot: 'rhand',  rarity: 'legendary', stats: { atk: 4, mag: 12 } },
+    ice_wand:      { name: 'Ice Wand',      slot: 'rhand',  rarity: 'uncommon',  stats: { atk: 1, mag: 5 } },  // slows what it hits
+    thunder_staff: { name: 'Thunder Staff', slot: 'rhand',  rarity: 'rare',      stats: { atk: 2, mag: 9 } },  // jumps to two more
+    boomerang:     { name: 'Boomerang',     slot: 'rhand',  rarity: 'uncommon',  stats: { atk: 6, spd: 1 } },  // hits out and back
     // LEFT HAND (shields / off-hand)
     wooden_shield: { name: 'Wooden Shield', slot: 'lhand',  rarity: 'common',    stats: { def: 4, hp: 5 } },
     iron_buckler:  { name: 'Iron Buckler',  slot: 'lhand',  rarity: 'common',    stats: { def: 3, spd: 1 } },
@@ -72,12 +75,15 @@
     aegis:         { name: 'Aegis',         slot: 'lhand',  rarity: 'legendary', stats: { def: 10, hp: 30, mag: 3 } },
     ships_compass: { name: "Ship's Compass",slot: 'lhand',  rarity: 'uncommon',  stats: { spd: 3, mag: 2 } },
     captains_hook: { name: "Captain's Hook",slot: 'lhand',  rarity: 'rare',      stats: { atk: 5, def: 2 } },
+    mirror_shield: { name: 'Mirror Shield', slot: 'lhand',  rarity: 'rare',      stats: { def: 5, mag: 2 } },  // a timed block sends fire back
     // FEET
     leather_boots: { name: 'Leather Boots', slot: 'feet',   rarity: 'common',    stats: { spd: 2, def: 1 } },
     swift_sandals: { name: 'Swift Sandals', slot: 'feet',   rarity: 'uncommon',  stats: { spd: 4 } },
     iron_greaves:  { name: 'Iron Greaves',  slot: 'feet',   rarity: 'uncommon',  stats: { def: 4, hp: 10, spd: -1 } },
     winged_boots:  { name: 'Winged Boots',  slot: 'feet',   rarity: 'rare',      stats: { spd: 6, atk: 1 } },
     dragons_stride:{ name: "Dragon's Stride",slot:'feet',   rarity: 'legendary', stats: { spd: 5, def: 5, hp: 20 } },
+    hermes_sandals:{ name: 'Hermes Sandals',slot: 'feet',   rarity: 'rare',      stats: { spd: 3 } },          // a second jump in mid-air
+    windrunner_boots:{ name: 'Windrunner Boots', slot: 'feet', rarity: 'rare',   stats: { spd: 5 } },          // nitro never runs out
     sea_boots:     { name: 'Sea Boots',     slot: 'feet',   rarity: 'common',    stats: { def: 2, hp: 5, spd: 1 } },
     shadow_treads: { name: 'Shadow Treads', slot: 'feet',   rarity: 'rare',      stats: { spd: 5, atk: 2 } },
     // PET

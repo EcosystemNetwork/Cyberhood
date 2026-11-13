@@ -255,7 +255,7 @@ else if (!localStorage.getItem('taproot_character')) window.location.replace('/g
   <button id="jumpBtn" type="button" tabindex="-1" aria-label="Jump">JUMP</button>
   <button id="attackBtn" type="button" tabindex="-1" aria-label="Attack">&#9876;&#65039;</button>
 </div>
-<div class="help"><b>WASD</b> move &middot; <b>Drag / Q E</b> look &middot; <b>Z X</b> tilt &middot; <b>Space</b> jump &middot; <b>'</b> / <b>J</b> right hand &middot; <b>;</b> left hand &middot; <b>Shift</b> nitro &middot; <b>C</b> camera &middot; <b>F</b> use &middot; <b>H</b> potion &middot; <b>B</b> bag &middot; <b>U</b> sprint toggle &middot; <b>V</b> first person &middot; <b>T</b> chat</div>
+<div class="help"><b>WASD</b> move &middot; <b>Drag / Q E</b> look &middot; <b>Z X</b> tilt &middot; <b>Space</b> jump &middot; <b>'</b> / <b>J</b> right hand &middot; <b>;</b> left hand &middot; <b>Shift</b> nitro &middot; <b>C</b> camera &middot; <b>F</b> use &middot; <b>H</b> potion &middot; <b>N</b> smoke &middot; <b>B</b> bag &middot; <b>U</b> sprint toggle &middot; <b>V</b> first person &middot; <b>T</b> chat</div>
 <div id="crosshair" hidden></div>
 <div id="aimRing" hidden></div>
 <div id="aimArc" hidden></div>
@@ -2737,7 +2737,7 @@ function infoOf(id) {
     const r = GAME.RARITIES[it.rarity];
     return `<span style="color:${r.color === '#9a95a8' ? '#7a6a5a' : r.color}">${r.label}</span> ${GAME.SLOT_LABELS[it.slot]} &middot; ` + Object.entries(it.stats).map(([k, v]) => `${v > 0 ? '+' : ''}${v} ${GAME.STAT_LABELS[k]}`).join(' ');
   }
-  if (CONSUMABLES[id]) return `Restores ${CONSUMABLES[id].heal} HP`;
+  if (CONSUMABLES[id]) return CONSUMABLES[id].smoke ? `Vanish for ${CONSUMABLES[id].smoke}s (N)` : `Restores ${CONSUMABLES[id].heal} HP`;
   if (FARM_ITEMS[id]) return FARM_ITEMS[id].info;
   return 'Monster drop';
 }
@@ -2860,14 +2860,25 @@ const drinkBest = () => { const id = ['health_potion', 'big_potion', 'apple'].fi
 
 // Jump: allowed while on the ground or just after walking off it (a short grace window).
 function jump() {
-  if (fainted || P.grounded > 0.12) return;
-  P.vy = 7.4;
-  P.grounded = 1;
+  if (fainted) return;
+  if (P.grounded <= 0.12) { // on the ground, or only just off it
+    P.vy = 7.4;
+    P.grounded = 1;
+    P.airJump = gear('feet') === 'hermes_sandals'; // the sandals hold one more jump in reserve
+    return;
+  }
+  if (P.airJump) { // ...spent in mid-air
+    P.airJump = false;
+    P.vy = 7.0;
+    burst(P.x, P.y + 0.1, P.z, '#ffe08a', 10);
+  }
 }
 
 // hand 'R' (J, K or ') or 'L' (;): each hand has its own weapon, swing and cooldown (dual wield)
 function swing(hand = 'R') {
   if (STANDS) { throwTomato(); return; } // a spectator has no fight to swing at
+  if (hand === 'L' && gear('lhand') === 'mirror_shield') { if (!fainted && !modal) parry(); return; }
+  if (fireballs.some((f) => f.boom && f.hand === hand)) return; // the boomerang is still out
   const L = hand === 'L', caster = L ? hero.casterL : hero.caster;
   if (fainted || modal || (L ? attackCdL : attackCd) > 0) return;
   if (L) { attackCdL = caster ? caster.cd : 0.36; P.atkL = 0; mp.atkL = Math.round(performance.now()); }
@@ -2877,7 +2888,7 @@ function swing(hand = 'R') {
   setTimeout(() => {
     const hx = P.x + Math.sin(P.heading) * 0.75, hz = P.z + Math.cos(P.heading) * 0.75;
     for (const m of monsters) if (!m.dead && Math.hypot(m.x - hx, m.z - hz) < (m.cfg.big ? 1.25 : 0.95)) hitMonster(m);
-    if (ARENA) for (const g of ghosts.values()) if (Math.hypot(g.x - hx, g.z - hz) < 0.95 && Math.abs(g.y - P.y) < 1.2) hitPlayer(g, statNow('atk'), hand);
+    if (ARENA) for (const g of ghosts.values()) if (!g.hid && Math.hypot(g.x - hx, g.z - hz) < 0.95 && Math.abs(g.y - P.y) < 1.2) hitPlayer(g, statNow('atk'), hand);
     if (ARENA) smashCrate(hx, hz);
   }, 110);
 }
@@ -2902,15 +2913,6 @@ function castBall(hand = 'R') {
   // aim from the tip at a point straight ahead of the player, so shots from either hand converge on the target line
   const ax = P.x + Math.sin(P.heading) * 8 - V.x, az = P.z + Math.cos(P.heading) * 8 - V.z, al = Math.hypot(ax, az) || 1;
   let dx = ax / al, dz = az / al, dy = 0;
-  const s = c.size;
-  const g = new THREE.Group();
-  const core = new THREE.Mesh(FB_GEO, new THREE.MeshBasicMaterial({ color: '#fff4c0' }));
-  core.scale.setScalar(0.11 * s);
-  const shell = new THREE.Mesh(FB_GEO, new THREE.MeshBasicMaterial({ color: c.color }));
-  shell.scale.setScalar(0.2 * s);
-  const halo = new THREE.Mesh(FB_GEO, new THREE.MeshBasicMaterial({ color: c.color, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false }));
-  halo.scale.setScalar(0.38 * s);
-  g.add(core, shell, halo);
   let x = V.x + dx * 0.2, z = V.z + dz * 0.2, y = clamp(V.y, 0.7, 1.4);
   if (firstPerson) { // straight out from the eyes, a little to the side of the hand that cast it
     camera.getWorldDirection(SEG);
@@ -2918,12 +2920,47 @@ function castBall(hand = 'R') {
     x = camera.position.x + SEG.x * 0.6 - SEG.z * side; y = camera.position.y - 0.2 + SEG.y * 0.6; z = camera.position.z + SEG.z * 0.6 + SEG.x * side;
     dx = SEG.x; dy = SEG.y; dz = SEG.z;
   }
+  spawnShot(x, y, z, dx, dy, dz, c, hand);
+}
+// One magic shot, from a point along a direction. A boomerang is a spinning cross of wood rather
+// than a ball, and flies out and back (see updateBoomerang) instead of bursting on what it hits.
+function spawnShot(x, y, z, dx, dy, dz, c, hand) {
+  const s = c.size, g = new THREE.Group();
+  let halo;
+  if (c.boomerang) {
+    const wood = new THREE.MeshBasicMaterial({ color: c.color });
+    for (const r of [0.45, -0.45]) {
+      const arm = new THREE.Mesh(HZ_BOX, wood);
+      arm.scale.set(0.5, 0.06, 0.12);
+      arm.rotation.y = r;
+      arm.position.set(Math.sin(r) * 0.12, 0, Math.cos(r) * 0.12);
+      g.add(arm);
+    }
+    halo = g;
+  } else {
+    const core = new THREE.Mesh(FB_GEO, new THREE.MeshBasicMaterial({ color: '#fff4c0' }));
+    core.scale.setScalar(0.11 * s);
+    const shell = new THREE.Mesh(FB_GEO, new THREE.MeshBasicMaterial({ color: c.color }));
+    shell.scale.setScalar(0.2 * s);
+    halo = new THREE.Mesh(FB_GEO, new THREE.MeshBasicMaterial({ color: c.color, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false }));
+    halo.scale.setScalar(0.38 * s);
+    g.add(core, shell, halo);
+  }
   g.position.set(x, y, z);
   scene.add(g);
-  const light = FB_LIGHTS.find((l) => !l.userData.busy);
+  const light = c.boomerang ? null : FB_LIGHTS.find((l) => !l.userData.busy);
   if (light) { light.userData.busy = true; light.color.set(c.color); light.intensity = 6; }
-  fireballs.push({ g, halo, x, y, z, dx, dy, dz, dist: 0, light, c, trailT: 0, hand });
+  const fb = { g, halo, x, y, z, dx, dy, dz, dist: 0, light, c, trailT: 0, hand };
+  if (c.boomerang) fb.boom = { back: false, hit: new Set(), age: 0 };
+  fireballs.push(fb);
   burst(x, y, z, c.color, 5);
+  return fb;
+}
+// a shot fired from the player at a point on the ground — what a mirror shield sends back
+const MIRROR_SHOT = { color: '#cfefff', cd: 0, range: 16, aoe: 0, size: 1.1, speed: 20 };
+function shootAt(tx, tz, c = MIRROR_SHOT) {
+  const dx = tx - P.x, dz = tz - P.z, d = Math.hypot(dx, dz) || 1;
+  return spawnShot(P.x + dx / d * 0.6, P.y + 1.1, P.z + dz / d * 0.6, dx / d, 0, dz / d, c, 'L');
 }
 // Where the next magic ball would stop. In third person a shot flies straight along the
 // player's heading (castBall aims both hands at a point 8 tiles ahead), so this marches that
@@ -2945,7 +2982,7 @@ function aimPoint() {
       if (Math.hypot(m.x - x, m.z - z) < (m.cfg.big ? 1.3 : 0.75) && Math.abs(my - y) < 1.2) return 'monster';
     }
     if (ARENA) for (const g of ghosts.values()) {
-      if (!g.dead && Math.hypot(g.x - x, g.z - z) < 0.7 && y > g.y && y < g.y + 1.8) return 'player';
+      if (!g.dead && !g.hid && Math.hypot(g.x - x, g.z - z) < 0.7 && y > g.y && y < g.y + 1.8) return 'player';
     }
     const cx = Math.floor(x), cz = Math.floor(z);
     if (cx < 0 || cz < 0 || cx >= MAP_W || cz >= MAP_H || (blocked[cz][cx] && waterAt(x * T, z * T) < 0)
@@ -3044,6 +3081,77 @@ function drawAimArc(a) {
   if (box.hidden) box.hidden = false;
 }
 
+/* ---------- what the new weapons add to a hit ---------- */
+const bolts = [];
+// ice: whatever it hits moves at a fraction of its speed for a while
+function chillMonster(m, c) {
+  if (!c.slow) return;
+  m.chill = performance.now() + c.slow.ms;
+  m.chillMul = c.slow.mul;
+  burst(m.x, 0.8, m.z, '#cfefff', 8);
+  floatText(m.x, 1.6, m.z, 'Slowed', '#9ae8ff');
+}
+// thunder: the strike jumps from what it hit to the nearest targets after it
+function chainFrom(fb, first, power) {
+  const n = fb.c.chain;
+  if (!n) return;
+  const pool = monsters.filter((m) => !m.dead && m !== first)
+    .concat(ARENA ? [...ghosts.values()].filter((g) => !g.dead && !g.hid && g !== first) : []);
+  const near = pool.map((q) => [q, Math.hypot(q.x - first.x, q.z - first.z)]).filter(([, d]) => d < 4.5)
+    .sort((a, b) => a[1] - b[1]).slice(0, n);
+  let from = first;
+  for (const [q] of near) {
+    drawBolt(from.x, from.z, q.x, q.z);
+    if (ghosts.has(q.id) && ghosts.get(q.id) === q) hitPlayer(q, power * 0.6, fb.hand, true);
+    else hitMonster(q, power * 0.6);
+    from = q;
+  }
+}
+function drawBolt(x1, z1, x2, z2) {
+  const len = Math.hypot(x2 - x1, z2 - z1);
+  const m = new THREE.Mesh(HZ_BOX, new THREE.MeshBasicMaterial({ color: '#fff27a', transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false }));
+  m.scale.set(0.09, 0.09, len);
+  m.position.set((x1 + x2) / 2, 1.0, (z1 + z2) / 2);
+  m.rotation.y = Math.atan2(x2 - x1, z2 - z1);
+  scene.add(m);
+  bolts.push({ m, age: 0 });
+  burst(x2, 1.0, z2, '#fff27a', 8);
+}
+// a boomerang flies out to its range (or the first wall), turns, and homes back to the thrower,
+// hitting each thing once on the way out and once on the way back; it never bursts
+function updateBoomerang(fb, dt) {
+  const b = fb.boom, step = (fb.c.speed || 13) * dt;
+  b.age += dt;
+  fb.g.rotation.y += dt * 20;
+  if (!b.back) {
+    fb.x += fb.dx * step; fb.z += fb.dz * step; fb.dist += step;
+    const cx = Math.floor(fb.x), cz = Math.floor(fb.z);
+    const wall = cx < 0 || cz < 0 || cx >= MAP_W || cz >= MAP_H || blocked[cz][cx] || circles.some(([x, z, r]) => Math.hypot(fb.x - x, fb.z - z) < r);
+    if (wall || fb.dist >= fb.c.range) { b.back = true; b.hit = new Set(); }
+  } else {
+    const dx = P.x - fb.x, dz = P.z - fb.z, d = Math.hypot(dx, dz) || 1;
+    if (d < 0.7) { burst(P.x, 1.1, P.z, fb.c.color, 4); return true; } // caught
+    fb.x += dx / d * step * 1.15; fb.z += dz / d * step * 1.15;
+  }
+  fb.y = damp(fb.y, P.y + 1.0, 4, dt);
+  fb.g.position.set(fb.x, fb.y, fb.z);
+  const power = statNow('atk') * 1.1 + 4;
+  for (const m of monsters) {
+    if (m.dead || b.hit.has(m)) continue;
+    if (Math.hypot(m.x - fb.x, m.z - fb.z) < (m.cfg.big ? 1.3 : 0.8)) { b.hit.add(m); hitMonster(m, power); }
+  }
+  if (ARENA) for (const g of ghosts.values()) {
+    if (g.dead || g.hid || b.hit.has(g)) continue;
+    if (Math.hypot(g.x - fb.x, g.z - fb.z) < 0.75) { b.hit.add(g); hitPlayer(g, power, fb.hand, false); }
+  }
+  return b.age > 6; // lost: never strand one in the air
+}
+function dropShot(fb) {
+  scene.remove(fb.g);
+  fb.g.traverse((o) => o.material && o.material.dispose());
+  if (fb.light) { fb.light.userData.busy = false; fb.light.intensity = 0; }
+}
+
 function explode(fb) {
   const { x, y, z, c } = fb;
   burst(x, y, z, c.color, 14);
@@ -3061,7 +3169,8 @@ function explode(fb) {
 }
 function updateFireballs(dt, t) {
   for (let i = fireballs.length - 1; i >= 0; i--) {
-    const fb = fireballs[i], step = 15 * dt;
+    const fb = fireballs[i], step = (fb.c.speed || 15) * dt;
+    if (fb.boom) { if (updateBoomerang(fb, dt)) { dropShot(fb); fireballs.splice(i, 1); } continue; }
     fb.x += fb.dx * step; fb.y += fb.dy * step; fb.z += fb.dz * step; fb.dist += step;
     fb.g.position.set(fb.x, fb.y, fb.z);
     fb.halo.scale.setScalar(0.38 * fb.c.size * (1 + Math.sin(t * 40) * 0.12));
@@ -3077,9 +3186,10 @@ function updateFireballs(dt, t) {
     const cx = Math.floor(fb.x), cz = Math.floor(fb.z);
     const wall = cx < 0 || cz < 0 || cx >= MAP_W || cz >= MAP_H || (blocked[cz][cx] && waterAt(fb.x * T, fb.z * T) < 0)
       || circles.some(([x, z, r]) => Math.hypot(fb.x - x, fb.z - z) < r);
-    if (ARENA) for (const g of ghosts.values()) if (!g.dead && Math.hypot(g.x - fb.x, g.z - fb.z) < 0.7 && fb.y > g.y && fb.y < g.y + 1.8) { fb.foe = g; break; }
-    if (hit) hitMonster(hit, statNow('atk') * 0.6 + statNow('mag') * 1.4);
-    if (fb.foe) hitPlayer(fb.foe, statNow('atk') * 0.6 + statNow('mag') * 1.4, fb.hand, true);
+    if (ARENA) for (const g of ghosts.values()) if (!g.dead && !g.hid && Math.hypot(g.x - fb.x, g.z - fb.z) < 0.7 && fb.y > g.y && fb.y < g.y + 1.8) { fb.foe = g; break; }
+    const power = statNow('atk') * 0.6 + statNow('mag') * 1.4;
+    if (hit) { hitMonster(hit, power); chillMonster(hit, fb.c); chainFrom(fb, hit, power); }
+    if (fb.foe) { hitPlayer(fb.foe, power, fb.hand, true, fb.c.slow); chainFrom(fb, fb.foe, power); }
     const landed = fb.y <= 0.05 || fb.y <= groundAt(fb.x, fb.z, fb.y) + 0.05 || blockCellAt(fb.x, fb.y, fb.z);
     // an unopened drop crate stops a shot, so a caster can break it open like a sword can
     let crate = false;
@@ -3087,6 +3197,12 @@ function updateFireballs(dt, t) {
       if (v.e.kind === 'crate' && v.fired && !v.pickup && fb.y < 1.7 && Math.hypot(v.e.x - fb.x, v.e.z - fb.z) < 0.9) { crate = true; break; }
     }
     if (hit || fb.foe || wall || landed || crate || fb.dist > fb.c.range) { explode(fb); fireballs.splice(i, 1); }
+  }
+  for (let i = bolts.length - 1; i >= 0; i--) { // thunder's jumps fade out quickly
+    const b = bolts[i];
+    b.age += dt / 0.22;
+    b.m.material.opacity = 0.9 * (1 - b.age);
+    if (b.age >= 1) { scene.remove(b.m); b.m.material.dispose(); bolts.splice(i, 1); }
   }
   for (let i = blasts.length - 1; i >= 0; i--) {
     const b = blasts[i];
@@ -3278,7 +3394,7 @@ function chatLine(name, msg, sys) {
   setTimeout(() => el.remove(), 30000);
 }
 function myState() {
-  return { id: mp.id, name: mp.name, char: charData, room: MP_ROOM, x: +P.x.toFixed(2), z: +P.z.toFixed(2), y: +P.y.toFixed(2), h: +P.heading.toFixed(2), atk: mp.atk, atkL: mp.atkL, hp, mhp: stats.hp, air: P.y > groundAt(P.x, P.z, P.y) + 0.02 };
+  return { id: mp.id, name: mp.name, char: charData, room: MP_ROOM, x: +P.x.toFixed(2), z: +P.z.toFixed(2), y: +P.y.toFixed(2), h: +P.heading.toFixed(2), atk: mp.atk, atkL: mp.atkL, hp, mhp: stats.hp, air: P.y > groundAt(P.x, P.z, P.y) + 0.02, hid: smokedNow() };
 }
 function addGhost(d) {
   if (d.id === mp.id || d.room !== MP_ROOM) return null;
@@ -3307,7 +3423,7 @@ function removeGhost(id) {
 function onState(d) {
   const g = addGhost(d);
   if (!g) { if (ghosts.has(d.id)) removeGhost(d.id); return; } // they walked into another room
-  Object.assign(g, { tx: d.x, tz: d.z, ty: d.y || 0, th: d.h || 0, air: !!d.air, seen: performance.now() });
+  Object.assign(g, { tx: d.x, tz: d.z, ty: d.y || 0, th: d.h || 0, air: !!d.air, hid: !!d.hid, seen: performance.now() });
   if (d.hp !== undefined) { g.hp = d.hp; g.mhp = d.mhp; }
   if (d.atk && d.atk !== g.atkSeen) { g.atkSeen = d.atk; g.atk = 0; }
   if (d.atkL && d.atkL !== g.atkLSeen) { g.atkLSeen = d.atkL; g.atkL = 0; }
@@ -3405,10 +3521,10 @@ function updateMultiplayer(dt, now) {
     if (g.atkL >= 0) { g.atkL += dt / 0.38; if (g.atkL >= 1) g.atkL = -1; }
     g.hero.root.position.set(g.x, g.y, g.z);
     g.hero.root.rotation.y = g.h;
-    g.hero.root.visible = !g.dead;
+    g.hero.root.visible = !g.dead && !g.hid; // a smoke bomb hides them, tag and all
     if (g.bar && g.mhp) g.bar.style.width = `${Math.max(0, g.hp / g.mhp) * 100}%`;
     g.hero.update(dt, { atk: g.atk, atkL: g.atkL, air: g.air });
-    const near = !g.dead && Math.hypot(g.x - P.x, g.z - P.z) < 30, pos = near ? toScreen(g.x, HERO_H + 0.35 + g.y, g.z) : null;
+    const near = !g.dead && !g.hid && Math.hypot(g.x - P.x, g.z - P.z) < 30, pos = near ? toScreen(g.x, HERO_H + 0.35 + g.y, g.z) : null;
     g.tag.hidden = !pos;
     if (pos) g.tag.style.transform = `translate(${pos[0]}px, ${pos[1]}px) translate(-50%, -100%)`;
     placeBubble(g.bubble, near ? toScreen(g.x, HERO_H + 0.95 + g.y, g.z) : null, now);
@@ -3463,6 +3579,52 @@ const basic = (color, opacity = 1) => new THREE.MeshBasicMaterial({ color, trans
 let buff = null; // { id, stat, mul, until, from } — the crate prize, see claimPickup
 const statNow = (k) => stats[k] * (buff && buff.stat === k && performance.now() < buff.until ? buff.mul : 1);
 function buffNow() { return buff && performance.now() < buff.until ? buff : null; }
+
+/* ---------- the player's side of the new gear ---------- */
+const gear = (slot) => (charData && charData.equipment && charData.equipment[slot]) || null;
+let chillUntil = 0, chillMul = 1;
+function chill(slow) {
+  chillUntil = performance.now() + slow.ms;
+  chillMul = slow.mul;
+  burst(P.x, 1, P.z, '#cfefff', 10);
+  floatText(P.x, 2, P.z, 'Slowed!', '#9ae8ff');
+}
+const chilled = () => Math.max(0, (chillUntil - performance.now()) / 1000);
+// how fast your legs go right now: quicksand and an ice hit both drag, the worse one wins
+const legSpeed = () => Math.min(slowed() > 0 ? 0.35 : 1, chilled() > 0 ? chillMul : 1);
+// mirror shield: ; raises it for a moment; anything magic that arrives meanwhile is sent back
+let parryUntil = 0, parryReady = 0;
+const parrying = () => performance.now() < parryUntil;
+function parry() {
+  const now = performance.now();
+  if (now < parryReady) return;
+  parryUntil = now + 450;
+  parryReady = now + 1100;
+  P.atkL = 0;
+  burst(P.x + Math.sin(P.heading) * 0.5, 1.2, P.z + Math.cos(P.heading) * 0.5, '#cfefff', 10);
+}
+// smoke bomb: you vanish for a moment — other players can't see or target you, monsters lose you
+let smokeUntil = 0, smokePuff = 0;
+const smokedNow = () => performance.now() < smokeUntil;
+function smoke(secs) {
+  smokeUntil = performance.now() + secs * 1000;
+  for (let k = 0; k < 3; k++) burst(P.x, 0.6 + k * 0.4, P.z, '#9a9aa8', 14);
+  floatText(P.x, 2.2, P.z, 'Poof!', '#d0d0e0');
+  if (mp.live) mp.channel.send({ type: 'broadcast', event: 'move', payload: myState() });
+}
+function useItem(id) {
+  const c = CONSUMABLES[id];
+  if (!c || !(field.bag[id] > 0)) return;
+  if (c.smoke) {
+    if (smokedNow()) return;
+    field.bag[id] -= 1;
+    smoke(c.smoke);
+    saveField();
+    renderBag();
+    return;
+  }
+  drink(id);
+}
 
 function hazardHurt(power, weapon) {
   if (fainted || performance.now() < safeUntil) return;
@@ -3685,7 +3847,7 @@ function castFoeBall(mo) {
   g.add(core, shell);
   g.position.set(mo.x, 1.15, mo.z);
   scene.add(g);
-  foeBalls.push({ g, x: mo.x, y: 1.15, z: mo.z, dx: dx / d, dz: dz / d, dist: 0, trailT: 0 });
+  foeBalls.push({ g, x: mo.x, y: 1.15, z: mo.z, dx: dx / d, dz: dz / d, dist: 0, trailT: 0, from: mo });
   burst(mo.x, 1.15, mo.z, '#ff8a2a', 4);
 }
 function updateFoeBalls(dt) {
@@ -3699,6 +3861,15 @@ function updateFoeBalls(dt) {
     const wall = cx < 0 || cz < 0 || cx >= MAP_W || cz >= MAP_H || blocked[cz][cx]
       || circles.some(([x, z, r]) => Math.hypot(b.x - x, b.z - z) < r);
     const onMe = !fainted && Math.hypot(P.x - b.x, P.z - b.z) < 0.75 && P.y < 1.8;
+    if (onMe && parrying()) { // the mirror shield sends it straight back at whoever threw it
+      floatText(P.x, 2, P.z, 'Reflected!', '#cfefff');
+      burst(b.x, b.y, b.z, '#cfefff', 12);
+      shootAt(b.from.x, b.from.z);
+      scene.remove(b.g);
+      b.g.traverse((o) => o.material && o.material.dispose());
+      foeBalls.splice(i, 1);
+      continue;
+    }
     if (onMe || wall || b.dist > 16) {
       burst(b.x, b.y, b.z, '#ff8a2a', 10);
       if (onMe) hazardHurt(11, "a gladiator's fire");
@@ -3735,15 +3906,22 @@ function goTo(href) {
   $('fade').style.opacity = 1;
   setTimeout(() => { location.href = href; }, 350);
 }
-function hitPlayer(g, power, hand, magic) {
-  if (!ARENA || !mp.live || g.dead || fainted) return;
+function hitPlayer(g, power, hand, magic, slow) {
+  if (!ARENA || !mp.live || g.dead || g.hid || fainted) return;
   if (g.y > 2) return; // they are up in the stands: spectators are not in the fight
   mp.channel.send({ type: 'broadcast', event: 'hit', payload: {
     to: g.id, by: mp.id, name: mp.name, dmg: Math.max(1, Math.round(power + Math.random() * 4)),
-    x: +P.x.toFixed(2), z: +P.z.toFixed(2), weapon: weaponName(hand), magic: !!magic } });
+    x: +P.x.toFixed(2), z: +P.z.toFixed(2), weapon: weaponName(hand), magic: !!magic, slow: slow || null } });
 }
 function onHit(d) {
   if (!ARENA || d.to !== mp.id || fainted || performance.now() < safeUntil) return;
+  if (d.magic && parrying()) { // a raised mirror shield: no damage, and it goes back the way it came
+    floatText(P.x, 2, P.z, 'Reflected!', '#cfefff');
+    burst(P.x, 1.2, P.z, '#cfefff', 12);
+    shootAt(d.x, d.z);
+    return;
+  }
+  if (d.slow) chill(d.slow);
   const dmg = Math.max(1, Math.round(d.dmg * 50 / (50 + statNow('def'))));
   hp = Math.max(0, hp - dmg);
   const dx = P.x - d.x, dz = P.z - d.z, dist = Math.hypot(dx, dz) || 1;
@@ -4490,6 +4668,7 @@ addEventListener('keydown', (e) => {
   if (e.code === 'KeyJ' || e.code === 'KeyK' || e.code === 'Quote') swing('R');
   if (e.code === 'Semicolon') swing('L');
   if (e.code === 'KeyH') drinkBest();
+  if (e.code === 'KeyN') useItem('smoke_bomb');
   if (e.code === 'KeyB') toggleBag();
   if (e.code === 'KeyC') cycleCam();
   if (e.code === 'KeyV') setFirstPerson(!firstPerson);
@@ -4544,7 +4723,7 @@ $('shopList').addEventListener('click', (e) => {
   shopAct.n = b.dataset.act === 'buy' ? b.dataset.n : undefined; // how many to buy (x5 buttons)
   shopAct(b.dataset.act, b.dataset.id, b.dataset.price || b.dataset.n || b.dataset.slot);
 });
-$('bagGrid').addEventListener('click', (e) => { const b = e.target.closest('[data-use]'); if (b) drink(b.dataset.use); });
+$('bagGrid').addEventListener('click', (e) => { const b = e.target.closest('[data-use]'); if (b) useItem(b.dataset.use); });
 $('camBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); cycleCam(); });
 // hold to tilt: the same axis Q/E give you sideways, now up and down
 for (const [id, dir] of [['camUpBtn', 1], ['camDownBtn', -1]]) {
@@ -4585,7 +4764,7 @@ function update(dt, now) {
   if (!building) camPitchT = clamp(camPitchT + (k('KeyZ') - k('KeyX')) * 1.7 * dt, 0.05, 1.35); // tilt up / down
   const moving = Math.hypot(fx, fy) > 0.15;
   const boosting = moving && (sprintOn || ((keys.ShiftLeft || keys.ShiftRight) && !shiftCancel)) && !nitroLock && nitro > 0;
-  if (boosting) { nitro -= dt * 0.12; if (nitro <= 0) { nitro = 0; nitroLock = true; } }
+  if (boosting) { if (gear('feet') !== 'windrunner_boots') nitro -= dt * 0.12; if (nitro <= 0) { nitro = 0; nitroLock = true; } } // windrunner boots never tire
   else { nitro = Math.min(1, nitro + dt * 0.3); if (nitroLock && nitro > 0.25) nitroLock = false; }
   // Smoothing is frame-rate independent: damp(k, dt) is the fraction of the way to close
   // this frame for a time constant 1/k, where a bare `dt * k` would snap at low frame rates
@@ -4594,7 +4773,7 @@ function update(dt, now) {
     const sy = Math.sin(camYaw), cy = Math.cos(camYaw);
     let mx = -sy * fy + cy * fx, mz = -cy * fy - sy * fx;
     const len = Math.hypot(mx, mz) || 1;
-    const speed = moving ? (boosting ? 7.4 : 4.2) * Math.min(1, len) * (slowed() > 0 ? 0.35 : 1) : 0;
+    const speed = moving ? (boosting ? 7.4 : 4.2) * Math.min(1, len) * legSpeed() : 0;
     const wantX = moving ? (mx / len) * speed : 0, wantZ = moving ? (mz / len) * speed : 0;
     // ease into a run and coast out of it, rather than snapping between 0 and full speed
     const k = moving ? 22 : 14;
@@ -4642,6 +4821,7 @@ function update(dt, now) {
   hero.root.rotation.y = P.heading;
   hero.update(dt, { atk: P.atk, atkL: P.atkL, lookAt: look, air: P.y > groundAt(P.x, P.z, P.y) + 0.001, vy: P.vy });
   hero.root.visible = !firstPerson && !(ARENA && fainted) && !(inv > 0 && Math.floor(inv / 0.08) % 2);
+  if (smokedNow() && (smokePuff -= dt) <= 0) { smokePuff = 0.12; burst(P.x, 0.4 + Math.random() * 1.2, P.z, '#9a9aa8', 3); }
   attackCd -= dt;
   attackCdL -= dt;
   inv -= dt;
@@ -4662,7 +4842,7 @@ function update(dt, now) {
     const dx = P.x - mo.x, dz = P.z - mo.z, dist = Math.hypot(dx, dz) || 1;
     let vx, vz;
     if (mo.kb > 0) { mo.kb -= dt; vx = mo.kbx; vz = mo.kbz; }
-    else if (!fainted && dist < mo.cfg.aggro) { vx = dx / dist * mo.cfg.speed; vz = dz / dist * mo.cfg.speed; }
+    else if (!fainted && !smokedNow() && dist < mo.cfg.aggro) { vx = dx / dist * mo.cfg.speed; vz = dz / dist * mo.cfg.speed; }
     else {
       mo.t -= dt;
       if (mo.t <= 0) {
@@ -4673,6 +4853,7 @@ function update(dt, now) {
       }
       vx = mo.vx; vz = mo.vz;
     }
+    if (mo.chill > performance.now()) { vx *= mo.chillMul; vz *= mo.chillMul; }
     if (monsterFree(mo, mo.x + vx * dt, mo.z)) mo.x += vx * dt; else mo.t = 0;
     if (monsterFree(mo, mo.x, mo.z + vz * dt)) mo.z += vz * dt; else mo.t = 0;
     if (Math.hypot(vx, vz) > 0.05 && mo.kb <= 0) mo.face += wrapAngle(Math.atan2(vx, vz) - mo.face) * Math.min(1, dt * 8);
@@ -4689,7 +4870,7 @@ function update(dt, now) {
       if (mo.atkL >= 0) { mo.atkL += dt / 0.38; if (mo.atkL >= 1) mo.atkL = -1; }
       mo.cd = (mo.cd || 0) - dt;
       const [near, far] = mo.cfg.cast;
-      if (!fainted && mo.cd <= 0 && dist > near && dist < far) { // staff: open fire from range
+      if (!fainted && !smokedNow() && mo.cd <= 0 && dist > near && dist < far) { // staff: open fire from range
         mo.cd = 3.4 + Math.random() * 1.8;
         mo.atkL = 0;
         setTimeout(() => { if (!mo.dead && !fainted) castFoeBall(mo); }, 140);
@@ -4930,7 +5111,10 @@ function update(dt, now) {
 SPAWN_LIST.forEach((type) => spawnMonster(type));
 // debug hook for tests and screenshots: __world3d.tp(x, z) teleports, .P is the player state
 window.__world3d = { P, ghosts, arena, farms, updateIndoor, aimPoint, spectating: () => STANDS, tomatoes, throwTomato,
-  arenaMod, buff: () => buffNow(), free, colosseum: () => COLO && { arena: [A.doors.find((d) => /area=arena/.test(d.href)).x + 0.5, A.doors.find((d) => /area=arena/.test(d.href)).y + 0.5], stands: [A.doors.find((d) => /area=stands/.test(d.href)).x + 0.5, A.doors.find((d) => /area=stands/.test(d.href)).y + 0.5] }, hazardNow, clockOffset: () => HAZ.offset, hazards: () => [...HAZ.views.values()], hazardClock: (ms) => { HAZ.pinned = ms === undefined || ms === null ? null : ms; }, slowed, setHp: (n) => { hp = n; updateHud(); }, drawnBlocks: (id) => ((plotViews.get(id) || {}).blockMeshes || []).reduce((n, m) => n + m.count, 0), getPitch: () => fpPitch, firstPerson: () => firstPerson, setPitch: (v) => { fpPitch = v; }, openShop, hiddenBlocks, doorAngle: (id, i, j, k) => { const v = plotViews.get(id); return (v && v.doorAng && v.doorAng.get(`${i},${j},${k}`)) || 0; }, shopSpots, aimBlock, mouse, camera, building: () => building, toScreen, groundAt, solidAt, setBlocks, plots: PLOTS, placed, decorCrops, myFarm: () => myFarm, farmTile: () => farmTile(), hp: () => hp, mp, monsters, drops, field: () => field, hero: () => hero, fireballs, tp: (x, z, yaw) => { P.x = x; P.z = z; P.vx = P.vz = 0; if (yaw !== undefined) camYaw = yaw; }, cam: (dist, pitch) => { camDistT = camDist = dist; camPitchT = camPitch = pitch; }, size: [MAP_W, MAP_H], info: () => { // one full frame's draw calls and triangles (all passes, shadows included)
+  arenaMod, buff: () => buffNow(), free,
+  equip: (id, slot) => equip(id, slot), nitro: () => nitro, setNitro: (v) => { nitro = v; nitroLock = false; }, jump,
+  spawn: (type, x, z) => { spawnMonster(type); const m = monsters[monsters.length - 1]; m.x = x; m.z = z; m.t = 99; m.vx = m.vz = 0; return monsters.length - 1; },
+  foeCast: (i) => castFoeBall(monsters[i]), chilled, smoked: () => Math.max(0, (smokeUntil - performance.now()) / 1000), colosseum: () => COLO && { arena: [A.doors.find((d) => /area=arena/.test(d.href)).x + 0.5, A.doors.find((d) => /area=arena/.test(d.href)).y + 0.5], stands: [A.doors.find((d) => /area=stands/.test(d.href)).x + 0.5, A.doors.find((d) => /area=stands/.test(d.href)).y + 0.5] }, hazardNow, clockOffset: () => HAZ.offset, hazards: () => [...HAZ.views.values()], hazardClock: (ms) => { HAZ.pinned = ms === undefined || ms === null ? null : ms; }, slowed, setHp: (n) => { hp = n; updateHud(); }, drawnBlocks: (id) => ((plotViews.get(id) || {}).blockMeshes || []).reduce((n, m) => n + m.count, 0), getPitch: () => fpPitch, firstPerson: () => firstPerson, setPitch: (v) => { fpPitch = v; }, openShop, hiddenBlocks, doorAngle: (id, i, j, k) => { const v = plotViews.get(id); return (v && v.doorAng && v.doorAng.get(`${i},${j},${k}`)) || 0; }, shopSpots, aimBlock, mouse, camera, building: () => building, toScreen, groundAt, solidAt, setBlocks, plots: PLOTS, placed, decorCrops, myFarm: () => myFarm, farmTile: () => farmTile(), hp: () => hp, mp, monsters, drops, field: () => field, hero: () => hero, fireballs, tp: (x, z, yaw) => { P.x = x; P.z = z; P.vx = P.vz = 0; if (yaw !== undefined) camYaw = yaw; }, cam: (dist, pitch) => { camDistT = camDist = dist; camPitchT = camPitch = pitch; }, size: [MAP_W, MAP_H], info: () => { // one full frame's draw calls and triangles (all passes, shadows included)
   renderer.info.autoReset = false; renderer.info.reset(); composer.render();
   const r = { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles };
   renderer.info.autoReset = true; return r;
