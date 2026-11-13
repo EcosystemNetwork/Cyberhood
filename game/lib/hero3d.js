@@ -700,6 +700,8 @@ export function makeHero3D(look = {}) {
   const wpn = group(J.handR, [0, -0.02, 0.0]);
   J.wpn = wpn;
   const W = WEAPONS[eq.rhand] ? WEAPONS[eq.rhand](wpn) : null;
+  // a shield or off-hand item can be carried in the right hand too; it faces outward, mirrored
+  if (!W && OFFHAND[eq.rhand]) { const mirror = group(J.handR, [0, 0, 0]); mirror.scale.x = -1; OFFHAND[eq.rhand](mirror, ctx); }
   const wtype = W ? W.type : 'fist';
   if (W && W.bow) {
     const quiver = group(spine, [-0.06, 0.16, -0.13], [0.15, 0, 0.45]);

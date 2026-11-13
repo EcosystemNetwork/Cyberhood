@@ -119,12 +119,18 @@
     return eq;
   }
 
+  // Hand items go in either hand: a sword in the left, a shield in the right. Anything else only
+  // counts in its own slot (boots in a hand do nothing).
+  function fits(item, slot) {
+    return item.slot === slot || ((item.slot === 'rhand' || item.slot === 'lhand') && (slot === 'rhand' || slot === 'lhand'));
+  }
+
   function computeStats(cls, equipment) {
     const stats = Object.assign({}, BASE[cls]);
     SLOTS.forEach(function (slot) {
       const id = equipment && equipment[slot];
       const item = id && Object.prototype.hasOwnProperty.call(ITEMS, id) ? ITEMS[id] : null;
-      if (item && item.slot === slot) STAT_KEYS.forEach(function (k) { stats[k] += item.stats[k] || 0; });
+      if (item && fits(item, slot)) STAT_KEYS.forEach(function (k) { stats[k] += item.stats[k] || 0; });
     });
     return stats;
   }
@@ -134,7 +140,7 @@
     SLOTS.forEach(function (slot) {
       var id = equipment && equipment[slot];
       var item = id && Object.prototype.hasOwnProperty.call(ITEMS, id) ? ITEMS[id] : null;
-      if (item && item.slot === slot) {
+      if (item && fits(item, slot)) {
         STAT_KEYS.forEach(function (k) { p += item.stats[k] || 0; });
         p += RARITIES[item.rarity].power;
       }
@@ -142,5 +148,5 @@
     return p;
   }
 
-  return { SLOTS, STAT_KEYS, STAT_LABELS, SLOT_LABELS, SLOT_ICONS, BASE, ITEMS, KITS, RARITIES, RARITY_ORDER, defaultEquipment, migrateEquipment, computeStats, computePower };
+  return { SLOTS, STAT_KEYS, STAT_LABELS, SLOT_LABELS, SLOT_ICONS, BASE, ITEMS, KITS, RARITIES, RARITY_ORDER, defaultEquipment, migrateEquipment, computeStats, computePower, fits };
 });

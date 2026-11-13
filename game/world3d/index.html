@@ -2739,7 +2739,7 @@ function iconOf(id) {
   if (FARM_ITEMS[id]) return FARM_ITEMS[id].emoji;
   if (LOOT[id]) return `<img src="/game/world/assets/loot/${id}.png" alt="">`;
   const it = ITEM(id);
-  return it ? GAME.SLOT_ICONS[it.slot] || '✨' : '❓';
+  return it ? `<img src="/game/assets/items/${id}.png" alt="">` : '❓';
 }
 function infoOf(id) {
   const it = ITEM(id);
@@ -2757,7 +2757,7 @@ const openCraft = () => { exitLock(); modal = { kind: 'craft' }; toggleBag(false
 function closeModal() { modal = null; $('shopPanel').hidden = true; }
 function gearButton(id) {
   const eq = (charData || DEFAULT_CHAR).equipment || {};
-  if (ITEM(id).slot === 'rhand') { // weapons go in either hand (dual wield)
+  if (GAME.fits(ITEM(id), 'lhand') && GAME.fits(ITEM(id), 'rhand')) { // any hand item goes in either hand
     const b = (h) => (eq[h] === id ? `<button disabled>${h === 'rhand' ? 'In R' : 'In L'}</button>`
       : `<button class="alt" data-act="equip" data-id="${id}" data-slot="${h}">Equip ${h === 'rhand' ? 'R' : 'L'}</button>`);
     return b('rhand') + b('lhand');
@@ -2835,7 +2835,7 @@ function shopAct(act, id, extra) {
 function equip(id, slot) {
   const it = ITEM(id);
   if (!it) return;
-  slot = it.slot === 'rhand' && slot === 'lhand' ? 'lhand' : it.slot; // weapons may go in the left hand
+  slot = GAME.fits(it, slot) ? slot : it.slot; // a hand item goes in whichever hand you asked for
   charData = charData || JSON.parse(JSON.stringify(DEFAULT_CHAR));
   const eq = Object.assign({}, charData.equipment);
   for (const h of ['rhand', 'lhand']) if (h !== slot && eq[h] === id) delete eq[h]; // one item, one hand
@@ -2892,7 +2892,7 @@ function jump() {
 // hand 'R' (J, K or ') or 'L' (;): each hand has its own weapon, swing and cooldown (dual wield)
 function swing(hand = 'R') {
   if (STANDS) { throwTomato(); return; } // a spectator has no fight to swing at
-  if (hand === 'L' && gear('lhand') === 'mirror_shield') { if (!fainted && !modal) parry(); return; }
+  if (gear(hand === 'L' ? 'lhand' : 'rhand') === 'mirror_shield') { if (!fainted && !modal) parry(); return; }
   if (fireballs.some((f) => f.boom && f.hand === hand)) return; // the boomerang is still out
   const L = hand === 'L', caster = L ? hero.casterL : hero.caster;
   if (fainted || modal || (L ? attackCdL : attackCd) > 0) return;
@@ -5160,7 +5160,7 @@ SPAWN_LIST.forEach((type) => spawnMonster(type));
 // debug hook for tests and screenshots: __world3d.tp(x, z) teleports, .P is the player state
 window.__world3d = { P, ghosts, arena, farms, updateIndoor, aimPoint, spectating: () => STANDS, tomatoes, throwTomato,
   arenaMod, buff: () => buffNow(), free,
-  equip: (id, slot) => equip(id, slot), gearOf: (slot) => gear(slot), nitro: () => nitro, setNitro: (v) => { nitro = v; nitroLock = false; }, jump,
+  equip: (id, slot) => equip(id, slot), gearOf: (slot) => gear(slot), parrying: () => parrying(), nitro: () => nitro, setNitro: (v) => { nitro = v; nitroLock = false; }, jump,
   spawn: (type, x, z) => { spawnMonster(type); const m = monsters[monsters.length - 1]; m.x = x; m.z = z; m.t = 99; m.vx = m.vz = 0; return monsters.length - 1; },
   foeCast: (i) => castFoeBall(monsters[i]), chilled, smoked: () => Math.max(0, (smokeUntil - performance.now()) / 1000), colosseum: () => COLO && { arena: [A.doors.find((d) => /area=arena/.test(d.href)).x + 0.5, A.doors.find((d) => /area=arena/.test(d.href)).y + 0.5], stands: [A.doors.find((d) => /area=stands/.test(d.href)).x + 0.5, A.doors.find((d) => /area=stands/.test(d.href)).y + 0.5] }, hazardNow, clockOffset: () => HAZ.offset, hazards: () => [...HAZ.views.values()], hazardClock: (ms) => { HAZ.pinned = ms === undefined || ms === null ? null : ms; }, slowed, setHp: (n) => { hp = n; updateHud(); }, drawnBlocks: (id) => ((plotViews.get(id) || {}).blockMeshes || []).reduce((n, m) => n + m.count, 0), getPitch: () => fpPitch, firstPerson: () => firstPerson, setPitch: (v) => { fpPitch = v; }, openShop, hiddenBlocks, doorAngle: (id, i, j, k) => { const v = plotViews.get(id); return (v && v.doorAng && v.doorAng.get(`${i},${j},${k}`)) || 0; }, shopSpots, aimBlock, mouse, camera, building: () => building, toScreen, groundAt, solidAt, setBlocks, plots: PLOTS, placed, decorCrops, myFarm: () => myFarm, farmTile: () => farmTile(), hp: () => hp, mp, monsters, drops, field: () => field, hero: () => hero, fireballs, tp: (x, z, yaw) => { P.x = x; P.z = z; P.vx = P.vz = 0; if (yaw !== undefined) camYaw = yaw; }, cam: (dist, pitch) => { camDistT = camDist = dist; camPitchT = camPitch = pitch; }, size: [MAP_W, MAP_H], info: () => { // one full frame's draw calls and triangles (all passes, shadows included)
   renderer.info.autoReset = false; renderer.info.reset(); composer.render();

@@ -572,7 +572,8 @@
     ).join('');
     $('aSlotTitle').textContent = 'Select ' + SLOT_LABELS[armTab] + ' Item';
 
-    const owned = player.inventory.filter((id) => ITEMS[id] && ITEMS[id].slot === armTab);
+    // a hand tab lists every hand item — a sword can go in the left hand, a shield in the right
+    const owned = player.inventory.filter((id) => ITEMS[id] && GAME.fits(ITEMS[id], armTab));
     owned.sort((a, b) => RARITY_ORDER.indexOf(ITEMS[a].rarity) - RARITY_ORDER.indexOf(ITEMS[b].rarity));
     const ipwr = (it) => { let p = RARITIES[it.rarity].power; STAT_KEYS.forEach((k) => { p += it.stats[k] || 0; }); return p; };
 
@@ -607,6 +608,9 @@
     if ('equip' in t.dataset) {
       const id = t.dataset.equip;
       S.equipment[armTab] = (id && S.equipment[armTab] !== id) ? id : null;
+      // one item, one hand: moving it to this hand takes it out of the other
+      const other = armTab === 'rhand' ? 'lhand' : armTab === 'lhand' ? 'rhand' : null;
+      if (other && id && S.equipment[armTab] === id && S.equipment[other] === id) S.equipment[other] = null;
       armDirty = true;
       try { localStorage.setItem('taproot_character', JSON.stringify(S)); } catch (e) {}
       renderArmory();
