@@ -734,18 +734,20 @@ function stitch(title, size, parts) {
     { a: south, ox: 0, oy: 88 },
   ]);
   for (let y = 54; y < 86; y += 2) for (let x = 144; x < 158; x += 2) if (x === 156 || hash(x, y, 91) < 0.75) world.trees.push([x, y, hash(x, y, 61) > 0.5 ? 'tree_pine' : 'tree_oak']);
-  /* The colosseum: a small ring at the end of the short road that runs south off the main
-     street, just below Hero Hall (that road ends at world z 77, x 136.5). Its two gates face
-     up the road. You never go inside it — the pit and the stands are their own areas behind
-     those gates — so its footprint is blocked, as a circle. Keep it clear of the overworld's
-     spawn point and every arrival spot: the first version stood on the fields' spawn and
-     trapped anyone who loaded in there. */
-  world.colosseum = { x: 136.5, z: 83, r: 6 };
+  /* The colosseum: a small ring in the grove at the east end of the main street, where the
+     cobbles stop (world x 144, z 70). Its two gates face west, back down the street. You
+     never go inside it — the pit and the stands are their own areas behind those gates — so
+     its footprint is blocked, as a circle. Keep it clear of the overworld's spawn point and
+     every arrival spot: an earlier version stood on the fields' spawn and trapped anyone who
+     loaded in there. */
+  world.colosseum = { x: 152, z: 70, r: 6 };
   world.doors.push(
-    { x: 134, y: 77, w: 1, h: 1, href: '/game/world3d/?area=arena&from=city', name: 'Taproot Arena' },
-    { x: 138, y: 77, w: 1, h: 1, href: '/game/world3d/?area=stands&from=city', name: 'Arena Stands' });
-  world.arrive.arena = { x: 134, y: 74.5 };
-  world.arrive.stands = { x: 138, y: 74.5 };
+    { x: 146, y: 72, w: 1, h: 1, href: '/game/world3d/?area=arena&from=city', name: 'Taproot Arena' },
+    { x: 146, y: 67, w: 1, h: 1, href: '/game/world3d/?area=stands&from=city', name: 'Arena Stands' });
+  world.arrive.arena = { x: 143.5, y: 71.5 };
+  world.arrive.stands = { x: 143.5, y: 68.5 };
+  world.clearings.push([145.5, 70, 4.5]); // no grove trees between the road's end and the gates
+  world.paths.push([143, 70, 146.5, 70, 2.6]); // and a short run of road up to them
   world.grid.box[3] = 54.2; // the seam avenue and its sidewalk spill just past the Avenues' old edge
   for (const k of ['fields', 'city', 'avenues', 'woods', 'docks']) AREAS[k] = world;
 }
@@ -1994,8 +1996,8 @@ if (COLO) {
   const BAYS = 16, SH = 2.3, bw = (Math.PI * 2 * RO) / BAYS;
   const STONE = ['#cfc3a6', '#c2b699', '#b5a98c'], TRIM = '#e4dbc6', DARK = '#5a5147';
   const along = (a) => -a - Math.PI / 2;
-  // north (up the road) is angle -PI/2, bay 12 of 16; the gates sit one bay either side of it
-  const GATES = [11, 13];
+  // west (back down the street) is angle PI, bay 8 of 16; the gates sit one bay either side
+  const GATES = [7, 9];
   const bayAngle = (i) => (i / BAYS) * Math.PI * 2;
   at(0, 0);
 
