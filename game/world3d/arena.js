@@ -31,7 +31,8 @@ export const STAND_TIERS = [0, 1, 2].map((t) => ({
 
 // the spectators' own way in, opposite the fighters' gatehouse (which faces south, +z)
 export const STAND_GATE_ANGLE = -Math.PI / 2;
-const GATE_HALF = 0.3; // radians either side of the gate angle that stay open
+const GATE_HALF = 0.42; // radians either side of the gate angle that stay open — wide
+// enough that walking roughly north finds the way out without hunting for it
 
 // `center` defaults to the pit, but the stands are served as their own, larger map
 // whose pit sits elsewhere, so both take it as an argument

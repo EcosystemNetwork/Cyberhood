@@ -50,7 +50,12 @@
   .nitro .bar { width: 90px; height: 10px; border-radius: 6px; background: #2a2a1a; overflow: hidden; }
   #nitroFill { height: 100%; width: 100%; background: var(--lime); box-shadow: 0 0 8px var(--lime); }
   #nitroText { color: #fff; min-width: 52px; text-align: right; }
-  .actions { position: fixed; z-index: 3; right: max(14px, env(safe-area-inset-right, 0px)); bottom: max(14px, env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 10px; align-items: center; }
+  /* the column itself is see-through to touches: only the buttons take them, so the gaps
+     between them stay draggable for looking around */
+  .actions { position: fixed; z-index: 3; right: max(14px, env(safe-area-inset-right, 0px)); bottom: max(14px, env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 10px; align-items: center; pointer-events: none; }
+  .actions > * { pointer-events: auto; }
+  .tilt { display: flex; gap: 8px; pointer-events: none; }
+  .tilt button { padding: 5px 13px; border-radius: 999px; font-size: 13px; background: #241040; box-shadow: 0 3px 0 #12031a; pointer-events: auto; }
   .actions button { cursor: pointer; touch-action: manipulation; border: 3px solid #2a0a3a; color: #fff; text-shadow: 0 2px 0 rgba(0, 0, 0, 0.4); }
   #camBtn { padding: 6px 12px; border-radius: 999px; font-size: 15px; background: #241040; box-shadow: 0 3px 0 #12031a, 0 0 12px rgba(255, 63, 180, 0.4); }
   .toast { top: auto; bottom: 90px; padding: 8px 18px; }
@@ -238,6 +243,7 @@ else if (!localStorage.getItem('taproot_character')) window.location.replace('/g
   <button id="sailBtn" type="button" tabindex="-1" hidden>&#9973; Set sail<kbd>F</kbd></button>
   <button id="chatBtn" type="button" tabindex="-1" aria-label="Chat">&#128172;<kbd>T</kbd></button>
   <button id="camBtn" type="button" tabindex="-1" aria-label="Camera view">&#127909;<kbd>C</kbd></button>
+  <div class="tilt"><button id="camUpBtn" type="button" tabindex="-1" aria-label="Camera higher">&#9650;</button><button id="camDownBtn" type="button" tabindex="-1" aria-label="Camera lower">&#9660;</button></div>
   <button id="viewBtn" type="button" tabindex="-1" aria-label="First or third person">&#128065;<kbd>V</kbd></button>
   <button id="buildBtn" class="touch" type="button" tabindex="-1" hidden>&#128296; Build</button>
   <button id="nextBtn" class="touch" type="button" tabindex="-1" hidden>&#9654; Next</button>
@@ -247,7 +253,7 @@ else if (!localStorage.getItem('taproot_character')) window.location.replace('/g
   <button id="jumpBtn" type="button" tabindex="-1" aria-label="Jump">JUMP</button>
   <button id="attackBtn" type="button" tabindex="-1" aria-label="Attack">&#9876;&#65039;</button>
 </div>
-<div class="help"><b>WASD</b> move &middot; <b>Drag / Q E</b> look &middot; <b>Space</b> jump &middot; <b>'</b> / <b>J</b> right hand &middot; <b>;</b> left hand &middot; <b>Shift</b> nitro &middot; <b>C</b> camera &middot; <b>F</b> use &middot; <b>H</b> potion &middot; <b>B</b> bag &middot; <b>U</b> sprint toggle &middot; <b>V</b> first person &middot; <b>T</b> chat</div>
+<div class="help"><b>WASD</b> move &middot; <b>Drag / Q E</b> look &middot; <b>Z X</b> tilt &middot; <b>Space</b> jump &middot; <b>'</b> / <b>J</b> right hand &middot; <b>;</b> left hand &middot; <b>Shift</b> nitro &middot; <b>C</b> camera &middot; <b>F</b> use &middot; <b>H</b> potion &middot; <b>B</b> bag &middot; <b>U</b> sprint toggle &middot; <b>V</b> first person &middot; <b>T</b> chat</div>
 <div id="crosshair" hidden></div>
 <div id="aimRing" hidden></div>
 <div id="aimArc" hidden></div>
@@ -444,7 +450,7 @@ const AREAS = {
     ponds: [],
     tall: [],
     objects: [
-      ['house_a', 5, 4, 5, 4, 'Workshop'], ['house_b', 12, 5, 4, 3], ['armoury', 29, 4, 6, 4, 'The Armoury'], ['hall', 36, 2, 9, 6, 'Hero Hall'],
+      ['house_a', 5, 4, 5, 4, 'Workshop'], ['house_b', 12, 5, 4, 3], ['armoury', 29, 4, 6, 4, 'The Armoury'], ['colosseum', 36, 2, 9, 6, 'Taproot Arena'],
       ['shop', 5, 25, 5, 3, 'Potion Shop', Math.PI], ['shop', 12, 25, 5, 3, 'Fruit Stall', Math.PI],
       ['tavern', 30, 25, 5, 3, 'Glowcap Tavern', Math.PI], ['house_a', 38, 25, 5, 4, null, Math.PI],
       ['fountain', 23, 17, 3, 2], ['crystal_pad', 16, 11, 3, 3],
@@ -518,9 +524,9 @@ const AREAS = {
     sky: 'day',
     paths: [], ponds: [], tall: [], objects: [], bushes: [], stumps: [], flowers: [], trees: [], treeKind: () => 'tree_pine',
     start: { x: 21, y: 38 },
-    exits: [{ edge: 's', range: [20, 23], href: '/game/world3d/?area=city&from=arena', name: 'Taproot City' }],
+    exits: [{ edge: 's', range: [18, 25], href: '/game/world3d/?area=city&from=arena', name: 'Taproot City' }],
     arrive: {},
-    spawn: [],
+    spawn: ['gladiator'],
   },
 
   // The spectators' half of the arena: the same pit at the same coordinates, but you walk on the
@@ -534,7 +540,7 @@ const AREAS = {
     sky: 'day',
     paths: [], ponds: [], tall: [], objects: [], bushes: [], stumps: [], flowers: [], trees: [], treeKind: () => 'tree_pine',
     start: { x: 22, y: 22 - 18.8 },
-    exits: [{ edge: 'n', range: [20, 23], href: '/game/world3d/?area=city&from=stands', name: 'Taproot City' }],
+    exits: [{ edge: 'n', range: [18, 25], href: '/game/world3d/?area=city&from=stands', name: 'Taproot City' }],
     arrive: {},
     spawn: [],
   },
@@ -764,10 +770,14 @@ const MONSTERS = {
   bat:    { name: 'Bat',        hp: 24,  speed: 2.75, dmg: 5,  xp: 7,  aggro: 6,   drop: 'bat_fang', gold: [1, 2], fly: true },
   goblin: { name: 'Goblin',     hp: 60,  speed: 2,    dmg: 12, xp: 15, aggro: 5.5, drop: 'goblin_ear', gold: [3, 5] },
   king:   { name: 'King Slime', hp: 200, speed: 1,    dmg: 18, xp: 60, aggro: 5,   drop: 'royal_jelly', gold: [15, 25], big: true, respawn: 45000 },
+  // The arena's house fighter: a person, not a creature. Carries a sword and a fire staff,
+  // closes to swing and throws a fireball from range. Only ever spawned in the pit.
+  gladiator: { name: 'Gladiator', hp: 150, speed: 2.1, dmg: 8,  xp: 45, aggro: 11, drop: 'laurel', gold: [10, 18], respawn: 25000, human: true, cast: [2.2, 9.5] },
 };
 const LOOT = {
   slime_gel: { name: 'Slime Gel', color: '#6aff8a' }, spore_cap: { name: 'Spore Cap', color: '#ff4a6a' }, bat_fang: { name: 'Bat Fang', color: '#f4f0ff' },
   goblin_ear: { name: 'Goblin Ear', color: '#8ad43a' }, royal_jelly: { name: 'Royal Jelly', color: '#c06aff' },
+  laurel: { name: 'Laurel Wreath', color: '#e0d060' },
 };
 const FIELD_KEY = 'taproot_field';
 
@@ -876,7 +886,7 @@ if (INDOOR) {
 }
 if (ARENA) { // everything outside the pit wall, except the gate passage south to the exit
   for (let y = 0; y < MAP_H; y++) for (let x = 0; x < MAP_W; x++) {
-    const out = Math.hypot(x + 0.5 - ARENA_X, y + 0.5 - ARENA_Z) > ARENA_R - 0.6, gate = x >= 20 && x <= 23 && y >= ARENA_Z + 10;
+    const out = Math.hypot(x + 0.5 - ARENA_X, y + 0.5 - ARENA_Z) > ARENA_R - 0.6, gate = x >= 18 && x <= 25 && y >= ARENA_Z + 9;
     blocked[y][x] = out && !gate;
   }
 }
@@ -1119,12 +1129,14 @@ function put(kind, geo, color, x, y, z, sx, sy = sx, sz = sx, rx = 0, ry = 0, rz
   g.setAttribute('color', new THREE.BufferAttribute(arr, 3));
   (parts[kind] ||= []).push(g);
 }
+const worldMeshes = []; // the merged scenery, for the camera's line-of-sight test
 function flushBatch(target = scene) {
   for (const [kind, list] of Object.entries(parts)) {
     const m = new THREE.Mesh(mergeGeometries(list), BATCH_MATS[kind]);
     m.castShadow = kind !== 'glow';
     m.receiveShadow = true;
     target.add(m);
+    if (target === scene && kind !== 'glow') worldMeshes.push(m);
     list.forEach((g) => g.dispose());
   }
   parts = {};
@@ -1499,6 +1511,43 @@ const TOWN_BUILD = {
     put('toon', 'box', '#4a4648', 1.2, 0.18, f + 0.8, 0.25, 0.36, 0.2);
     put('toon', 'box', '#6a6260', -1.3, 0.45, f + 0.75, 0.7, 0.9, 0.6);
     put('glow', 'box', '#ff7a2a', -1.3, 0.55, f + 1.06, 0.4, 0.25, 0.02);
+  },
+  // The arena's public face, standing where Hero Hall used to: a curved two-storey
+  // travertine arcade with two arched ways in, red for the sand and blue for the seats.
+  colosseum(r, w, d) {
+    const W = w - 0.4, f = d / 2 - 0.2, BAYS = 9, bw = W / BAYS;
+    put('toon', 'box', '#b3a994', 0, 0.2, 0, W + 1.0, 0.4, d + 0.4); // the stylobate it sits on
+    put('toon', 'box', '#c4bba6', 0, 3.7, f - 0.45, W + 0.6, 6.6, 0.5); // the wall the arches are cut into
+    for (let t = 0; t < 2; t++) {
+      const y0 = 0.4 + t * 3.1, h = 3.1;
+      for (let i = 0; i <= BAYS; i++) {
+        const x = -W / 2 + bw * i;
+        put('toon', 'box', i % 2 ? '#d6cdb9' : '#cfc5af', x, y0 + h / 2, f, bw * 0.34, h, 1.0); // pier
+      }
+      for (let i = 0; i < BAYS; i++) {
+        const x = -W / 2 + bw * (i + 0.5);
+        if (t === 0 && (Math.abs(x) < bw * 0.6 || Math.abs(x - 2) < bw * 0.6)) continue; // leave the two ways in
+        put('toon', 'box', '#5a5147', x, y0 + h * 0.33, f + 0.46, bw * 0.62, h * 0.66, 0.16);
+        put('toon', 'sph', '#5a5147', x, y0 + h * 0.66, f + 0.46, bw * 0.31, bw * 0.34, 0.14);
+      }
+      put('toon', 'box', '#efe7d4', 0, y0 + h - 0.12, f, W + 0.9, 0.34, 1.3); // storey cornice
+    }
+    put('toon', 'box', '#dbd2bd', 0, 7.4, f, W + 0.9, 1.6, 1.0); // attic wall
+    put('toon', 'box', '#efe7d4', 0, 8.3, f, W + 1.2, 0.3, 1.3);
+    for (let i = 0; i <= 6; i++) { // velarium masts along the top
+      const x = -W / 2 + (W / 6) * i;
+      put('toon', 'cyl', '#8a6a3a', x, 9.1, f, 0.1, 1.4, 0.1);
+      put('toon', 'box', '#c8383a', x, 9.9, f, 0.42, 0.42, 0.07);
+    }
+    // the two ways in, each flagged like the gate it leads to
+    for (const [dx, band] of [[0, '#a8302c'], [2, '#3a5ad8']]) {
+      put('toon', 'box', '#241f1a', dx, 1.25, f + 0.5, bw * 0.86, 2.1, 0.2);
+      put('toon', 'sph', '#241f1a', dx, 2.3, f + 0.5, bw * 0.44, 1.1, 0.18);
+      put('toon', 'box', band, dx, 3.3, f + 0.3, 1.5, 0.55, 0.08);
+      put('toon', 'box', '#e0b450', dx, 3.3, f + 0.33, 0.34, 0.34, 0.06);
+    }
+    // the far side of the bowl rising behind the front
+    for (const k of [-1, 1]) put('toon', 'box', '#cfc5af', k * (W / 2 - 0.6), 3.8, f - d * 0.8, 1.6, 7.0, 1.6);
   },
   hall(r, w, d) { // stone town hall with a blue roof and a clock tower
     const W = w - 0.6, D = d - 0.6, H = 3.6, f = D / 2 - 0.3;
@@ -2313,6 +2362,10 @@ document.querySelector('.avatar').style.background = `url(${SPRITE.renderDir(cha
 
 // Monsters: each gets its own materials so a hit can flash just that one.
 function makeMonster(type) {
+  if (MONSTERS[type].human) { // a person: the same rig the players use, in arena kit
+    const h = makeHero({ skin: 2, hc: 1, hs: 'short', equipment: { head: 'iron_helm', body: 'steel_armor', rhand: 'iron_sword', lhand: 'inferno_staff', feet: 'iron_greaves' } });
+    return { g: h.root, body: h.root, mats: [], base: [], hero: h, human: true };
+  }
   const g = new THREE.Group(), body = new THREE.Group(), mats = [];
   g.add(body);
   const mk = (color, extra) => { const m = toon({ color, ...extra }); mats.push(m); return m; };
@@ -3491,6 +3544,44 @@ function disposeHazard(v) {
   for (const c of v.circles) { const i = circles.indexOf(c); if (i >= 0) circles.splice(i, 1); }
 }
 
+/* The gladiator's staff. Player fireballs live in `fireballs` and only hurt monsters and
+   other players, so a foe's shot needs its own list; it damages nobody but the person
+   whose screen it is on, through the same self-applied path hazards use. */
+const foeBalls = [];
+function castFoeBall(mo) {
+  const dx = P.x - mo.x, dz = P.z - mo.z, d = Math.hypot(dx, dz) || 1;
+  const g = new THREE.Group();
+  const core = new THREE.Mesh(FB_GEO, new THREE.MeshBasicMaterial({ color: '#fff4c0' }));
+  core.scale.setScalar(0.12);
+  const shell = new THREE.Mesh(FB_GEO, new THREE.MeshBasicMaterial({ color: '#ff5a2a' }));
+  shell.scale.setScalar(0.22);
+  g.add(core, shell);
+  g.position.set(mo.x, 1.15, mo.z);
+  scene.add(g);
+  foeBalls.push({ g, x: mo.x, y: 1.15, z: mo.z, dx: dx / d, dz: dz / d, dist: 0, trailT: 0 });
+  burst(mo.x, 1.15, mo.z, '#ff8a2a', 4);
+}
+function updateFoeBalls(dt) {
+  for (let i = foeBalls.length - 1; i >= 0; i--) {
+    const b = foeBalls[i], step = 11 * dt;
+    b.x += b.dx * step; b.z += b.dz * step; b.dist += step;
+    b.g.position.set(b.x, b.y, b.z);
+    b.trailT += dt;
+    if (b.trailT > 0.03) { b.trailT = 0; burst(b.x, b.y, b.z, '#ff5a2a', 1); }
+    const cx = Math.floor(b.x), cz = Math.floor(b.z);
+    const wall = cx < 0 || cz < 0 || cx >= MAP_W || cz >= MAP_H || blocked[cz][cx]
+      || circles.some(([x, z, r]) => Math.hypot(b.x - x, b.z - z) < r);
+    const onMe = !fainted && Math.hypot(P.x - b.x, P.z - b.z) < 0.75 && P.y < 1.8;
+    if (onMe || wall || b.dist > 16) {
+      burst(b.x, b.y, b.z, '#ff8a2a', 10);
+      if (onMe) hazardHurt(11, "a gladiator's fire");
+      scene.remove(b.g);
+      b.g.traverse((o) => o.material && o.material.dispose());
+      foeBalls.splice(i, 1);
+    }
+  }
+}
+
 function updateHazards(dt) {
   if (!PIT) return; // PIT draws them, ARENA is what they can touch — see commitHazard
   const t = hazardNow(), live = eventsNear(t), want = new Set(live.map((e) => e.n));
@@ -3785,6 +3876,7 @@ tapBtn('nextBtn', () => building && nextItem());
 tapBtn('rotBtn', () => { if (building) building.r = (building.r + 1) % 4; });
 tapBtn('breakBtn', () => { tapMode = tapMode === 'break' ? 'place' : 'break'; });
 const AIM = new THREE.Raycaster(), AIM_NDC = new THREE.Vector2();
+const CAM_RAY = new THREE.Raycaster(), CAM_DIR = new THREE.Vector3();
 function blockCtx(p) {
   return {
     crops: new Set(Object.keys(myFarm.crops || {})),
@@ -4319,6 +4411,18 @@ $('shopList').addEventListener('click', (e) => {
 });
 $('bagGrid').addEventListener('click', (e) => { const b = e.target.closest('[data-use]'); if (b) drink(b.dataset.use); });
 $('camBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); cycleCam(); });
+// hold to tilt: the same axis Q/E give you sideways, now up and down
+for (const [id, dir] of [['camUpBtn', 1], ['camDownBtn', -1]]) {
+  let held = 0;
+  const stop = () => { clearInterval(held); held = 0; };
+  $(id).addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    camPitchT = clamp(camPitchT + dir * 0.14, 0.05, 1.35);
+    stop();
+    held = setInterval(() => { camPitchT = clamp(camPitchT + dir * 0.07, 0.05, 1.35); }, 40);
+  });
+  for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) $(id).addEventListener(ev, stop);
+}
 $('viewBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); setFirstPerson(!firstPerson); });
 $('bagBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); toggleBag(); });
 addEventListener('resize', () => {
@@ -4343,6 +4447,7 @@ function update(dt, now) {
   let fx = fainted || modal ? 0 : k('KeyD') + k('ArrowRight') - k('KeyA') - k('ArrowLeft');
   if (joy && !fainted) { fx += joy.fx; fy += joy.fy; }
   camYaw += (k('KeyQ') - k('KeyE')) * 2.2 * dt;
+  if (!building) camPitchT = clamp(camPitchT + (k('KeyZ') - k('KeyX')) * 1.7 * dt, 0.05, 1.35); // tilt up / down
   const moving = Math.hypot(fx, fy) > 0.15;
   const boosting = moving && (sprintOn || ((keys.ShiftLeft || keys.ShiftRight) && !shiftCancel)) && !nitroLock && nitro > 0;
   if (boosting) { nitro -= dt * 0.12; if (nitro <= 0) { nitro = 0; nitroLock = true; } }
@@ -4442,6 +4547,22 @@ function update(dt, now) {
     if (mo.type === 'slime' || mo.type === 'king') { const s = Math.sin(tt * 6); v.body.scale.set(1 - s * 0.08, 1 + s * 0.12, 1 - s * 0.08); }
     else if (mo.type === 'shroom') v.body.rotation.z = Math.sin(tt * 5) * 0.12;
     else if (mo.type === 'bat') { v.body.position.y = 1.1 + Math.sin(tt * 3) * 0.15; v.wings.forEach((w, i) => { w.rotation.z = (i ? -1 : 1) * Math.sin(tt * 18) * 0.7; }); }
+    else if (v.human) { // a person: the hero rig animates itself off how far the root moved
+      v.g.position.y = 0;
+      v.hero.update(dt, { atk: mo.atk, atkL: mo.atkL, lookAt: fainted ? null : { x: P.x, z: P.z }, air: false, vy: 0 });
+      if (mo.atk >= 0) { mo.atk += dt / 0.38; if (mo.atk >= 1) mo.atk = -1; }
+      if (mo.atkL >= 0) { mo.atkL += dt / 0.38; if (mo.atkL >= 1) mo.atkL = -1; }
+      mo.cd = (mo.cd || 0) - dt;
+      const [near, far] = mo.cfg.cast;
+      if (!fainted && mo.cd <= 0 && dist > near && dist < far) { // staff: open fire from range
+        mo.cd = 3.4 + Math.random() * 1.8;
+        mo.atkL = 0;
+        setTimeout(() => { if (!mo.dead && !fainted) castFoeBall(mo); }, 140);
+      } else if (!fainted && mo.cd <= 0 && dist <= near) { // sword: a swing you can see coming
+        mo.cd = 1.1 + Math.random() * 0.5;
+        mo.atk = 0;
+      }
+    }
     else { v.body.position.y = Math.abs(Math.sin(tt * 7)) * 0.05; v.club.rotation.x = Math.sin(tt * 4) * 0.3; }
     if (mo.flash > 0) { mo.flash -= dt; v.mats.forEach((mt) => mt.emissive.set('#ffffff')); }
     else v.mats.forEach((mt, i) => mt.emissive.copy(v.base[i]));
@@ -4480,6 +4601,7 @@ function update(dt, now) {
   // effects
   updateFireballs(dt, t);
   updateTomatoes(dt);
+  updateFoeBalls(dt);
   updateHazards(dt);
   for (let i = sparks.length - 1; i >= 0; i--) {
     const s = sparks[i];
@@ -4546,7 +4668,20 @@ function update(dt, now) {
     camGround = damp(camGround, groundAt(P.x, P.z, P.y), 6, dt); // eased, so stepping onto a block doesn't jolt the view
     const cp = Math.cos(camPitch), target = V.set(P.x, 0.9 + camGround + (P.y - camGround) * 0.5, P.z);
     const want = new THREE.Vector3(P.x + Math.sin(camYaw) * camDist * cp, target.y + Math.sin(camPitch) * camDist + 0.6, P.z + Math.cos(camYaw) * camDist * cp);
-    if (first) { camPos.copy(want); first = false; } else camPos.lerp(want, Math.min(1, dt * 8));
+    // Don't sit behind the scenery. Cast from the player's head out to where the camera
+    // wants to be, and if a wall is in the way, come in short of it. Without this the
+    // stands swallow the view whenever you sit with a tier behind you.
+    CAM_DIR.copy(want).sub(target);
+    const reach = CAM_DIR.length();
+    if (reach > 0.4) {
+      CAM_RAY.set(target, CAM_DIR.divideScalar(reach));
+      CAM_RAY.far = reach;
+      const hit = CAM_RAY.intersectObjects(worldMeshes, false)[0];
+      if (hit && hit.distance < reach - 0.2) want.copy(CAM_RAY.ray.direction).multiplyScalar(Math.max(1.9, hit.distance - 0.4)).add(target);
+    }
+    // snap in to a wall, ease back out, so a pillar you pass doesn't yank the camera
+    if (first) { camPos.copy(want); first = false; }
+    else camPos.lerp(want, Math.min(1, dt * (want.distanceTo(target) < camPos.distanceTo(target) ? 26 : 8)));
     camera.position.copy(camPos);
     if (shake > 0) { shake -= dt; camera.position.x += (Math.random() - 0.5) * 0.15; camera.position.y += (Math.random() - 0.5) * 0.15; }
     const ahead = 2.2 * Math.max(0, Math.cos(camPitch * 1.15)); // look a little ahead, less so from high up

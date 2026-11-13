@@ -30,13 +30,15 @@ try {
   await B.go(`${BASE}/game/world3d/?area=arena&from=city&hour=13`);
   assert.ok(await ready(B));
   await sleep(2500);
-  assert.equal(await A.ev('__world3d.ghosts.size'), 1, 'the spectator sees the fighter');
-  assert.equal(await B.ev('__world3d.ghosts.size'), 1, 'the fighter sees the spectator');
+  // by name, not by count: the dev channel may well have a real person on it
+  const sees = (p, who) => p.ev(`[...__world3d.ghosts.values()].some((g) => g.name === '${who}')`);
+  assert.equal(await sees(A, 'Blue'), true, 'the spectator sees the fighter');
+  assert.equal(await sees(B, 'Red'), true, 'the fighter sees the spectator');
 
   // 5. a spectator takes no damage, however hard the fighter swings at them
   assert.equal(await A.ev('__world3d.hp()'), 100);
   for (let i = 0; i < 6; i++) {
-    await B.ev(`(() => { const g = __world3d.ghosts.values().next().value; __world3d.tp(g.x, g.z + 0.6); __world3d.P.heading = Math.PI; })(); 1`);
+    await B.ev(`(() => { const g = [...__world3d.ghosts.values()].find((q) => q.name === 'Red'); __world3d.tp(g.x, g.z + 0.6); __world3d.P.heading = Math.PI; })(); 1`);
     await B.key('Quote', "'");
     await sleep(400);
   }
