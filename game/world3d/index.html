@@ -4841,13 +4841,10 @@ function update(dt, now) {
       if (free(P.x, P.z + P.vz * dt)) P.z += P.vz * dt;
       P.phase += dt * sp * 2.4;
     } else { P.vx = P.vz = 0; }
-    // these two are a feedback loop — the camera chases the heading and the heading is read
-    // through the camera — so keep the heading quick and the camera lazy, or you walk in arcs
     if (moving) P.heading = damp(P.heading, P.heading + wrapAngle(Math.atan2(mx, mz) - P.heading), 14, dt);
-    // the camera drifts back behind the player unless they are steering it
-    if (moving && !firstPerson && CAM_MODES[camMode].follow && fy >= 0 && now - lastDrag > 800) {
-      camYaw = damp(camYaw, camYaw + wrapAngle(P.heading + Math.PI - camYaw), 1.1, dt);
-    }
+    // The camera does not turn on its own. You move relative to it, so if it swung round after
+    // your facing, "left" would rotate as you ran and holding A would carry you in a circle.
+    // Drag, or Q and E, turn it; W always runs straight away from it.
   }
   if (firstPerson) P.heading = camYaw + Math.PI; // you face where you look
   if (pkb.t > 0) {
@@ -5166,7 +5163,7 @@ SPAWN_LIST.forEach((type) => spawnMonster(type));
 // debug hook for tests and screenshots: __world3d.tp(x, z) teleports, .P is the player state
 window.__world3d = { P, ghosts, arena, farms, updateIndoor, aimPoint, spectating: () => STANDS, tomatoes, throwTomato,
   arenaMod, buff: () => buffNow(), free,
-  equip: (id, slot) => equip(id, slot), gearOf: (slot) => gear(slot), parrying: () => parrying(), nitro: () => nitro, setNitro: (v) => { nitro = v; nitroLock = false; }, jump,
+  equip: (id, slot) => equip(id, slot), gearOf: (slot) => gear(slot), parrying: () => parrying(), camYaw: () => camYaw, setCamYaw: (v) => { camYaw = v; }, nitro: () => nitro, setNitro: (v) => { nitro = v; nitroLock = false; }, jump,
   spawn: (type, x, z) => { spawnMonster(type); const m = monsters[monsters.length - 1]; m.x = x; m.z = z; m.t = 99; m.vx = m.vz = 0; return monsters.length - 1; },
   foeCast: (i) => castFoeBall(monsters[i]), chilled, smoked: () => Math.max(0, (smokeUntil - performance.now()) / 1000), colosseum: () => COLO && { arena: [A.doors.find((d) => /area=arena/.test(d.href)).x + 0.5, A.doors.find((d) => /area=arena/.test(d.href)).y + 0.5], stands: [A.doors.find((d) => /area=stands/.test(d.href)).x + 0.5, A.doors.find((d) => /area=stands/.test(d.href)).y + 0.5] }, hazardNow, clockOffset: () => HAZ.offset, hazards: () => [...HAZ.views.values()], hazardClock: (ms) => { HAZ.pinned = ms === undefined || ms === null ? null : ms; }, slowed, setHp: (n) => { hp = n; updateHud(); }, drawnBlocks: (id) => ((plotViews.get(id) || {}).blockMeshes || []).reduce((n, m) => n + m.count, 0), getPitch: () => fpPitch, firstPerson: () => firstPerson, setPitch: (v) => { fpPitch = v; }, openShop, hiddenBlocks, doorAngle: (id, i, j, k) => { const v = plotViews.get(id); return (v && v.doorAng && v.doorAng.get(`${i},${j},${k}`)) || 0; }, shopSpots, aimBlock, mouse, camera, building: () => building, toScreen, groundAt, solidAt, setBlocks, plots: PLOTS, placed, decorCrops, myFarm: () => myFarm, farmTile: () => farmTile(), hp: () => hp, mp, monsters, drops, field: () => field, hero: () => hero, fireballs, tp: (x, z, yaw) => { P.x = x; P.z = z; P.vx = P.vz = 0; if (yaw !== undefined) camYaw = yaw; }, cam: (dist, pitch) => { camDistT = camDist = dist; camPitchT = camPitch = pitch; }, size: [MAP_W, MAP_H], info: () => { // one full frame's draw calls and triangles (all passes, shadows included)
   renderer.info.autoReset = false; renderer.info.reset(); composer.render();
