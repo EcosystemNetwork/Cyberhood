@@ -1,11 +1,10 @@
 {
-  "rewrites": [
-    {
-      "source": "/p/:slug",
-      "destination": "/api/p?slug=:slug"
-    }
-  ],
   "redirects": [
+    {
+      "source": "/",
+      "destination": "/game/",
+      "permanent": false
+    },
     {
       "source": "/game/world",
       "destination": "/game/world3d/",
@@ -36,10 +35,5 @@
       "destination": "/game/world3d/?area=city",
       "permanent": false
     }
-  ],
-  "functions": {
-    "api/p.js": {
-      "includeFiles": "{p/index.html,supabase-config.js}"
-    }
-  }
+  ]
 }
