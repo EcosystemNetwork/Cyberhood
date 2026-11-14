@@ -12,24 +12,38 @@
      or press H for the best potion you have).
    ============================================================================ */
 
+import { BLOCKS, BLOCK_IDS } from './blocks.js';
+
 export const CONSUMABLES = {
   health_potion: { name: 'Health Potion', heal: 40, emoji: '\u{1F9EA}' },
   big_potion:    { name: 'Big Potion',    heal: 100, emoji: '⚗️' },
   apple:         { name: 'Apple',         heal: 10, emoji: '\u{1F34E}' },
+  smoke_bomb:    { name: 'Smoke Bomb',    smoke: 2.5, emoji: '\u{1F4A8}' }, // vanish for a moment (N)
 };
 
 export const SHOPS = {
   'Potion Shop': {
     keeper: 'Wren',
     greeting: 'Potions, wands and a little gossip. What will it be?',
-    stock: [['health_potion', 15], ['big_potion', 45], ['apprentice_wand', 45], ['fire_wand', 140], ['oak_staff', 70],
-      ['tome_of_sparks', 60], ['crystal_orb', 220], ['wizard_hat', 40], ['mage_robe', 80]],
+    stock: [['health_potion', 15], ['big_potion', 45], ['smoke_bomb', 25], ['apprentice_wand', 45], ['fire_wand', 140], ['ice_wand', 160],
+      ['oak_staff', 70], ['thunder_staff', 260], ['tome_of_sparks', 60], ['crystal_orb', 220], ['wizard_hat', 40], ['mage_robe', 80]],
   },
   'The Armoury': {
     keeper: 'Mira',
     greeting: 'Steel for the brave. Bring me goblin ears and we can talk.',
-    stock: [['iron_sword', 50], ['wooden_shield', 35], ['iron_helm', 45], ['leather_boots', 25], ['cutlass', 110],
-      ['chainmail', 120], ['steel_armor', 160], ['tower_shield', 140], ['iron_greaves', 70]],
+    stock: [['iron_sword', 50], ['wooden_shield', 35], ['iron_helm', 45], ['leather_boots', 25], ['cutlass', 110], ['boomerang', 120],
+      ['chainmail', 120], ['steel_armor', 160], ['tower_shield', 140], ['mirror_shield', 240], ['iron_greaves', 70],
+      ['hermes_sandals', 220], ['windrunner_boots', 200]],
+  },
+  'Seed Shop': {
+    keeper: 'Farmer Bo',
+    greeting: 'Seeds for your plot! Carrots are quick, pumpkins pay best.',
+    stock: [['carrot_seed', 2], ['wheat_seed', 3], ['pumpkin_seed', 10]],
+  },
+  "Builder's Yard": {
+    keeper: 'Mason',
+    greeting: 'Blocks by the piece! Build whatever you like on your own plot.',
+    stock: BLOCK_IDS.map((id) => ['block_' + id, BLOCKS[id].price]),
   },
   'Fruit Stall': {
     keeper: 'Old Fenn',
@@ -38,7 +52,7 @@ export const SHOPS = {
   },
 };
 
-export const SELL = { slime_gel: 3, spore_cap: 4, bat_fang: 5, goblin_ear: 8, royal_jelly: 40, health_potion: 6, big_potion: 18, apple: 1 };
+export const SELL = { carrot: 3, wheat: 4, pumpkin: 45, slime_gel: 3, spore_cap: 4, bat_fang: 5, goblin_ear: 8, royal_jelly: 40, health_potion: 6, big_potion: 18, apple: 1, smoke_bomb: 8 };
 
 export const RECIPES = [
   // the first gear loop: beat a slime and a bat, grab their drops and 10 gold, forge a fire staff

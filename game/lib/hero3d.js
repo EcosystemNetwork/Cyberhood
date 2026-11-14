@@ -52,7 +52,8 @@ const OUTFITS = {
   chainmail:    { shirt: '#9aa3b0', sleeve: '#8a93a2', sleeves: 'long', gloves: '#8a93a2', pants: '#5a6270', boots: '#4a4450', belt: '#5a4632', buckle: '#c8ccd4', extra: 'chain' },
   pirate_coat:  { shirt: '#b02a2c', sleeves: 'long', pants: '#2a2a34', boots: '#1f1d26', bootTop: true, belt: '#1a1620', buckle: '#e0b450', extra: 'coat' },
 };
-const FEET = { leather_boots: '#6b4226', swift_sandals: '#b07a46', iron_greaves: '#8f98a6', dragons_stride: '#7a1a24', sea_boots: '#26232e', shadow_treads: '#3a1a5a', winged_boots: '#e8e0d0' };
+const FEET = { leather_boots: '#6b4226', swift_sandals: '#b07a46', iron_greaves: '#8f98a6', dragons_stride: '#7a1a24', sea_boots: '#26232e', shadow_treads: '#3a1a5a', winged_boots: '#e8e0d0',
+  hermes_sandals: '#e0b450', windrunner_boots: '#3ab8c8' };
 const CAPPED = (eq) => !!eq.head && eq.head !== 'gold_crown';
 
 const col = (c) => new THREE.Color(c);
@@ -471,6 +472,30 @@ const WEAPONS = {
     part(G.sph, glow('#ffe08a', 2), w, [0, 0.83, 0], 0.045, null, false);
     return { type: 'pole', tip: [0, 0.86, 0], base: [0, 0.6, 0], trail: '#ff6a2e', cast: { color: '#ff6a2e', cd: 0.6, range: 16, aoe: 1.8, size: 1.5 } };
   },
+  // An ice wand: pale wood and a frost crystal. Its bolt is fast and slows what it hits.
+  ice_wand: (w) => WEAPONS.wand(w, '#cfe2ee', '#9ae8ff', 0.34,
+    { color: '#9ae8ff', cd: 0.5, range: 15, aoe: 0, size: 0.85, speed: 24, slow: { mul: 0.45, ms: 2500 } }),
+  // A thunder staff: dark iron with a crackling yellow orb. The bolt jumps to two more targets.
+  thunder_staff(w) {
+    part(new THREE.CylinderGeometry(0.018, 0.026, 1.05, 8), toon('#3a3a48'), w, [0, 0.2, 0]);
+    for (let i = 0; i < 3; i++) {
+      const a = (i / 3) * Math.PI * 2;
+      part(G.cone, toon('#e0b048'), w, [Math.cos(a) * 0.055, 0.76, Math.sin(a) * 0.055], [0.016, 0.14, 0.016], [Math.sin(a) * 0.6, 0, -Math.cos(a) * 0.6], false);
+    }
+    part(G.sph, glow('#fff27a', 2.4), w, [0, 0.82, 0], 0.075, null, false);
+    part(G.sph, glow('#ffffff', 2), w, [0, 0.82, 0], 0.035, null, false);
+    return { type: 'pole', tip: [0, 0.85, 0], base: [0, 0.6, 0], trail: '#fff27a',
+      cast: { color: '#fff27a', cd: 0.8, range: 16, aoe: 0, size: 0.75, speed: 30, chain: 2 } };
+  },
+  // A boomerang: thrown, it flies out, comes back to your hand, and hits both ways.
+  boomerang(w) {
+    const g = group(w, [0, 0.1, 0]);
+    part(rbox(0.05, 0.26, 0.022, 0.01), toon('#b0703a'), g, [0, 0.06, 0], null, [0, 0, 0.5]);
+    part(rbox(0.05, 0.26, 0.022, 0.01), toon('#b0703a'), g, [-0.1, 0.06, 0], null, [0, 0, -0.5]);
+    part(rbox(0.052, 0.04, 0.024, 0.01), toon('#e0b450'), g, [-0.05, 0.16, 0]);
+    return { type: 'wand', tip: [0, 0.22, 0], base: [0, 0.05, 0], trail: '#e0a060',
+      cast: { color: '#c8823a', cd: 1.1, range: 9, aoe: 0, size: 1, speed: 13, boomerang: true } };
+  },
   hunter_bow: (w) => WEAPONS.bow(w, '#8b5e3c'),
   composite_bow: (w) => WEAPONS.bow(w, '#5a3a5a'),
   bow(w, c) {
@@ -483,6 +508,8 @@ const OFFHAND = {
   wooden_shield: (h) => OFFHAND.round(h, 0.19, '#8b6b3e', '#a0a8b4'),
   iron_buckler: (h) => OFFHAND.round(h, 0.13, '#a0a8b4', '#6e7684'),
   aegis: (h) => { OFFHAND.round(h, 0.2, '#e0b450', '#fff2b0'); part(G.sphLo, glow('#7ae0ff', 1.4), h, [0.09, 0, 0.02], 0.05, null, false); },
+  // the mirror shield: a polished face in a gold rim — raise it as a fireball arrives to send it back
+  mirror_shield: (h) => { OFFHAND.round(h, 0.19, '#dff3ff', '#e0b450'); part(G.sphLo, glow('#cfefff', 1.1), h, [0.1, 0, 0.03], 0.12, [0.25, 1, 1], false); },
   round(h, r, c, rim) {
     const g = group(h, [0.07, 0, 0.03], [0, 0, Math.PI / 2]);
     part(G.cyl, toon(c), g, [0, 0, 0], [r, 0.035, r]);
@@ -594,7 +621,7 @@ export function makeHero3D(look = {}) {
       part(rbox(0.112, 0.1, 0.18, 0.045), M.boot, ankle, [0, -0.035, 0.028]);
       part(rbox(0.118, 0.025, 0.19, 0.011), M.sole, ankle, [0, -0.077, 0.028]);
     }
-    if (eq.feet === 'winged_boots') {
+    if (eq.feet === 'winged_boots' || eq.feet === 'hermes_sandals') {
       const wing = group(ankle, [side * 0.06, 0.0, -0.02]);
       part(strand([[0, 0, 0], [side * 0.05, 0.04, -0.04], [side * 0.06, 0.09, -0.1]], 0.03, 0.004, 8, 6), toon('#ffffff'), wing, [0, 0, 0], [1, 1, 0.4]);
       (ctx.wings ||= []).push(wing);
@@ -673,6 +700,8 @@ export function makeHero3D(look = {}) {
   const wpn = group(J.handR, [0, -0.02, 0.0]);
   J.wpn = wpn;
   const W = WEAPONS[eq.rhand] ? WEAPONS[eq.rhand](wpn) : null;
+  // a shield or off-hand item can be carried in the right hand too; it faces outward, mirrored
+  if (!W && OFFHAND[eq.rhand]) { const mirror = group(J.handR, [0, 0, 0]); mirror.scale.x = -1; OFFHAND[eq.rhand](mirror, ctx); }
   const wtype = W ? W.type : 'fist';
   if (W && W.bow) {
     const quiver = group(spine, [-0.06, 0.16, -0.13], [0.15, 0, 0.45]);
