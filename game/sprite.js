@@ -194,6 +194,27 @@
       d.rows(1, [[30, 31], [29, 32], [29, 32], [29, 32], [30, 31]], 'flameOrb'); d.px(30, 2, 'flameHi');
       sparks(d, [[27, 2], [34, 1], [34, 6], [26, 6]]);
     },
+    void_blade(d) { sword(d); sparks(d, [[33, 12], [27, 17], [34, 24]]); },
+    composite_bow(d) {
+      d.fill(30, 23, 30, 44, 'string');
+      for (let y = 22; y <= 45; y++) { const k = Math.abs(y - 34), x = 32 - Math.round(k * k / 55); d.fill(x, y, x + 1, y, 'bowDark'); }
+      d.px(33, 21, 'bowDark'); d.px(33, 46, 'bowDark'); // the recurved tips
+    },
+    ice_wand(d) {
+      d.fill(30, 24, 31, 38, 'iceWand'); d.fill(29, 37, 32, 37, 'guard');
+      d.rows(20, [[30, 31], [29, 32], [29, 32], [30, 31]], 'iceGem');
+      sparks(d, [[27, 19], [34, 20], [33, 25]]);
+    },
+    thunder_staff(d) {
+      d.fill(30, 7, 31, 44, 'ironStaff'); d.px(28, 5, 'guard'); d.px(33, 5, 'guard');
+      d.rows(1, [[30, 31], [29, 32], [29, 32], [29, 32], [30, 31]], 'boltOrb'); d.px(30, 2, 'boltHi');
+      [[27, 3], [26, 4], [34, 6], [35, 7]].forEach(([x, y]) => d.px(x, y, 'boltOrb')); // crackle
+    },
+    boomerang(d) {
+      for (let i = 0; i < 6; i++) { d.px(30 + i, 32 - i, 'boomerang'); d.px(31 + i, 32 - i, 'boomerang'); }
+      for (let i = 0; i < 5; i++) { d.px(36, 27 + i, 'boomerang'); d.px(37, 27 + i, 'boomerang'); }
+      d.px(32, 30, 'boomBand'); d.px(36, 30, 'boomBand');
+    },
     trident(d) {
       d.fill(30, 7, 31, 44, 'tridentShaft');
       d.fill(28, 6, 33, 7, 'prong'); d.fill(28, 1, 28, 5, 'prong'); d.fill(33, 1, 33, 5, 'prong'); d.fill(30, 0, 31, 5, 'prong');
@@ -232,11 +253,47 @@
       d.rows(30, [[7, 9], [6, 10], [6, 10], [6, 10], [7, 9]], 'compass');
       d.fill(7, 31, 9, 33, 'compassFace'); d.px(8, 31, 'needle'); d.px(8, 32, 'needle');
     },
+    iron_buckler(d) { d.rows(29, [[7, 9], [6, 10], [6, 10], [7, 9]], 'buckler'); d.fill(8, 30, 8, 31, 'bucklerBoss'); },
+    tower_shield(d) {
+      d.fill(5, 25, 10, 38, 'towerShield'); d.fill(6, 26, 9, 37, 'towerFace');
+      d.fill(7, 28, 8, 34, 'towerTrim'); d.fill(6, 30, 9, 30, 'towerTrim');
+    },
+    aegis(d) {
+      d.rows(27, [[6, 10], [5, 11], [5, 11], [5, 11], [6, 10], [7, 9], [8, 8]], 'aegis');
+      d.fill(6, 28, 10, 31, 'aegisFace'); d.fill(8, 29, 8, 30, 'aegisHi');
+    },
+    mirror_shield(d) {
+      d.rows(28, [[7, 9], [6, 10], [6, 10], [6, 10], [6, 10], [7, 9]], 'mirrorRim');
+      d.fill(7, 29, 9, 32, 'mirror'); d.px(7, 29, 'mirrorHi'); d.px(8, 30, 'mirrorHi');
+    },
+    tome_of_sparks(d) {
+      d.fill(6, 30, 11, 35, 'tome'); d.fill(7, 31, 10, 34, 'tomePage'); d.fill(8, 31, 8, 34, 'tome');
+      sparks(d, [[5, 28], [12, 29]]);
+    },
+    lantern(d) {
+      d.fill(9, 36, 9, 37, 'lantern'); d.fill(7, 38, 11, 38, 'lantern');
+      d.fill(7, 39, 11, 42, 'lanternGlow'); d.fill(7, 43, 11, 43, 'lantern');
+    },
+    crystal_orb(d) { d.rows(29, [[7, 9], [6, 10], [6, 10], [6, 10], [7, 9]], 'crystal'); d.px(7, 30, 'crystalHi'); d.fill(7, 34, 9, 35, 'guard'); },
     captains_hook(d) {
       d.fill(10, 34, 12, 35, 'cuff');
       d.fill(11, 36, 11, 38, 'hook'); d.px(10, 39, 'hook'); d.px(9, 39, 'hook'); d.px(8, 38, 'hook'); d.px(8, 37, 'hook');
     },
   };
+
+  /* Any hand item goes in either hand. A right-hand weapon carried in the left hand is the same
+     drawing mirrored across the sprite, and an off-hand item carried in the right likewise. */
+  const mirror = (d) => ({
+    px: (x, y, m) => d.px(W - 1 - x, y, m),
+    fill: (x0, y0, x1, y1, m) => d.fill(W - 1 - x1, y0, W - 1 - x0, y1, m),
+    span: (y, a, b, m) => d.span(y, W - 1 - b, W - 1 - a, m),
+    rows: (y0, list, m) => d.rows(y0, list.map((sp) => (Array.isArray(sp[0]) ? sp : [sp]).map(([a, b]) => [W - 1 - b, W - 1 - a])), m),
+    sym: d.sym,
+  });
+  // what goes in the right hand: a weapon as drawn, or an off-hand item mirrored over
+  const rightItem = (id) => WEAPONS[id] || (LHANDS[id] ? (d) => LHANDS[id](mirror(d)) : null);
+  // a weapon in the LEFT hand (off-hand items there are drawn by LHANDS as before)
+  const leftWeapon = (id) => (!LHANDS[id] && WEAPONS[id] ? (d) => WEAPONS[id](mirror(d)) : null);
 
   /* ---------- feet overlays ---------- */
   const FEET_VIS = {
@@ -277,7 +334,8 @@
   function materials(o, f, eq) {
     const skin = SKINS[o.skin] || SKINS[1], hc = HAIRS[o.hc] || HAIRS[0];
     const rogue = eq.head === 'rogue_hood';
-    const blade = { ember_blade: ['#ff5a2e', '#ffd36e'], shadow_dagger: ['#8d93c4', '#dfe3ff'] }[eq.rhand] || ['#c3ccd8', '#f4f8fc'];
+    const BLADES = { ember_blade: ['#ff5a2e', '#ffd36e'], shadow_dagger: ['#8d93c4', '#dfe3ff'], void_blade: ['#6a3ad8', '#d8c8ff'] };
+    const blade = BLADES[eq.rhand] || BLADES[eq.lhand] || ['#c3ccd8', '#f4f8fc'];
     return {
       skin: { c: skin }, ear: { c: skin }, skinArm: { c: skin }, hand: { c: f.gloves || skin },
       neck: { c: dark(skin), flat: true },
@@ -323,6 +381,17 @@
       tricorn: { c: '#24222c' }, tricornTrim: { c: '#d9a934', flat: true, base: 'tricorn' }, skull: { c: '#f2ead8', flat: true, base: 'tricorn' },
       horn: { c: '#efe6d0' }, hornBand: { c: '#d9b04f' },
       tridentShaft: { c: '#2aa0a8' }, prong: { c: '#e0b450' },
+      bowDark: { c: '#5a3a5a' },
+      iceWand: { c: '#cfe2ee' }, iceGem: { c: '#9ae8ff' },
+      ironStaff: { c: '#3a3a48' }, boltOrb: { c: '#fff27a' }, boltHi: { c: '#ffffff', flat: true, base: 'boltOrb' },
+      boomerang: { c: '#b0703a' }, boomBand: { c: '#c8383a', flat: true, base: 'boomerang' },
+      buckler: { c: '#a0a8b4' }, bucklerBoss: { c: '#e0b450', flat: true, base: 'buckler' },
+      towerShield: { c: '#9aa3b0' }, towerFace: { c: '#2e4a8a' }, towerTrim: { c: '#e0b450', flat: true, base: 'towerFace' },
+      aegis: { c: '#e0b450' }, aegisFace: { c: '#3a6ad8' }, aegisHi: { c: '#fff2b0', flat: true, base: 'aegisFace' },
+      mirror: { c: '#dff3ff' }, mirrorRim: { c: '#e0b450' }, mirrorHi: { c: '#ffffff', flat: true, base: 'mirror' },
+      tome: { c: '#6a2a8a' }, tomePage: { c: '#f2ead8', flat: true, base: 'tome' },
+      lantern: { c: '#3a3640' }, lanternGlow: { c: '#ffd84a' },
+      crystal: { c: '#9a8ae8' }, crystalHi: { c: '#e8e0ff', flat: true, base: 'crystal' },
       patch: { c: '#1a1620', flat: true, base: 'skin' }, patchStrap: { c: '#26232e', flat: true, base: 'skin' },
       goggle: { c: '#b0802a' }, goggleLens: { c: '#f0a030', flat: true, base: 'goggle' }, goggleStrap: { c: '#6b4a2e', flat: true, base: 'skin' },
       compass: { c: '#c8962a' }, compassFace: { c: '#f2ead8', flat: true, base: 'compass' }, needle: { c: '#d43a3a', flat: true, base: 'compass' },
@@ -347,7 +416,7 @@
     };
     const eq = o.equipment || {};
     const f = OUTFITS[eq.body] || OUTFITS.bare;
-    const weapon = WEAPONS[eq.rhand];
+    const weapon = rightItem(eq.rhand), weaponL = leftWeapon(eq.lhand);
 
     if (o.hs === 'long') fill(10, 12, 29, 31, 'hairBack');
     if (eq.rhand === 'hunter_bow') { fill(7, 20, 9, 31, 'quiver'); fill(7, 17, 9, 19, 'fletch'); px(8, 16, 'fletch'); }
@@ -360,6 +429,7 @@
     if (HEADS[eq.head]) HEADS[eq.head](d);
     if (weapon) { weapon(d); fill(28, 34, 31, 36, 'hand'); }
     else { fill(27, 34, 29, 35, 'hand'); fill(27, 36, 28, 36, 'hand'); }
+    if (weaponL) { weaponL(d); fill(8, 34, 11, 36, 'hand'); } // the left hand closes over its grip
     if (PETS[eq.pet]) PETS[eq.pet](d);
     return { g, M: materials(o, f, eq) };
   }
@@ -452,7 +522,7 @@
 
     var eq = o.equipment || {};
     var f = OUTFITS[eq.body] || OUTFITS.bare;
-    var weapon = WEAPONS[eq.rhand];
+    var weapon = rightItem(eq.rhand), weaponL = leftWeapon(eq.lhand);
     var capped = eq.head && eq.head !== 'gold_crown' && !!HEADS[eq.head];
 
     if (dir === 'left') {
@@ -520,6 +590,7 @@
 
     if (weapon) { weapon(d); fill(28, 34, 31, 36, 'hand'); }
     else { fill(27, 34, 29, 35, 'hand'); fill(27, 36, 28, 36, 'hand'); }
+    if (weaponL) { weaponL(d); fill(8, 34, 11, 36, 'hand'); }
     if (PETS[eq.pet]) PETS[eq.pet](d);
 
     return { g: g, M: materials(o, f, eq) };
