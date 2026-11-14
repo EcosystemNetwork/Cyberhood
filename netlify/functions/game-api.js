@@ -9,10 +9,17 @@ exports.handler = async (event) => {
     body = raw ? JSON.parse(raw) : {};
   } catch (e) { /* leave empty; the handler validates fields */ }
 
+  // The rewrite's ?action=:action is not always forwarded to the function, so fall back
+  // to the last segment of the original /api/game/<action> path.
+  const fromPath = (p) => { const m = /\/api\/game\/([a-z]+)\/?$/.exec(p || ''); return m && m[1]; };
+  let rawPath = '';
+  try { rawPath = event.rawUrl ? new URL(event.rawUrl).pathname : ''; } catch (e) { /* ignore */ }
+  const action = (event.queryStringParameters || {}).action || fromPath(event.path) || fromPath(rawPath);
+
   const req = {
     method: event.httpMethod,
     headers: event.headers || {},
-    query: { action: (event.queryStringParameters || {}).action },
+    query: { action },
     body,
   };
 
