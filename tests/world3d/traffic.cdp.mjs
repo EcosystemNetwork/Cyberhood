@@ -16,7 +16,9 @@ try {
   assert.ok(await ready(A)); await sleep(1500);
   await A.ev('__world3d.monsters.forEach((m) => { m.dead = true; }); __world3d.tp(118, 101, Math.PI); 1');
   await watch(A);
-  await A.down('KeyD', 'd'); await A.down('KeyW', 'w'); await sleep(10000); await A.up('KeyW', 'w'); await A.up('KeyD', 'd');
+  // back and forth in open ground, so nothing stops the walk (running straight, a long walk in
+  // one direction ends at a tree)
+  for (let i = 0; i < 4; i++) { const k = i % 2 ? 'S' : 'W'; await A.down(`Key${k}`, k.toLowerCase()); await sleep(2500); await A.up(`Key${k}`, k.toLowerCase()); }
   const n = await moves(A);
   assert.ok(n >= 25 && n <= 45, `about 4 movement messages a second while walking (sent ${n} in 10s)`);
 

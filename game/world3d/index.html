@@ -192,6 +192,8 @@
   #aimArc { position: fixed; inset: 0; z-index: 3; pointer-events: none; }
   #aimArc i { position: absolute; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: #ffd23a; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5); }
   #viewBtn { padding: 6px 12px; border-radius: 999px; font-size: 15px; }
+  #aimBtn { padding: 6px 12px; border-radius: 999px; font-size: 15px; opacity: 0.55; }
+  #aimBtn.on { opacity: 1; box-shadow: 0 0 0 2px #ff4a3a inset; }
   .actions .touch { padding: 6px 12px; border-radius: 999px; font-size: 14px; background: linear-gradient(#ffd27a, #e89a2a); box-shadow: 0 3px 0 #8a4a10; }
   .actions .touch.on { background: linear-gradient(#ff8a8a, #e04a4a); box-shadow: 0 3px 0 #8a1a1a; }
   #fade { position: fixed; inset: 0; z-index: 9; background: #000; opacity: 0; pointer-events: none; transition: opacity 0.7s; }
@@ -253,7 +255,8 @@ else if (!localStorage.getItem('taproot_character')) window.location.replace('/g
   <button id="leaveBtn" type="button" tabindex="-1" hidden>&#128682; Leave</button>
   <button id="camBtn" type="button" tabindex="-1" aria-label="Camera view">&#127909;<kbd>C</kbd></button>
   <div class="tilt"><button id="camUpBtn" type="button" tabindex="-1" aria-label="Camera higher">&#9650;</button><button id="camDownBtn" type="button" tabindex="-1" aria-label="Camera lower">&#9660;</button></div>
-  <button id="viewBtn" type="button" tabindex="-1" aria-label="First or third person">&#128065;<kbd>V</kbd></button>
+  <button id="viewBtn" type="button" tabindex="-1" aria-label="Change view">&#128065;<kbd>V</kbd></button>
+  <button id="aimBtn" type="button" tabindex="-1" aria-label="Auto-aim">&#127919;<kbd>L</kbd></button>
   <button id="buildBtn" class="touch" type="button" tabindex="-1" hidden>&#128296; Build</button>
   <button id="nextBtn" class="touch" type="button" tabindex="-1" hidden>&#9654; Next</button>
   <button id="rotBtn" class="touch" type="button" tabindex="-1" hidden>&#8635; Turn</button>
@@ -262,7 +265,7 @@ else if (!localStorage.getItem('taproot_character')) window.location.replace('/g
   <button id="jumpBtn" type="button" tabindex="-1" aria-label="Jump">JUMP</button>
   <button id="attackBtn" type="button" tabindex="-1" aria-label="Attack">&#9876;&#65039;</button>
 </div>
-<div class="help"><b>WASD</b> move &middot; <b>Drag / Q E</b> look &middot; <b>Z X</b> tilt &middot; <b>Space</b> jump &middot; <b>'</b> / <b>J</b> right hand &middot; <b>;</b> left hand &middot; <b>Shift</b> nitro &middot; <b>C</b> camera &middot; <b>F</b> use &middot; <b>H</b> potion &middot; <b>N</b> smoke &middot; <b>B</b> bag &middot; <b>U</b> sprint toggle &middot; <b>V</b> first person &middot; <b>T</b> chat</div>
+<div class="help"><b>WASD</b> move &middot; <b>Drag / Q E</b> look &middot; <b>Z X</b> tilt &middot; <b>Space</b> jump &middot; <b>'</b> / <b>J</b> right hand &middot; <b>;</b> left hand &middot; <b>Shift</b> nitro &middot; <b>C</b> camera &middot; <b>F</b> use &middot; <b>H</b> potion &middot; <b>N</b> smoke &middot; <b>B</b> bag &middot; <b>U</b> sprint toggle &middot; <b>V</b> view &middot; <b>L</b> auto-aim &middot; <b>T</b> chat</div>
 <div id="crosshair" hidden></div>
 <div id="aimRing" hidden></div>
 <div id="aimArc" hidden></div>
@@ -2598,16 +2601,26 @@ try { camMode = Math.min(CAM_MODES.length - 1, Math.max(0, +localStorage.getItem
 let camYaw = 0, camPitch = CAM_MODES[camMode].pitch, camDist = CAM_MODES[camMode].dist, camPitchT = camPitch, camDistT = camDist;
 let fov = 58, shake = 0, lastDrag = -1e9;
 // First person (V): the camera sits at the hero's eyes and everything aims where you look.
-let firstPerson = false, fpPitch = 0, camGround = 0;
-try { firstPerson = localStorage.getItem('taproot3d_fp') === '1'; } catch (e) {}
+/* Three views, cycled with V: third person (a free camera you turn yourself), over the shoulder
+   (the camera locked behind you, off your right shoulder, aimed with the mouse like a shooter),
+   and first person. The last two are the "crosshair views": you face, and shoot, where the
+   camera looks. The choice is stored under the old first-person key: '1' first, 'shoulder'. */
+let firstPerson = false, shoulder = false, fpPitch = 0, camGround = 0;
+try { const v = localStorage.getItem('taproot3d_fp'); firstPerson = v === '1'; shoulder = v === 'shoulder'; } catch (e) {}
+const mouseLook = () => firstPerson || shoulder;
+const viewName = () => (firstPerson ? 'first' : shoulder ? 'shoulder' : 'third');
 const exitLock = () => { if (document.pointerLockElement) document.exitPointerLock(); };
-function setFirstPerson(on) {
-  firstPerson = on;
+function setView(v) {
+  firstPerson = v === 'first';
+  shoulder = v === 'shoulder';
   fpPitch = 0;
-  try { localStorage.setItem('taproot3d_fp', on ? '1' : '0'); } catch (e) {}
-  if (!on) exitLock();
-  toast(on ? 'First person (V to switch back)' : `Camera: ${CAM_MODES[camMode].name}`);
+  try { localStorage.setItem('taproot3d_fp', firstPerson ? '1' : shoulder ? 'shoulder' : '0'); } catch (e) {}
+  if (!mouseLook()) exitLock();
+  toast(shoulder ? 'Over the shoulder: click to aim with the mouse (V for first person)'
+    : firstPerson ? 'First person (V for third person)' : `Third person: ${CAM_MODES[camMode].name} (V for over the shoulder)`);
 }
+const cycleView = () => setView(shoulder ? 'first' : firstPerson ? 'third' : 'shoulder');
+const setFirstPerson = (on) => setView(on ? 'first' : 'third');
 if (INDOOR) { camDist = camDistT = 7.5; camPitch = camPitchT = 0.95; }
 if (STANDS) { camDist = camDistT = 11; camPitch = camPitchT = 0.62; } // looking down at the sand
 function makePlayerHero(look) {
@@ -2899,9 +2912,14 @@ function swing(hand = 'R') {
   if (L) { attackCdL = caster ? caster.cd : 0.36; P.atkL = 0; mp.atkL = Math.round(performance.now()); }
   else { attackCd = caster ? caster.cd : 0.36; P.atk = 0; mp.atk = Math.round(performance.now()); } // stamp the swing so other players see it once
   if (caster) { setTimeout(() => castBall(hand), 120); return; } // wands and staffs shoot instead
+  // auto-aim: a swing turns onto anything within reach in front of you
+  const lock = assistTarget(P.x, P.z, Math.sin(P.heading), Math.cos(P.heading), 2.2, 0.8);
+  const dir = lock ? Math.atan2(lock.x - P.x, lock.z - P.z) : P.heading;
+  if (lock && !mouseLook()) P.heading = dir;
   // hits land when the swing connects (the hero draws the blade trail itself)
   setTimeout(() => {
-    const hx = P.x + Math.sin(P.heading) * 0.75, hz = P.z + Math.cos(P.heading) * 0.75;
+    const reach = lock ? Math.min(1.1, Math.max(0.75, Math.hypot(lock.x - P.x, lock.z - P.z) - 0.4)) : 0.75;
+    const hx = P.x + Math.sin(dir) * reach, hz = P.z + Math.cos(dir) * reach;
     for (const m of monsters) if (!m.dead && Math.hypot(m.x - hx, m.z - hz) < (m.cfg.big ? 1.25 : 0.95)) hitMonster(m);
     if (ARENA) for (const g of ghosts.values()) if (!g.hid && Math.hypot(g.x - hx, g.z - hz) < 0.95 && Math.abs(g.y - P.y) < 1.2) hitPlayer(g, statNow('atk'), hand);
     if (ARENA) smashCrate(hx, hz);
@@ -2929,14 +2947,50 @@ function castBall(hand = 'R') {
   const ax = P.x + Math.sin(P.heading) * 8 - V.x, az = P.z + Math.cos(P.heading) * 8 - V.z, al = Math.hypot(ax, az) || 1;
   let dx = ax / al, dz = az / al, dy = 0;
   let x = V.x + dx * 0.2, z = V.z + dz * 0.2, y = clamp(V.y, 0.7, 1.4);
+  if (shoulder) { // from your hand to the point under the crosshair, 30 tiles out along the camera
+    camera.getWorldDirection(SEG);
+    const tx = camera.position.x + SEG.x * 30, ty = camera.position.y + SEG.y * 30, tz = camera.position.z + SEG.z * 30;
+    const L = Math.hypot(tx - x, ty - y, tz - z) || 1;
+    dx = (tx - x) / L; dy = (ty - y) / L; dz = (tz - z) / L;
+  }
   if (firstPerson) { // straight out from the eyes, a little to the side of the hand that cast it
     camera.getWorldDirection(SEG);
     const side = hand === 'L' ? -0.25 : 0.25;
     x = camera.position.x + SEG.x * 0.6 - SEG.z * side; y = camera.position.y - 0.2 + SEG.y * 0.6; z = camera.position.z + SEG.z * 0.6 + SEG.x * side;
     dx = SEG.x; dy = SEG.y; dz = SEG.z;
   }
+  const lock = assistTarget(x, z, dx, dz, c.range);
+  if (lock) { const L = Math.hypot(lock.x - x, lock.y - y, lock.z - z) || 1; dx = (lock.x - x) / L; dy = (lock.y - y) / L; dz = (lock.z - z) / L; }
   spawnShot(x, y, z, dx, dy, dz, c, hand);
 }
+/* Auto-aim: when you're already roughly facing something (within about 23 degrees) and it's in
+   range, your shot bends onto it, and a sword swing turns onto anything within reach. Toggled with
+   L or the target button; on by default, and remembered. */
+let autoAim = true;
+try { autoAim = localStorage.getItem('taproot3d_aim') !== '0'; } catch (e) {}
+function setAutoAim(on) {
+  autoAim = on;
+  try { localStorage.setItem('taproot3d_aim', on ? '1' : '0'); } catch (e) {}
+  $('aimBtn').classList.toggle('on', on);
+  toast(on ? 'Auto-aim on (L to turn off)' : 'Auto-aim off (L to turn on)');
+}
+function assistTarget(ox, oz, dx, dz, range, cone = 0.4) {
+  if (!autoAim) return null;
+  const facing = Math.atan2(dx, dz);
+  let best = null, bestScore = Infinity;
+  const consider = (t, y, kind) => {
+    const tx = t.x - ox, tz = t.z - oz, d = Math.hypot(tx, tz);
+    if (d < 0.3 || d > range) return;
+    const off = Math.abs(wrapAngle(Math.atan2(tx, tz) - facing));
+    if (off > cone) return;
+    const score = off * 4 + d * 0.05; // mostly how close to your aim, a little how near
+    if (score < bestScore) { bestScore = score; best = { x: t.x, y, z: t.z, kind }; }
+  };
+  for (const m of monsters) if (!m.dead) consider(m, m.cfg.fly ? 1.1 : 0.6, 'monster');
+  if (ARENA) for (const g of ghosts.values()) if (!g.dead && !g.hid) consider(g, (g.y || 0) + 1.0, 'player');
+  return best;
+}
+
 // One magic shot, from a point along a direction. A boomerang is a spinning cross of wood rather
 // than a ball, and flies out and back (see updateBoomerang) instead of bursting on what it hits.
 function spawnShot(x, y, z, dx, dy, dz, c, hand) {
@@ -2987,8 +3041,10 @@ function aimPoint() {
     return { x: to.x, y: 0, z: to.z, dist: Math.hypot(to.x - P.x, to.z - P.z), hit: 'tomato' };
   }
   const c = hero.caster || hero.casterL;
-  if (!c || fainted || firstPerson) return null;
+  if (!c || fainted || mouseLook()) return null;
   const dx = Math.sin(P.heading), dz = Math.cos(P.heading), y = clamp(P.y + 1.05, 0.7, 1.4);
+  const lock = assistTarget(P.x, P.z, dx, dz, c.range);
+  if (lock) return { x: lock.x, y: lock.y, z: lock.z, dist: Math.hypot(lock.x - P.x, lock.z - P.z), hit: lock.kind };
   const stopAt = (dist) => { // what the shot would run into at this distance, or null
     const x = P.x + dx * dist, z = P.z + dz * dist;
     for (const m of monsters) {
@@ -3027,7 +3083,7 @@ let lastThrow = -1e9;
 
 // where the camera is pointing, flattened onto the sand and kept inside the pit
 function tomatoTarget() {
-  AIM.setFromCamera(AIM_NDC.set(mouse.has && !firstPerson ? mouse.x : 0, mouse.has && !firstPerson ? mouse.y : 0), camera);
+  AIM.setFromCamera(AIM_NDC.set(mouse.has && !mouseLook() ? mouse.x : 0, mouse.has && !mouseLook() ? mouse.y : 0), camera);
   const o = AIM.ray.origin, d = AIM.ray.direction;
   const t = d.y < -0.01 ? -o.y / d.y : 60;
   let x = o.x + d.x * t, z = o.z + d.z * t;
@@ -4243,6 +4299,7 @@ tapBtn('rotBtn', () => { if (building) building.r = (building.r + 1) % 4; });
 tapBtn('breakBtn', () => { tapMode = tapMode === 'break' ? 'place' : 'break'; });
 const AIM = new THREE.Raycaster(), AIM_NDC = new THREE.Vector2();
 const CAM_RAY = new THREE.Raycaster(), CAM_DIR = new THREE.Vector3();
+const SH_F = new THREE.Vector3(), SH_R = new THREE.Vector3(), SH_P = new THREE.Vector3(), SH_W = new THREE.Vector3(); // shoulder camera
 function blockCtx(p) {
   return {
     crops: new Set(Object.keys(myFarm.crops || {})),
@@ -4253,7 +4310,7 @@ function blockCtx(p) {
 function aimBlock() {
   if (!myFarm || !building) return null;
   const p = plotOf(myFarm.id), vox = voxOf(p);
-  AIM.setFromCamera(AIM_NDC.set(mouse.has && !firstPerson ? mouse.x : 0, mouse.has && !firstPerson ? mouse.y : 0), camera); // first person: the crosshair
+  AIM.setFromCamera(AIM_NDC.set(mouse.has && !mouseLook() ? mouse.x : 0, mouse.has && !mouseLook() ? mouse.y : 0), camera); // first person: the crosshair
   const seeThrough = (i, j, k) => { const c = vox.get(i, j, k); return hiddenBlocks.has(`${p.id}:${i},${j},${c && c.upper ? k - 1 : k}`); };
   const o = AIM.ray.origin, d = AIM.ray.direction, h = raycast(vox, o.x - p.i0, o.y, o.z - p.j0, d.x, d.y, d.z, 60, seeThrough);
   if (!h) return null;
@@ -4724,7 +4781,8 @@ addEventListener('keydown', (e) => {
   if (e.code === 'KeyN') useItem('smoke_bomb');
   if (e.code === 'KeyB') toggleBag();
   if (e.code === 'KeyC') cycleCam();
-  if (e.code === 'KeyV') setFirstPerson(!firstPerson);
+  if (e.code === 'KeyV') cycleView();
+  if (e.code === 'KeyL') setAutoAim(!autoAim);
   if (e.code === 'KeyF' && action) action.run();
   if (e.code === 'Escape') toggleBag(false);
   farmKey(e.code);
@@ -4739,7 +4797,7 @@ canvas.addEventListener('pointerdown', (e) => {
   canvas.classList.add('drag');
 });
 canvas.addEventListener('pointerdown', (e) => {
-  if (firstPerson && e.pointerType === 'mouse' && !document.pointerLockElement && !modal && !chatOpen) try { canvas.requestPointerLock(); } catch (err) {}
+  if (mouseLook() && e.pointerType === 'mouse' && !document.pointerLockElement && !modal && !chatOpen) try { canvas.requestPointerLock(); } catch (err) {}
 });
 document.addEventListener('mousemove', (e) => {
   if (document.pointerLockElement !== canvas) return;
@@ -4753,7 +4811,7 @@ canvas.addEventListener('pointermove', (e) => {
   } else if (drag && e.pointerId === drag.id) {
     camYaw -= (e.clientX - drag.x) * 0.006;
     camPitchT = Math.max(0.05, Math.min(1.35, camPitchT + (e.clientY - drag.y) * 0.004));
-    if (firstPerson) fpPitch = clamp(fpPitch - (e.clientY - drag.y) * 0.004, -1.3, 1.3);
+    if (mouseLook()) fpPitch = clamp(fpPitch - (e.clientY - drag.y) * 0.004, -1.3, 1.3);
     drag.x = e.clientX; drag.y = e.clientY;
     lastDrag = performance.now();
   }
@@ -4791,7 +4849,9 @@ for (const [id, dir] of [['camUpBtn', 1], ['camDownBtn', -1]]) {
   });
   for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) $(id).addEventListener(ev, stop);
 }
-$('viewBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); setFirstPerson(!firstPerson); });
+$('viewBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); cycleView(); });
+$('aimBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); setAutoAim(!autoAim); });
+$('aimBtn').classList.toggle('on', autoAim);
 $('bagBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); toggleBag(); });
 addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight;
@@ -4841,15 +4901,12 @@ function update(dt, now) {
       if (free(P.x, P.z + P.vz * dt)) P.z += P.vz * dt;
       P.phase += dt * sp * 2.4;
     } else { P.vx = P.vz = 0; }
-    // these two are a feedback loop — the camera chases the heading and the heading is read
-    // through the camera — so keep the heading quick and the camera lazy, or you walk in arcs
     if (moving) P.heading = damp(P.heading, P.heading + wrapAngle(Math.atan2(mx, mz) - P.heading), 14, dt);
-    // the camera drifts back behind the player unless they are steering it
-    if (moving && !firstPerson && CAM_MODES[camMode].follow && fy >= 0 && now - lastDrag > 800) {
-      camYaw = damp(camYaw, camYaw + wrapAngle(P.heading + Math.PI - camYaw), 1.1, dt);
-    }
+    // The camera does not turn on its own. You move relative to it, so if it swung round after
+    // your facing, "left" would rotate as you ran and holding A would carry you in a circle.
+    // Drag, or Q and E, turn it; W always runs straight away from it.
   }
-  if (firstPerson) P.heading = camYaw + Math.PI; // you face where you look
+  if (mouseLook()) P.heading = camYaw + Math.PI; // in the crosshair views you face where you look
   if (pkb.t > 0) {
     pkb.t -= dt;
     if (free(P.x + pkb.x * dt, P.z)) P.x += pkb.x * dt;
@@ -5028,7 +5085,27 @@ function update(dt, now) {
     sp.m.material.opacity = 1 - sp.age;
     if (sp.age >= 1) { scene.remove(sp.m); sp.m.material.dispose(); splashes.splice(i, 1); }
   }
-  if (firstPerson) {
+  if (shoulder) {
+    // Behind you and off your right shoulder, pointing where you aim. The pivot sits beside your
+    // head, so the crosshair line runs past you rather than through you; the camera comes in
+    // short of any wall between the pivot and where it wants to be.
+    const cp = Math.cos(fpPitch), sy = Math.sin(camYaw), cy = Math.cos(camYaw);
+    SH_F.set(-sy * cp, Math.sin(fpPitch), -cy * cp);   // where you're looking
+    SH_R.set(cy, 0, -sy);                               // your right
+    SH_P.set(P.x, P.y + 1.55, P.z).addScaledVector(SH_R, 0.62);
+    SH_W.copy(SH_P).addScaledVector(SH_F, -3.1);
+    SH_W.y += 0.2;
+    CAM_DIR.copy(SH_W).sub(SH_P);
+    const reach = CAM_DIR.length();
+    CAM_RAY.set(SH_P, CAM_DIR.divideScalar(reach));
+    CAM_RAY.far = reach;
+    const hit = CAM_RAY.intersectObjects(worldMeshes, false)[0];
+    if (hit) SH_W.copy(SH_P).addScaledVector(CAM_RAY.ray.direction, Math.max(0.6, hit.distance - 0.25));
+    camera.position.copy(SH_W);
+    lookAt.copy(SH_P).addScaledVector(SH_F, 12);
+    camera.lookAt(lookAt);
+    first = true; // third person snaps straight back to its spot when you switch
+  } else if (firstPerson) {
     const cp = Math.cos(fpPitch);
     camera.position.set(P.x, P.y + 1.35, P.z);
     lookAt.set(P.x - Math.sin(camYaw) * cp, P.y + 1.35 + Math.sin(fpPitch), P.z - Math.cos(camYaw) * cp);
@@ -5072,7 +5149,7 @@ function update(dt, now) {
     lookAt.set(target.x - Math.sin(camYaw) * ahead, target.y, target.z - Math.cos(camYaw) * ahead);
     camera.lookAt(lookAt);
   }
-  if ($('crosshair').hidden === firstPerson) $('crosshair').hidden = !firstPerson;
+  if ($('crosshair').hidden === mouseLook()) $('crosshair').hidden = !mouseLook();
   { // the aim indicator: a ring where the shot stops, and for a lob the arc it travels
     const el = $('aimRing'), a = aimPoint(), raw = a && toScreen(a.x, a.y, a.z);
     // and one more pass of smoothing on screen, so a turn slides the ring across the sand
@@ -5166,7 +5243,8 @@ SPAWN_LIST.forEach((type) => spawnMonster(type));
 // debug hook for tests and screenshots: __world3d.tp(x, z) teleports, .P is the player state
 window.__world3d = { P, ghosts, arena, farms, updateIndoor, aimPoint, spectating: () => STANDS, tomatoes, throwTomato,
   arenaMod, buff: () => buffNow(), free,
-  equip: (id, slot) => equip(id, slot), gearOf: (slot) => gear(slot), parrying: () => parrying(), nitro: () => nitro, setNitro: (v) => { nitro = v; nitroLock = false; }, jump,
+  equip: (id, slot) => equip(id, slot), gearOf: (slot) => gear(slot), parrying: () => parrying(),
+  view: viewName, autoAim: () => autoAim, setAutoAim: (on) => setAutoAim(on), camYaw: () => camYaw, setCamYaw: (v) => { camYaw = v; }, nitro: () => nitro, setNitro: (v) => { nitro = v; nitroLock = false; }, jump,
   spawn: (type, x, z) => { spawnMonster(type); const m = monsters[monsters.length - 1]; m.x = x; m.z = z; m.t = 99; m.vx = m.vz = 0; return monsters.length - 1; },
   foeCast: (i) => castFoeBall(monsters[i]), chilled, smoked: () => Math.max(0, (smokeUntil - performance.now()) / 1000), colosseum: () => COLO && { arena: [A.doors.find((d) => /area=arena/.test(d.href)).x + 0.5, A.doors.find((d) => /area=arena/.test(d.href)).y + 0.5], stands: [A.doors.find((d) => /area=stands/.test(d.href)).x + 0.5, A.doors.find((d) => /area=stands/.test(d.href)).y + 0.5] }, hazardNow, clockOffset: () => HAZ.offset, hazards: () => [...HAZ.views.values()], hazardClock: (ms) => { HAZ.pinned = ms === undefined || ms === null ? null : ms; }, slowed, setHp: (n) => { hp = n; updateHud(); }, drawnBlocks: (id) => ((plotViews.get(id) || {}).blockMeshes || []).reduce((n, m) => n + m.count, 0), getPitch: () => fpPitch, firstPerson: () => firstPerson, setPitch: (v) => { fpPitch = v; }, openShop, hiddenBlocks, doorAngle: (id, i, j, k) => { const v = plotViews.get(id); return (v && v.doorAng && v.doorAng.get(`${i},${j},${k}`)) || 0; }, shopSpots, aimBlock, mouse, camera, building: () => building, toScreen, groundAt, solidAt, setBlocks, plots: PLOTS, placed, decorCrops, myFarm: () => myFarm, farmTile: () => farmTile(), hp: () => hp, mp, monsters, drops, field: () => field, hero: () => hero, fireballs, tp: (x, z, yaw) => { P.x = x; P.z = z; P.vx = P.vz = 0; if (yaw !== undefined) camYaw = yaw; }, cam: (dist, pitch) => { camDistT = camDist = dist; camPitchT = camPitch = pitch; }, size: [MAP_W, MAP_H], info: () => { // one full frame's draw calls and triangles (all passes, shadows included)
   renderer.info.autoReset = false; renderer.info.reset(); composer.render();
