@@ -1,7 +1,7 @@
 const crypto = require('crypto');
 const G = require('../../game/items.js');
 
-const TABLE = (process.env.SUPABASE_URL || 'https://azvdqigaqwbeakjieaps.supabase.co') + '/rest/v1/game_players';
+const TABLE = (process.env.SUPABASE_URL || 'https://rxplfcuhsdvqposhpzyp.supabase.co') + '/rest/v1/game_players';
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
 
 const STYLES = ['short', 'long', 'bald'];
