@@ -14,7 +14,8 @@ stands in for scale.
     blender -b -P tools/blender/mine_mock.py -- <out_dir>
 
 Writes mine_giants.png (both giants and the hero), mine_ladders.png (a ladder down and a ladder
-up) and mine_lair.png (the two of them in their cavern, from where you'd come down the ladder).
+up), mine_ladder_up.png (looking up the ladder into the ceiling opening) and mine_lair.png (the two
+of them in their cavern).
 """
 import math
 import sys
@@ -210,16 +211,50 @@ def ladder_down(at):
     light((x0, y0 - 1.2, 1.4), "#ffd27a", 30, 0.2)
 
 
-def ladder_up(at, height=4.2):
-    """A ladder up a rock face into a hole in the rock above."""
+def ladder_up(at, ceiling=4.6):
+    """The floor hole turned upside down: a slab of rock ceiling overhead with an open square cut
+    through it, framed in timber, and a ladder standing straight up from the floor through the
+    opening. Light from the floor above falls down through it."""
     x0, y0 = at
-    box((3.0, 1.6, height + 1.6), (x0, y0 + 0.9, (height + 1.6) / 2), ROCK[1])       # the rock face
-    box((1.4, 0.6, 1.1), (x0, y0 + 0.15, height + 0.35), "#07050a", bevel=0.1)          # the hole at the top
-    for s in (-1, 1):
-        box((0.11, 0.11, height + 0.4), (x0 + s * 0.42, y0 - 0.05, height / 2), "#8a5a30", rot=(-0.12, 0, 0))
-    for k in range(int(height / 0.45)):
-        box((0.85, 0.08, 0.08), (x0, y0 - 0.05 - k * 0.0, 0.35 + k * 0.45), "#a06e46", bevel=0.02)
-    light((x0, y0 - 0.8, height + 0.8), "#ffd27a", 40, 0.3)
+    hole, slab, thick = 1.5, 16.0, 0.9  # a wide slab, so its edges stay out of shot
+    zb = ceiling                     # underside of the ceiling
+    zc = zb + thick / 2
+    # the ceiling slab, as four blocks around the opening (so the opening is a real gap)
+    side = (slab - hole) / 2
+    for dx, dy, sx, sy in ((0, (hole + side) / 2, slab, side), (0, -(hole + side) / 2, slab, side),
+                           ((hole + side) / 2, 0, side, hole), (-(hole + side) / 2, 0, side, hole)):
+        box((sx, sy, thick), (x0 + dx, y0 + dy, zc), ROCK[1], bevel=0.12)
+    # a rough, uneven underside, like the cave walls
+    for k in range(10):
+        a = k * 0.63
+        r = hole / 2 + 2.0 + (k % 3) * 0.7
+        box((1.1, 1.0, 0.5 + (k % 2) * 0.3), (x0 + math.cos(a) * r, y0 + math.sin(a) * r, zb - 0.15), ROCK[k % 3], rot=(0, 0, a))
+    # the timber frame around the opening, on the underside, like the floor hole's
+    for dx, dy, sx, sy in ((0, hole / 2 + 0.1, hole + 0.4, 0.25), (0, -hole / 2 - 0.1, hole + 0.4, 0.25),
+                           (hole / 2 + 0.1, 0, 0.25, hole), (-hole / 2 - 0.1, 0, 0.25, hole)):
+        box((sx, sy, 0.22), (x0 + dx, y0 + dy, zb - 0.05), "#6b4426")
+    for sx in (-1, 1):  # two short posts holding the frame up, as in a mine shaft
+        for sy in (-1, 1):
+            box((0.16, 0.16, 0.7), (x0 + sx * (hole / 2 + 0.1), y0 + sy * (hole / 2 + 0.1), zb - 0.4), "#5a3a22", bevel=0.02)
+    # the ladder: straight up from the floor, through the opening, and out the top
+    top = zb + thick + 0.9
+    for sxs in (-1, 1):
+        box((0.11, 0.11, top), (x0 + sxs * 0.42, y0 + 0.35, top / 2), "#8a5a30")
+    for k in range(int(top / 0.45)):
+        box((0.85, 0.08, 0.08), (x0, y0 + 0.35, 0.35 + k * 0.45), "#a06e46", bevel=0.02)
+    # through the opening: the lit floor of the level above, so it reads as a way up
+    box((hole + 0.6, hole + 0.6, 0.1), (x0, y0, zb + thick + 0.9), "#ffe2a8", glow=2.2, bevel=0)
+    for dx, dy, sx, sy in ((0, hole / 2 + 0.05, hole, 0.1), (0, -hole / 2 - 0.05, hole, 0.1),
+                           (hole / 2 + 0.05, 0, 0.1, hole), (-hole / 2 - 0.05, 0, 0.1, hole)):
+        box((sx, sy, thick + 0.9), (x0 + dx, y0 + dy, zb + (thick + 0.9) / 2), "#3a2a20", bevel=0)  # the shaft walls
+    # daylight-ish light from the floor above, falling down the shaft
+    light((x0, y0, zb + thick + 0.6), "#ffe0a0", 140, 0.6)
+    bpy.ops.object.light_add(type="SPOT", location=(x0, y0, zb + thick + 1.2))
+    sp = bpy.context.object
+    sp.data.energy = 600
+    sp.data.color = hexc("#ffe0a0")[:3]
+    sp.data.spot_size = math.radians(38)
+    sp.data.spot_blend = 0.6
 
 
 # ------------------------------------------------------------------ render
@@ -261,8 +296,14 @@ def render():
     bpy.ops.render.render(write_still=True)
 
     cam_data.lens = 34
-    aim(cam, (-7.0, -9.5, 5.2), (-10.2, 0.0, 2.2))
+    aim(cam, (-3.6, -9.6, 2.9), (-10.2, 0.6, 2.4))
     scene.render.filepath = str(OUT / "mine_ladders.png")
+    bpy.ops.render.render(write_still=True)
+
+    # standing at the foot of the ladder up, looking up it into the opening
+    cam_data.lens = 22
+    aim(cam, (-7.4, -1.4, 1.3), (-9.0, 2.6, 5.6))
+    scene.render.filepath = str(OUT / "mine_ladder_up.png")
     bpy.ops.render.render(write_still=True)
 
     cam_data.lens = 22
