@@ -61,7 +61,7 @@ try {
   // Done closes build mode; View switches to first person and a right-side drag tilts the view
   await tapEl('buildBtn'); await sleep(200);
   assert.equal(await A.ev(`__world3d.building()`), null);
-  await tapEl('viewBtn'); await sleep(300);
+  await tapEl('viewBtn'); await sleep(200); await tapEl('viewBtn'); await sleep(300); // View cycles third -> shoulder -> first
   assert.equal(await A.ev(`__world3d.firstPerson()`), true);
   const pitch0 = await A.ev(`__world3d.getPitch()`);
   await A.touch('touchStart', [[300, 400]]); await sleep(40);

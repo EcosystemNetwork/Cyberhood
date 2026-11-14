@@ -14,7 +14,7 @@ try {
   const X = p.i0 + 12.5, Z = p.j0 + 18.5;
   await A.ev(`__world3d.tp(${X}, ${Z}, 0); 1`); await sleep(400);
   // V switches into first person: hero hidden, camera at the eyes, crosshair shown
-  await A.key('KeyV', 'v'); await sleep(400);
+  await A.key('KeyV', 'v'); await sleep(200); await A.key('KeyV', 'v'); await sleep(400); // V cycles third -> shoulder -> first
   assert.equal(await A.ev(`__world3d.firstPerson()`), true);
   assert.equal(await A.ev(`__world3d.hero().root.visible`), false);
   assert.equal(await A.ev(`getComputedStyle(document.getElementById('crosshair')).display !== 'none'`), true);
@@ -69,7 +69,7 @@ try {
   await A.go(`${BASE}/game/world3d/?area=arena&from=city&hour=13`);
   await B.go(`${BASE}/game/world3d/?area=arena&from=city&hour=13`);
   assert.ok(await ready(A)); assert.ok(await ready(B)); await sleep(2600);
-  await A.key('KeyV', 'v'); await sleep(200);
+  await A.key('KeyV', 'v'); await sleep(200); await A.key('KeyV', 'v'); await sleep(200); // third -> shoulder -> first
   for (let i = 0; i < 3; i++) { await B.ev(`__world3d.tp(18, 16); 1`); await A.ev(`__world3d.tp(18, 16.9, 0); __world3d.setPitch(0); 1`); await sleep(100); await A.key('Quote', "'"); await sleep(500); }
   assert.ok((await B.ev(`__world3d.hp()`)) < 100, 'first-person sword hits');
   await A.shot('fp_arena.png');
