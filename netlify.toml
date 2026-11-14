@@ -13,7 +13,7 @@
 # Game API (login, signup, save) -> Netlify function wrapping api/game/[action].js
 [[redirects]]
   from = "/api/game/:action"
-  to = "/.netlify/functions/game?action=:action"
+  to = "/.netlify/functions/game-api?action=:action"
   status = 200
   force = true
 
