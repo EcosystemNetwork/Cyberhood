@@ -2,13 +2,13 @@ const { escapeHtml, renderParagraphs, toPlainText, formatPostDate } = require('.
 
 // Fill p/index.html with one post. Throws if the template no longer has an expected placeholder,
 // so the caller can fall back to the client-rendered page.
-function renderPostPage(template, post, origin) {
+function renderPostPage(template, post, origin, pathPrefix = '/p/') {
   const title = escapeHtml(post.title);
   const plain = toPlainText(post.body).replace(/\[image: [^\]]*\]/g, '').replace(/\s+/g, ' ').trim();
   const desc = escapeHtml(plain.length > 160 ? plain.slice(0, 157) + '...' : plain);
   const img = (String(post.body).match(/!\[[^\]]*\]\((https:\/\/[^\s)]+)\)/) || [])[1];
   const image = escapeHtml(img || origin + '/favicon.png');
-  const url = escapeHtml(origin + '/p/' + post.slug);
+  const url = escapeHtml(origin + pathPrefix + post.slug);
 
   const head = [
     '<title>' + title + " - Taproot's Blog</title>",

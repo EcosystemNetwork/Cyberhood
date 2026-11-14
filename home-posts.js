@@ -19,6 +19,8 @@
       res.data.forEach(function (post) {
         var list = lists[post.category];
         if (!list) return;
+        // Already exported to a static page and listed above.
+        if (list.querySelector('a[href="/' + post.slug + '"]')) return;
         var li = document.createElement('li');
         li.className = 'list-item';
         li.innerHTML = '<a href="/p/' + post.slug + '">' + PostUtils.escapeHtml(post.title) + '</a>' +
