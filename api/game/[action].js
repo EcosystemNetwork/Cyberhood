@@ -123,6 +123,7 @@ const ownedItems = (user) => {
 // A class's starting kit, given with the first character an account makes.
 const kitOf = (cls) => Object.values(G.defaultEquipment(cls) || {}).filter((id) => id && has(G.ITEMS, id));
 
+const BODIES = ['human'];
 // Validates a character. Gear the account doesn't own is taken off rather than refused.
 function cleanCharacter(c, owned) {
   if (!c || typeof c !== 'object') return null;
@@ -143,6 +144,7 @@ function cleanCharacter(c, owned) {
   return {
     name: String(c.name ?? '').trim().slice(0, 16),
     cls: c.cls, skin, hs: c.hs, hc, equipment,
+    ...(BODIES.includes(c.body) ? { body: c.body } : {}), // a 3D body (glbhero.js HERO_URL); left off = the classic toon hero
     stats: G.computeStats(c.cls, equipment),
   };
 }
@@ -225,12 +227,98 @@ async function act(user, actions, opts) {
   throw new Error('too many save conflicts');
 }
 
+/* A trade between two signed-in players (rules and terms in economy.js). body:
+     { id, with: their trade handle, give: terms, get: terms }  confirm the trade
+     { id, cancel: true }                                    take back my offer
+   The first to confirm leaves an offer on their account and gets { done: false }. The other's
+   confirm, with the mirror-image terms, swaps both accounts at once through game_trade() (both
+   rows compare-and-swapped on econ_rev in one transaction) and gets { done: true }. */
+/* Anonymous trade handles. Trades go over the public multiplayer channel, so players never
+   send their username there: the server hands out a handle instead, the account id and the
+   time sealed with AES-GCM under a key only the server has. Every handle is different (random
+   IV), so two handles can't be told to belong to the same player, nobody but the server can
+   read or forge one, and each lapses after HANDLE_MS. */
+const HANDLE_MS = 15 * 60 * 1000;
+const handleKey = () => crypto.createHash('sha256').update('trade-handle\0' + SERVICE_KEY).digest();
+function makeHandle(user) {
+  const iv = crypto.randomBytes(12), c = crypto.createCipheriv('aes-256-gcm', handleKey(), iv);
+  const body = Buffer.concat([c.update(JSON.stringify([user.id, Date.now()])), c.final()]);
+  return Buffer.concat([iv, c.getAuthTag(), body]).toString('base64url');
+}
+// The account id a handle stands for, or null if it's forged, damaged or too old.
+function readHandle(h) {
+  try {
+    const b = Buffer.from(String(h || ''), 'base64url');
+    if (b.length < 30 || b.length > 160) return null;
+    const d = crypto.createDecipheriv('aes-256-gcm', handleKey(), b.subarray(0, 12));
+    d.setAuthTag(b.subarray(12, 28));
+    const [id, at] = JSON.parse(Buffer.concat([d.update(b.subarray(28)), d.final()]).toString());
+    return Date.now() - at < HANDLE_MS && Date.now() >= at - 60000 ? id : null;
+  } catch (e) { return null; }
+}
+
+async function trade(user, body) {
+  const E = await ECON();
+  const id = String(body.id || '');
+  if (!/^[a-z0-9]{6,16}$/.test(id)) return [400, { error: 'Invalid trade' }];
+  for (let attempt = 0; attempt < 4; attempt++) {
+    if (attempt) { // something saved in between: start again from fresh rows
+      const fresh = await db(`?id=eq.${user.id}&select=${ROW}`);
+      user = fresh.data && fresh.data[0];
+      if (!user) throw new Error('account vanished');
+    }
+    const mine = E.normEcon(user.econ), rev = user.econ_rev || 0, now = Date.now();
+    const saveMine = async () => {
+      const r = await db(`?id=eq.${user.id}&econ_rev=eq.${rev}`, { method: 'PATCH', body: JSON.stringify({ econ: mine, econ_rev: rev + 1 }) });
+      if (notMigrated(r)) throw new NotMigrated();
+      if (r.status >= 300) throw new Error('trade write failed: ' + r.status);
+      return r.data && r.data[0];
+    };
+    if (body.cancel) {
+      if (!mine.offer || mine.offer.id !== id) return [200, { done: false, state: await stateOf(user) }];
+      delete mine.offer;
+      const saved = await saveMine();
+      if (saved) return [200, { done: false, state: await stateOf(saved) }];
+      continue;
+    }
+    const give = E.cleanTerms(body.give), get = E.cleanTerms(body.get);
+    const other = readHandle(body.with); // their account id, never their username
+    if (!give || !get || E.emptyTerms(give) && E.emptyTerms(get)) return [400, { error: 'Invalid trade' }];
+    if (other === null || String(other) === String(user.id)) return [400, { error: 'Invalid trade' }];
+    if (!E.canGive(mine, give)) return [409, { error: "You don't have what you're offering" }];
+    const t = await db(`?id=eq.${encodeURIComponent(other)}&select=${ROW}`);
+    if (notMigrated(t)) throw new NotMigrated();
+    const them = t.data && t.data[0];
+    if (!them) return [404, { error: 'No such player' }];
+    const theirs = E.normEcon(them.econ), o = theirs.offer;
+    if (o && o.id === id && o.with === String(user.id) && now - o.at < E.TRADE_MS && E.sameTerms(o.give, get) && E.sameTerms(o.get, give)) {
+      if (!E.canGive(theirs, get)) return [409, { error: 'They no longer have what they offered' }];
+      E.swapTerms(mine, give, get);
+      E.swapTerms(theirs, get, give);
+      delete mine.offer; delete theirs.offer;
+      const r = await fetch(BASE_URL + '/rest/v1/rpc/game_trade', {
+        method: 'POST',
+        headers: { apikey: SERVICE_KEY, Authorization: 'Bearer ' + SERVICE_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ a_id: user.id, a_rev: rev, a_econ: mine, b_id: them.id, b_rev: them.econ_rev || 0, b_econ: theirs }),
+      });
+      if (r.status === 404) return [503, { error: 'Trading needs the latest database update (supabase/migrations)' }];
+      if (!r.ok) throw new Error('trade swap failed: ' + r.status);
+      if ((await r.json()) === true) return [200, { done: true, state: await stateOf({ ...user, econ: mine }) }];
+      continue; // one of them saved something in between
+    }
+    mine.offer = { id, with: String(other), give, get, at: now };
+    const saved = await saveMine();
+    if (saved) return [200, { done: false, state: await stateOf(saved) }];
+  }
+  return [409, { error: 'Busy, try again' }];
+}
+
 module.exports = async (req, res) => {
   const send = (code, body) => res.status(code).json(body);
   if (!SERVICE_KEY) return send(500, { error: 'Server is not set up yet' });
 
   const action = req.query.action;
-  const GETS = ['me', 'state', 'farms', 'config'];
+  const GETS = ['me', 'state', 'farms', 'config', 'handle'];
   if (req.method !== (GETS.includes(action) ? 'GET' : 'POST')) return send(405, { error: 'Method not allowed' });
 
   const body = typeof req.body === 'object' && req.body ? req.body : {};
@@ -306,6 +394,9 @@ module.exports = async (req, res) => {
       const out = await act(user, actions, { fast: !!body.fast, sent: Number(body.sent) }); // sent: the browser's clock when it sent this
       return send(200, out);
     }
+
+    if (action === 'handle') return send(200, { handle: makeHandle(user) }); // for trading, anonymously
+    if (action === 'trade') return send(...(await trade(user, body)));
 
     if (action === 'save') {
       let owned = ownedItems(user);

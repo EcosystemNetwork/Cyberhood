@@ -40,40 +40,62 @@
   .mini { position: fixed; z-index: 3; right: 12px; top: 10px; width: 180px; height: 180px; border-radius: 50%; padding: 5px; background: #12031a; box-shadow: 0 0 0 3px #2a0a3a, 0 0 18px rgba(200, 255, 46, 0.35); }
   #minimap { width: 100%; height: 100%; display: block; }
   .mini-label { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); font: 400 16px/1 'Lilita One', sans-serif; white-space: nowrap; text-shadow: 0 2px 0 #000, 0 0 6px #000; }
-  .pills { position: fixed; z-index: 3; right: 12px; top: 200px; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+  /* counters, then the menu buttons (bag, chat): up here they are out of the fighting thumb's way */
+  .rstack { position: fixed; z-index: 3; right: 12px; top: 200px; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; pointer-events: none; }
+  .rstack > * { pointer-events: auto; }
+  .pills { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+  .menus { display: flex; gap: 8px; }
   .pill { display: flex; align-items: center; gap: 8px; padding: 6px 14px; font-size: 18px; border-radius: 999px; background: #160a2e; border: 3px solid #2a1650; box-shadow: 0 0 0 2px var(--c, #5ab4ff), 0 0 14px var(--c, #5ab4ff); text-shadow: 0 2px 0 rgba(0, 0, 0, 0.5); }
   .pill .lv { color: var(--gold); }
   .pill i { font-style: normal; color: #d8c8ff; font-size: 15px; }
 
-  /* bottom-right: nitro + actions */
-  .nitro { position: fixed; z-index: 3; right: 108px; bottom: 26px; display: flex; align-items: center; gap: 10px; padding: 8px 16px; border-radius: 999px; background: #120a1e; border: 3px solid #23103a; box-shadow: 0 0 0 2px var(--lime), 0 0 16px rgba(200, 255, 46, 0.5); font-size: 18px; color: var(--lime); }
-  .nitro .bar { width: 90px; height: 10px; border-radius: 6px; background: #2a2a1a; overflow: hidden; }
+  /* bottom-right: the action pad. Three fixed groups, so every button keeps its place on every
+     screen: context buttons (use, leave, build tools), a camera row, and the combat cluster
+     fanned around the attack button for the right thumb. The pad is --pad-w wide. The groups
+     are see-through to touches: only the buttons take them, the gaps stay draggable for looking. */
+  :root { --pad-w: 200px; }
+  .actions { position: fixed; z-index: 3; right: max(14px, env(safe-area-inset-right, 0px)); bottom: max(14px, env(safe-area-inset-bottom, 0px)); width: var(--pad-w); display: flex; flex-direction: column; gap: 10px; align-items: flex-end; pointer-events: none; }
+  .ctx, .camrow, .combat { pointer-events: none; }
+  .actions button, .menus button { pointer-events: auto; cursor: pointer; touch-action: manipulation; border: 3px solid #2a0a3a; color: #fff; text-shadow: 0 2px 0 rgba(0, 0, 0, 0.4); min-width: 44px; min-height: 44px; }
+  .actions button:active, .menus button:active { transform: translateY(2px); }
+  .actions kbd, .menus kbd { font: 700 10px monospace; opacity: 0.7; margin-left: 4px; }
+  @media (hover: none) { .actions kbd, .menus kbd { display: none; } }
+  .ctx { display: flex; flex-wrap: wrap-reverse; justify-content: flex-end; gap: 8px; width: max-content; max-width: min(400px, calc(100vw - 28px)); }
+  .ctx:not(:has(> :not([hidden]))) { display: none; }
+  .ctx button { padding: 6px 16px; border-radius: 999px; font-size: 16px; white-space: nowrap; }
+  .camrow { display: flex; gap: 8px; }
+  .camrow button { width: 44px; height: 44px; padding: 0; border-radius: 50%; font-size: 15px; background: #241040; box-shadow: 0 3px 0 #12031a; opacity: 0.9; }
+  .camrow kbd { display: none; }
+  #camBtn { box-shadow: 0 3px 0 #12031a, 0 0 12px rgba(255, 63, 180, 0.4); }
+  .combat { position: relative; width: var(--pad-w); height: 160px; }
+  .combat button { position: absolute; border-radius: 50%; padding: 0; }
+  #attackBtn { right: 0; bottom: 0; width: 84px; height: 84px; font-size: 36px; background: radial-gradient(circle at 35% 30%, #ff9ae4, #e0209a 70%); box-shadow: 0 4px 0 #8a0a5a, 0 0 22px rgba(255, 63, 180, 0.7); }
+  #jumpBtn { right: 94px; bottom: 0; width: 60px; height: 60px; font-size: 15px; color: #1e3000; text-shadow: none; background: radial-gradient(circle at 35% 30%, #f0ff9a, #a8e000 70%); box-shadow: 0 4px 0 var(--lime-dk), 0 0 16px rgba(200, 255, 46, 0.6); }
+  /* sprint: the nitro meter is the button (U) */
+  #sprintBtn { right: 84px; bottom: 70px; width: 56px; height: 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 16px; line-height: 1; color: var(--lime); background: #120a1e; box-shadow: 0 0 0 2px var(--lime), 0 0 12px rgba(200, 255, 46, 0.45); }
+  #sprintBtn.on { background: #2a3a00; box-shadow: 0 0 0 3px var(--lime), 0 0 18px var(--lime); }
+  #sprintBtn .bar { display: block; width: 30px; height: 5px; border-radius: 3px; background: #2a2a1a; overflow: hidden; }
   #nitroFill { height: 100%; width: 100%; background: var(--lime); box-shadow: 0 0 8px var(--lime); }
-  #nitroText { color: #fff; min-width: 52px; text-align: right; }
-  /* the column itself is see-through to touches: only the buttons take them, so the gaps
-     between them stay draggable for looking around */
-  .actions { position: fixed; z-index: 3; right: max(14px, env(safe-area-inset-right, 0px)); bottom: max(14px, env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 10px; align-items: center; pointer-events: none; }
-  .actions > * { pointer-events: auto; }
-  .tilt { display: flex; gap: 8px; pointer-events: none; }
-  .tilt button { padding: 5px 13px; border-radius: 999px; font-size: 13px; background: #241040; box-shadow: 0 3px 0 #12031a; pointer-events: auto; }
-  .actions button { cursor: pointer; touch-action: manipulation; border: 3px solid #2a0a3a; color: #fff; text-shadow: 0 2px 0 rgba(0, 0, 0, 0.4); }
-  #leaveBtn { padding: 7px 16px; border-radius: 999px; font: 15px 'Lilita One', sans-serif; background: linear-gradient(#ffd27a, #e89a2a); color: #3a1a00; text-shadow: none; box-shadow: 0 3px 0 #8a4a10; }
-  #camBtn { padding: 6px 12px; border-radius: 999px; font-size: 15px; background: #241040; box-shadow: 0 3px 0 #12031a, 0 0 12px rgba(255, 63, 180, 0.4); }
+  #nitroText { font-size: 9px; color: #fff; white-space: nowrap; }
+  #aimBtn { right: 14px; bottom: 96px; width: 48px; height: 48px; font-size: 17px; background: #241040; opacity: 0.55; }
+  #aimBtn.on { opacity: 1; box-shadow: 0 0 0 2px #ff4a3a inset; }
+  #aimBtn kbd, #sprintBtn kbd { display: none; }
+  #leaveBtn { background: linear-gradient(#ffd27a, #e89a2a); color: #3a1a00; text-shadow: none; box-shadow: 0 3px 0 #8a4a10; }
+  #sailBtn { color: #1a2a40; text-shadow: none; background: linear-gradient(#bff0ff, #4ab8e8); box-shadow: 0 3px 0 #1a5a8a, 0 0 14px rgba(90, 200, 255, 0.6); }
+  .menus button { padding: 6px 14px; border-radius: 999px; font-size: 15px; }
+  #bagBtn { color: #1e3000; text-shadow: none; background: linear-gradient(#e6ff7a, #a8e000); box-shadow: 0 3px 0 var(--lime-dk), 0 0 12px rgba(200, 255, 46, 0.5); }
+  #chatBtn { background: linear-gradient(#8ad8ff, #3a8ae0); box-shadow: 0 3px 0 #1a4a8a; }
+  #soundBtn { background: #241040; box-shadow: 0 3px 0 #12031a; } #soundBtn.off { opacity: 0.6; }
   .toast { top: auto; bottom: 90px; padding: 8px 18px; }
-  #bagBtn { padding: 6px 12px; border-radius: 999px; font-size: 15px; color: #1e3000; text-shadow: none; background: linear-gradient(#e6ff7a, #a8e000); box-shadow: 0 3px 0 var(--lime-dk), 0 0 12px rgba(200, 255, 46, 0.5); }
-  #sailBtn { padding: 8px 14px; border-radius: 999px; font-size: 16px; color: #1a2a40; text-shadow: none; background: linear-gradient(#bff0ff, #4ab8e8); box-shadow: 0 3px 0 #1a5a8a, 0 0 14px rgba(90, 200, 255, 0.6); }
-  #jumpBtn { width: 58px; height: 58px; border-radius: 50%; font-size: 15px; color: #1e3000; text-shadow: none; background: radial-gradient(circle at 35% 30%, #f0ff9a, #a8e000 70%); box-shadow: 0 4px 0 var(--lime-dk), 0 0 16px rgba(200, 255, 46, 0.6); }
-  #attackBtn { width: 78px; height: 78px; border-radius: 50%; font-size: 34px; background: radial-gradient(circle at 35% 30%, #ff9ae4, #e0209a 70%); box-shadow: 0 4px 0 #8a0a5a, 0 0 22px rgba(255, 63, 180, 0.7); }
-  .actions button:active { transform: translateY(2px); }
-  .actions kbd { font: 700 10px monospace; opacity: 0.7; margin-left: 4px; }
+
 
   /* bottom-left: controls */
-  .help { position: fixed; z-index: 3; left: 12px; bottom: 12px; padding: 8px 14px; font: 800 13px/1.3 'Nunito', sans-serif; border-radius: 999px; background: var(--panel); border: 2px solid var(--rim); box-shadow: 0 0 0 2px var(--glow); }
+  .help { position: fixed; z-index: 3; left: 12px; bottom: 12px; max-width: calc(100% - var(--pad-w) - 50px); padding: 8px 14px; font: 800 13px/1.3 'Nunito', sans-serif; border-radius: 18px; background: var(--panel); border: 2px solid var(--rim); box-shadow: 0 0 0 2px var(--glow); }
   .help[hidden] { display: none; }
   .help b { font-family: 'Lilita One', sans-serif; font-weight: 400; color: var(--lime); }
 
   /* bag */
-  .bag { position: fixed; z-index: 4; right: 12px; top: 330px; width: 260px; padding: 12px; }
+  .bag { position: fixed; z-index: 4; right: calc(var(--pad-w) + 26px); top: 200px; width: 260px; max-height: calc(100vh - 224px); overflow-y: auto; scrollbar-width: thin; padding: 12px; }
   .bag-head { display: flex; justify-content: space-between; align-items: center; font: 400 20px/1 'Lilita One', sans-serif; margin-bottom: 10px; }
   .bag-head span { display: flex; align-items: center; gap: 4px; font-size: 16px; color: var(--gold); }
   .bag-head img, .bag-item img { image-rendering: pixelated; }
@@ -132,7 +154,7 @@
   .tag small { max-width: 260px; white-space: normal; }
   .float { position: absolute; left: 0; top: 0; transform: translate(-50%, -50%); font-size: 20px; white-space: nowrap; text-shadow: 0 2px 0 #1a0a1a, 0 0 6px rgba(0, 0, 0, 0.6); }
   /* multiplayer chat (bottom left, above the controls bar) */
-  #chat { position: fixed; z-index: 4; left: 12px; bottom: 58px; width: 340px; pointer-events: none; }
+  #chat { position: fixed; z-index: 4; left: 12px; bottom: calc(var(--help-h, 37px) + 21px); width: 340px; pointer-events: none; }
   #chatLog { max-height: 150px; overflow-y: auto; scrollbar-width: none; pointer-events: auto; }
   #chatLog::-webkit-scrollbar { display: none; }
   .chat-msg { font: 700 14px/1.35 'Nunito', sans-serif; color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85); padding: 1px 0; transition: opacity 0.6s; word-break: break-word; }
@@ -144,11 +166,58 @@
   #chatSend { padding: 6px 14px; border-radius: 999px; border: 2px solid #2a0a3a; background: var(--orange); color: #3a1200; font: 400 14px 'Lilita One', sans-serif; cursor: pointer; }
   #mpText { display: inline-block; margin-top: 4px; padding: 3px 10px; border-radius: 999px; background: rgba(18, 10, 30, 0.7); font: 800 12px 'Nunito', sans-serif; color: #c8ffb0; }
   .tag.player { color: #8ad8ff; border-color: rgba(90, 180, 255, 0.6); }
+  .tag.player .thp { width: 74px; margin: 3px auto 0; }
+  .tag.party { color: #8aff9a; border-color: rgba(90, 255, 122, 0.7); } .tag.party .thp i { background: #5aff7a; }
+  .tag.pick { pointer-events: auto; cursor: pointer; }
+  .tag .lvl { display: inline; margin-right: 5px; font-size: 12px; color: #ffe066; }
+  .chat-msg.whisper { color: #ff9ae6; } .chat-msg.party { color: #9ad8ff; } .chat-msg.emote { color: #ffb86a; }
+  /* party frames (left, under the HP panel) and the target frame (top, next to it) */
+  #partyFrames { position: fixed; z-index: 3; left: 12px; top: 108px; display: flex; flex-direction: column; gap: 6px; width: 190px; }
+  #partyFrames[hidden] { display: none; }
+  .pf { padding: 6px 10px 7px; border-radius: 12px; background: var(--panel); border: 2px solid rgba(90, 255, 122, 0.55); cursor: pointer; }
+  .pf.away { opacity: 0.55; }
+  .pf-top { display: flex; gap: 6px; align-items: baseline; font: 400 15px 'Lilita One', sans-serif; color: #fff; }
+  .pf-top b { font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .pf-top i { margin-left: auto; font-style: normal; font-size: 12px; color: #ffe066; }
+  .pf-hp { margin-top: 4px; height: 8px; border-radius: 5px; background: #1a0624; overflow: hidden; } .pf-hp div { height: 100%; background: linear-gradient(#9affa8, #2fbf4a); transition: width 0.3s; }
+  .pf small { display: block; margin-top: 2px; font: 800 11px 'Nunito', sans-serif; color: #c8b0d8; }
+  #targetFrame { left: calc(min(340px, 100% - 172px) + 24px); top: 12px; width: 230px; padding: 8px 12px 10px; }
+  #targetFrame.mob { border-color: #ff4a4a; } #targetFrame.friend { border-color: #5aff7a; } #targetFrame.player { border-color: #5ab4ff; }
+  .tf-top { display: flex; align-items: center; gap: 8px; font: 400 17px 'Lilita One', sans-serif; color: #fff; }
+  .tf-top b { font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tf-top span { margin-left: auto; font-size: 13px; color: #ffe066; white-space: nowrap; }
+  .tf-top button { width: 22px; height: 22px; border-radius: 50%; border: 0; background: rgba(255, 255, 255, 0.12); color: #fff; font-size: 11px; cursor: pointer; }
+  .tf-hp { margin-top: 6px; } #targetFrame.mob #tfFill { background: linear-gradient(#ff8a8a, #d42a2a); box-shadow: none; }
+  #tfFill { height: 100%; background: linear-gradient(#e2ff7a, #8ad400); transition: width 0.2s; } #tfText { position: absolute; inset: 0; display: grid; place-items: center; font: 400 12px/1 'Lilita One', sans-serif; text-shadow: 0 1px 2px #000; }
+  .tf-btns { display: flex; gap: 6px; margin-top: 8px; } .tf-btns[hidden] { display: none; }
+  .tf-btns button { flex: 1; padding: 5px 4px; border-radius: 999px; border: 2px solid #2a0a3a; background: #5ab4ff; color: #0a1a3a; font: 400 13px 'Lilita One', sans-serif; cursor: pointer; }
+  .tf-btns button:disabled { opacity: 0.5; cursor: default; }
+  #askBox { left: 50%; top: 64px; transform: translateX(-50%); z-index: 9; display: flex; gap: 10px; align-items: center; padding: 10px 14px; font: 800 15px 'Nunito', sans-serif; color: #fff; max-width: calc(100% - 32px); }
+  #askBox[hidden] { display: none; }
+  #askBox button { padding: 6px 14px; border-radius: 999px; border: 2px solid #2a0a3a; background: var(--lime); color: #1e3000; font: 400 15px 'Lilita One', sans-serif; cursor: pointer; }
+  #askBox button.alt { background: #4a1a62; color: #fff; }
+  /* trade window */
+  .trade-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 0 14px; min-height: 0; overflow: hidden; }
+  .trade-cols > div { display: flex; flex-direction: column; min-height: 0; }
+  .trade-cols h3 { margin: 6px 0; font: 400 17px 'Lilita One', sans-serif; } .trade-cols h3.ready { color: #3f8a3a; }
+  .trade-cols .shop-list { padding: 0 0 8px; max-height: 46vh; }
+  .tr-gold, .tr-item { display: flex; align-items: center; gap: 5px; padding: 5px 7px; background: #ece0c0; border: 2px solid #c8b088; border-radius: 10px; }
+  .tr-item.on { border-color: #3f8a3a; } .tr-item span:not(.emo) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tr-item img { width: 24px; height: 24px; image-rendering: pixelated; } .tr-item .emo { font-size: 18px; }
+  .tr-gold small { margin-left: auto; color: #7a5a3a; }
+  .tr-gold button, .tr-item button { padding: 2px 7px; border: 0; border-radius: 8px; background: #4a2c18; color: #fff; font: 400 13px 'Lilita One', sans-serif; cursor: pointer; }
+  .trade-foot { display: flex; gap: 10px; justify-content: flex-end; padding: 6px 14px 14px; }
+  .trade-foot button { padding: 8px 20px; border: 0; border-radius: 999px; background: #3f8a3a; color: #fff; font: 400 16px 'Lilita One', sans-serif; cursor: pointer; box-shadow: 0 2px 0 #1f4a1f; }
+  .trade-foot button.alt { background: #8a5a10; box-shadow: 0 2px 0 #4a2c08; } .trade-foot button:disabled { background: #b8a888; box-shadow: none; }
+  @media (max-width: 640px) {
+    #targetFrame { left: 12px; top: auto; bottom: 230px; width: 200px; }
+    #partyFrames { top: 100px; width: 150px; }
+    .trade-cols { grid-template-columns: 1fr; overflow-y: auto; }
+  }
   .bubble { position: absolute; left: 0; top: 0; max-width: 220px; padding: 6px 12px; border-radius: 14px; background: #fff; color: #2a1a3a; font: 800 14px/1.3 'Nunito', sans-serif; white-space: normal; text-align: center;
     box-shadow: 0 3px 0 rgba(0, 0, 0, 0.25); transition: opacity 0.4s; }
   .bubble::after { content: ''; position: absolute; left: 50%; bottom: -7px; margin-left: -7px; border: 7px solid transparent; border-bottom: 0; border-top-color: #fff; }
-  #chatBtn { padding: 6px 12px; border-radius: 999px; font-size: 15px; background: linear-gradient(#8ad8ff, #3a8ae0); box-shadow: 0 3px 0 #1a4a8a; }
-  @media (max-width: 640px) { #chat { bottom: 64px; width: calc(100% - 120px); } }
+
+  @media (max-width: 640px) { #chat { bottom: 16px; width: calc(100% - var(--pad-w) - 38px); } #chat:has(#chatRow:not([hidden])) { width: calc(100% - 24px); } }
   /* arena: match bar, kill feed, foe tags and the knockout screen */
   #arenaBar { left: 50%; top: 10px; transform: translateX(-50%); padding: 6px 18px; display: flex; gap: 16px; align-items: center; border-radius: 999px; font: 18px 'Lilita One', sans-serif; white-space: nowrap; }
   #arenaBar b { color: var(--orange); font-weight: 400; } #arenaBar .k { color: var(--lime); } #arenaBar .d { color: #ff6a6a; }
@@ -167,7 +236,7 @@
   #death button { padding: 9px 18px; border-radius: 999px; font-size: 17px; border: 3px solid #2a0a3a; background: linear-gradient(#e6ff7a, #a8e000); color: #1e3000; cursor: pointer; }
   #death button.alt { background: #4a1a62; color: #fff; }
   /* farming: seed bar and build bar (bottom centre), build mode pill, owner signs */
-  .farmbar { left: 50%; bottom: 78px; transform: translateX(-50%); padding: 8px 10px; display: flex; gap: 8px; align-items: stretch; }
+  .farmbar { left: 50%; bottom: 78px; transform: translateX(-50%); padding: 8px 10px; display: flex; gap: 8px; align-items: stretch; max-width: calc(100% - 2 * (var(--pad-w) + 26px)); overflow-x: auto; scrollbar-width: none; }
   .farmbar .h { font: 15px 'Lilita One', sans-serif; color: var(--orange); writing-mode: vertical-rl; transform: rotate(180deg); text-align: center; }
   .farmbar .seed { position: relative; width: 112px; padding: 7px 6px 6px; border-radius: 12px; background: rgba(255, 255, 255, 0.06); border: 2px solid transparent; text-align: center; }
   .farmbar .seed.on { border-color: var(--lime); background: rgba(200, 255, 46, 0.12); }
@@ -179,9 +248,9 @@
   #buildMode { left: 50%; top: 62px; transform: translateX(-50%); padding: 6px 18px; border-radius: 999px; font: 17px 'Lilita One', sans-serif; color: var(--lime); white-space: nowrap; }
   .tag.plot { font-size: 16px; } .tag.plot.free { background: #2a5a1a; border-color: #c8ff2e; color: #e8ffb0; box-shadow: 0 3px 0 #1a3a10; }
   @media (max-width: 640px) {
-    .farmbar { left: 8px; right: 112px; transform: none; overflow-x: auto; scrollbar-width: none; bottom: 64px; }
+    .farmbar { left: 8px; right: 8px; max-width: none; transform: none; bottom: 292px; } /* above the action pad and its context buttons */
     .farmbar .seed { width: 76px; flex: none; } .farmbar i { display: none; } .farmbar .h { display: none; }
-    #nearChip { top: 104px; max-width: calc(100% - 140px); left: 12px; transform: none; font-size: 13px; white-space: normal; }
+    #nearChip { top: 196px; max-width: calc(100% - 182px); left: 12px; transform: none; font-size: 13px; white-space: normal; }
     #buildMode { top: 104px; left: auto; right: 150px; transform: none; font-size: 12px; padding: 4px 10px; display: none; }
     body.building #chat, body.building #chatBtn, body.building #camBtn, body.building #bagBtn { display: none; }
   }
@@ -194,25 +263,48 @@
   #aimRing.lob { border-color: #ffd23a; }
   #aimArc { position: fixed; inset: 0; z-index: 3; pointer-events: none; }
   #aimArc i { position: absolute; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: #ffd23a; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5); }
-  #viewBtn { padding: 6px 12px; border-radius: 999px; font-size: 15px; }
-  #aimBtn { padding: 6px 12px; border-radius: 999px; font-size: 15px; opacity: 0.55; }
-  #aimBtn.on { opacity: 1; box-shadow: 0 0 0 2px #ff4a3a inset; }
-  .actions .touch { padding: 6px 12px; border-radius: 999px; font-size: 14px; background: linear-gradient(#ffd27a, #e89a2a); box-shadow: 0 3px 0 #8a4a10; }
+
+
+  .actions .touch { background: linear-gradient(#ffd27a, #e89a2a); box-shadow: 0 3px 0 #8a4a10; }
   .actions .touch.on { background: linear-gradient(#ff8a8a, #e04a4a); box-shadow: 0 3px 0 #8a1a1a; }
   #fade { position: fixed; inset: 0; z-index: 9; background: #000; opacity: 0; pointer-events: none; transition: opacity 0.7s; }
 
   @media (max-width: 640px) {
     .mini { width: 124px; height: 124px; }
     .mini-label { font-size: 12px; bottom: 6px; }
-    .pills { top: 142px; gap: 6px; }
+    .rstack { top: 142px; gap: 8px; flex-direction: row-reverse; align-items: flex-start; }
+    .menus .lbl { display: none; } /* icon buttons beside the counters */
+    .menus button { width: 44px; height: 44px; padding: 0; border-radius: 50%; font-size: 18px; }
+    .ctx button { padding: 6px 9px; font-size: 14px; }
+    .ctx { gap: 6px; }
+    .pills { gap: 6px; }
     .pill { font-size: 14px; padding: 4px 10px; }
     .help { display: none; }
-    .nitro { right: auto; left: 12px; bottom: 16px; font-size: 14px; padding: 6px 12px; }
-    .nitro .bar { width: 60px; }
-    .bag { top: 270px; width: min(260px, calc(100% - 24px)); }
+    .bag { right: 12px; top: var(--right-top, 300px); width: min(260px, calc(100% - 24px)); max-height: calc(100vh - var(--right-top, 300px) - 250px); }
     .tl { width: calc(100% - 156px); }
     .title { font-size: 16px; }
     .links { display: none; }
+  }
+  /* short and wide (a phone on its side, a squat window): the counters move beside a smaller
+     minimap so the action buttons get the whole right edge below it */
+  @media (max-height: 700px) and (min-width: 641px) {
+    .mini { width: 124px; height: 124px; }
+    .mini-label { font-size: 12px; bottom: 6px; }
+    .rstack { top: 10px; right: 148px; flex-direction: row-reverse; align-items: flex-start; }
+    .pills { gap: 6px; }
+    .menus { flex-direction: column; }
+    .pill { font-size: 14px; padding: 4px 10px; }
+    .help { max-width: calc(100% - var(--pad-w) - 312px); }
+    /* no height to stack them above the camera row: context buttons go beside the pad instead */
+    .ctx { position: absolute; right: calc(100% + 12px); bottom: 0; width: max-content; max-width: 250px; }
+    .bag { top: 124px; max-height: calc(100vh - 194px); }
+    .farmbar { bottom: 122px; } /* clears two rows of context buttons beside the pad */
+    .tl { width: min(340px, calc(100% - 424px)); }
+    body.building #chat { display: none; } /* the build tools take its corner */
+  }
+  @media (max-height: 480px) and (min-width: 641px) { /* a phone on its side: no keyboard, no room */
+    .help { display: none; }
+    #nearChip { top: 112px; left: 12px; transform: none; font-size: 14px; }
   }
 </style>
 <script>
@@ -247,30 +339,42 @@ else if (!localStorage.getItem('taproot_character')) window.location.replace('/g
 <div class="chip" id="nearChip" hidden><span class="dot">&#10140;</span><span id="nearText"></span></div>
 
 <div class="mini"><canvas id="minimap" width="240" height="240" aria-label="Minimap"></canvas><div class="mini-label" id="miniLabel"></div></div>
-<div class="pills">
-  <div class="pill" style="--c: #ffb03a"><span>&#127942;</span><b class="lv" id="lvText">Lv 1</b><i id="xpText">0/100 XP</i></div>
-  <div class="pill" style="--c: #ffcf3a"><span>&#128176;</span><b id="goldText">0</b></div>
-  <div class="pill" style="--c: #5ab4ff"><span>&#11088;</span><b id="killText">0</b></div>
+<div class="rstack">
+  <div class="pills">
+    <div class="pill" style="--c: #ffb03a"><span>&#127942;</span><b class="lv" id="lvText">Lv 1</b><i id="xpText">0/100 XP</i></div>
+    <div class="pill" style="--c: #ffcf3a"><span>&#128176;</span><b id="goldText">0</b></div>
+    <div class="pill" style="--c: #5ab4ff"><span>&#11088;</span><b id="killText">0</b></div>
+  </div>
+  <div class="menus">
+    <button id="bagBtn" type="button" tabindex="-1" aria-label="Bag">&#127890;<span class="lbl"> Bag</span><kbd>B</kbd></button>
+    <button id="chatBtn" type="button" tabindex="-1" aria-label="Chat">&#128172;<span class="lbl"> Chat</span><kbd>T</kbd></button>
+    <button id="soundBtn" type="button" tabindex="-1" aria-label="Sound" aria-pressed="true">&#128266;<kbd>M</kbd></button>
+  </div>
 </div>
 
-<div class="nitro"><span>&#9889;</span>NITRO<div class="bar"><div id="nitroFill"></div></div><span id="nitroText">Ready</span></div>
 <div class="actions">
-  <button id="sailBtn" type="button" tabindex="-1" hidden>&#9973; Set sail<kbd>F</kbd></button>
-  <button id="chatBtn" type="button" tabindex="-1" aria-label="Chat">&#128172;<kbd>T</kbd></button>
-  <button id="leaveBtn" type="button" tabindex="-1" hidden>&#128682; Leave</button>
-  <button id="camBtn" type="button" tabindex="-1" aria-label="Camera view">&#127909;<kbd>C</kbd></button>
-  <div class="tilt"><button id="camUpBtn" type="button" tabindex="-1" aria-label="Camera higher">&#9650;</button><button id="camDownBtn" type="button" tabindex="-1" aria-label="Camera lower">&#9660;</button></div>
-  <button id="viewBtn" type="button" tabindex="-1" aria-label="Change view">&#128065;<kbd>V</kbd></button>
-  <button id="aimBtn" type="button" tabindex="-1" aria-label="Auto-aim">&#127919;<kbd>L</kbd></button>
-  <button id="buildBtn" class="touch" type="button" tabindex="-1" hidden>&#128296; Build</button>
-  <button id="nextBtn" class="touch" type="button" tabindex="-1" hidden>&#9654; Next</button>
-  <button id="rotBtn" class="touch" type="button" tabindex="-1" hidden>&#8635; Turn</button>
-  <button id="breakBtn" class="touch" type="button" tabindex="-1" hidden>&#9935; Break</button>
-  <button id="bagBtn" type="button" tabindex="-1">Bag<kbd>B</kbd></button>
-  <button id="jumpBtn" type="button" tabindex="-1" aria-label="Jump">JUMP</button>
-  <button id="attackBtn" type="button" tabindex="-1" aria-label="Attack">&#9876;&#65039;</button>
+  <div class="ctx">
+    <button id="breakBtn" class="touch" type="button" tabindex="-1" hidden>&#9935; Break</button>
+    <button id="rotBtn" class="touch" type="button" tabindex="-1" hidden>&#8635; Turn</button>
+    <button id="nextBtn" class="touch" type="button" tabindex="-1" hidden>&#9654; Next</button>
+    <button id="buildBtn" class="touch" type="button" tabindex="-1" hidden>&#128296; Build</button>
+    <button id="leaveBtn" type="button" tabindex="-1" hidden>&#128682; Leave</button>
+    <button id="sailBtn" type="button" tabindex="-1" hidden>&#9973; Set sail<kbd>F</kbd></button>
+  </div>
+  <div class="camrow">
+    <button id="camUpBtn" type="button" tabindex="-1" aria-label="Camera higher" title="Camera higher (Z)">&#9650;</button>
+    <button id="camDownBtn" type="button" tabindex="-1" aria-label="Camera lower" title="Camera lower (X)">&#9660;</button>
+    <button id="camBtn" type="button" tabindex="-1" aria-label="Camera view" title="Camera (C)">&#127909;<kbd>C</kbd></button>
+    <button id="viewBtn" type="button" tabindex="-1" aria-label="Change view" title="View (V)">&#128065;<kbd>V</kbd></button>
+  </div>
+  <div class="combat">
+    <button id="aimBtn" type="button" tabindex="-1" aria-label="Auto-aim" title="Auto-aim (L)">&#127919;<kbd>L</kbd></button>
+    <button id="sprintBtn" type="button" tabindex="-1" aria-label="Sprint" title="Sprint (U, or hold Shift)"><span>&#9889;</span><span class="bar"><span id="nitroFill" style="display: block"></span></span><span id="nitroText">Ready</span></button>
+    <button id="jumpBtn" type="button" tabindex="-1" aria-label="Jump" title="Jump (Space)">JUMP</button>
+    <button id="attackBtn" type="button" tabindex="-1" aria-label="Attack">&#9876;&#65039;</button>
+  </div>
 </div>
-<div class="help" id="helpBar"><b>I</b> hide &middot; <b>WASD</b> move &middot; <b>Drag / Q E</b> look &middot; <b>Z X</b> tilt &middot; <b>Space</b> jump &middot; <b>'</b> / <b>J</b> right hand &middot; <b>;</b> left hand &middot; <b>Shift</b> nitro &middot; <b>C</b> camera &middot; <b>F</b> use &middot; <b>H</b> potion &middot; <b>N</b> smoke &middot; <b>B</b> bag &middot; <b>U</b> sprint toggle &middot; <b>V</b> view &middot; <b>L</b> auto-aim &middot; <b>T</b> chat</div>
+<div class="help" id="helpBar"><b>I</b> hide &middot; <b>WASD</b> move &middot; <b>Drag / Q E</b> look &middot; <b>Z X</b> tilt &middot; <b>Space</b> jump &middot; <b>'</b> / <b>J</b> right hand &middot; <b>;</b> left hand &middot; <b>Shift</b> nitro &middot; <b>C</b> camera &middot; <b>F</b> use &middot; <b>H</b> potion &middot; <b>N</b> smoke &middot; <b>B</b> bag &middot; <b>U</b> sprint toggle &middot; <b>V</b> view &middot; <b>L</b> auto-aim &middot; <b>T</b> chat &middot; <b>M</b> sound &middot; <b>Tab</b> target &middot; <b>/help</b> social</div>
 <div id="crosshair" hidden></div>
 <div id="aimRing" hidden></div>
 <div id="aimArc" hidden></div>
@@ -280,6 +384,21 @@ else if (!localStorage.getItem('taproot_character')) window.location.replace('/g
   <div id="mpText">Connecting...</div>
 </div>
 <div class="chip toast" id="toast" hidden></div>
+<div id="partyFrames" hidden></div>
+<div class="panel" id="targetFrame" hidden>
+  <div class="tf-top"><b id="tfName"></b><span id="tfLvl"></span><button id="tfClose" type="button" aria-label="Clear target">&#10005;</button></div>
+  <div class="hp tf-hp"><div id="tfFill"></div><span id="tfText"></span></div>
+  <div class="tf-btns" id="tfBtns"><button id="tfWhisper" type="button">Whisper</button><button id="tfInvite" type="button">Invite</button><button id="tfTrade" type="button">Trade</button></div>
+</div>
+<div class="panel" id="askBox" hidden><span id="askText"></span><button id="askYes" type="button">Accept</button><button id="askNo" class="alt" type="button">Decline</button></div>
+<div class="shop" id="tradePanel" hidden>
+  <div class="shop-head"><b id="tradeTitle">Trade</b><button id="tradeClose" type="button" aria-label="Cancel trade">&#10005;</button></div>
+  <div class="trade-cols">
+    <div><h3 id="tradeMineHead">You give</h3><div class="shop-list" id="tradeMine"></div></div>
+    <div><h3 id="tradeTheirsHead">They give</h3><div class="shop-list" id="tradeTheirs"></div></div>
+  </div>
+  <div class="trade-foot"><button id="tradeCancel" class="alt" type="button">Cancel</button><button id="tradeGo" type="button">Trade</button></div>
+</div>
 
 <div class="shop" id="shopPanel" hidden>
   <div class="shop-head"><b id="shopTitle"></b><span id="shopGold"></span><button id="shopClose" type="button" aria-label="Close">&#10005;</button></div>
@@ -327,7 +446,8 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { makeHero3D, loadBlenderParts } from '/game/lib/hero3d.js';
 import { loadBlenderHero, makeBlenderHero } from '/game/lib/blenderhero.js';
-import { loadGlbHero, makeGlbHero } from '/game/lib/glbhero.js';
+import { loadGlbHero, makeGlbHero, loadGlbGear, wearFor, HERO_URL, glbHeroReady } from '/game/lib/glbhero.js';
+import { sfx } from '/game/lib/sfx.js';
 import { SHOPS, SELL, RECIPES, CONSUMABLES } from './shops.js';
 import { CROPS, BUILDS, ALTAR, FARM_ITEMS } from './farm.js';
 import { BLOCKS, BLOCK_IDS, MAX_H, unpack, pack, standHeight, blockedAt, raycast, canPlace } from './blocks.js';
@@ -1712,10 +1832,18 @@ const BLENDER_COTTAGE = BLENDER ? (await new GLTFLoader().loadAsync('/game/asset
 const BLENDER_HERO = new URLSearchParams(location.search).get('hero') === 'blender';
 if (BLENDER || BLENDER_HERO) await loadBlenderParts('/game/assets3d/hero_parts.glb');
 if (BLENDER_HERO) await loadBlenderHero('/game/assets3d/hero_blender.glb');
-// Style test: ?hero=rogue makes your hero the Tripo-generated rogue (game/assets/characterart).
-const GLB_HEROES = { rogue: '/game/assets/characterart/rouge.glb' };
-const GLB_HERO = GLB_HEROES[new URLSearchParams(location.search).get('hero')] || null;
-if (GLB_HERO) await loadGlbHero(GLB_HERO);
+// GLB heroes (game/assets/characterart, glbhero.js HERO_URL): a character whose `body` is 'human'
+// (picked in the creator) is that 3D character instead of the toon hero. ?hero=rogue / ?hero=human
+// forces one for a style test, whatever the character says.
+const HERO_Q = new URLSearchParams(location.search).get('hero');
+const GLB_FORCED = HERO_URL[HERO_Q] ? HERO_Q : null;
+const MY_BODY = GLB_FORCED || (() => { try { const b = JSON.parse(localStorage.getItem('taproot_character'))?.body; return HERO_URL[b] ? b : null; } catch (e) { return null; } })();
+const GLB_HERO = MY_BODY ? HERO_URL[MY_BODY] : null;
+if (GLB_HERO) await loadGlbHero(MY_BODY);
+// 3D gear for GLB heroes: each starts in its START_WEAR (the human: the green cloak); ?wear=green_cloak
+// picks it, ?wear=none strips it; equipping an item in GEAR_FOR_ITEM puts its gear on too
+const GLB_WEAR = wearFor(MY_BODY, new URLSearchParams(location.search).get('wear'));
+if (GLB_HERO) await loadGlbGear();
 // Trees are instanced: one geometry per kind (node transforms baked in), drawn hundreds of times.
 const BLENDER_TREES = {};
 if (BLENDER) await Promise.all(['tree_round', 'tree_oak', 'tree_pine'].map(async (k) => {
@@ -2640,9 +2768,25 @@ if (INDOOR) { camDist = camDistT = 7.5; camPitch = camPitchT = 0.95; }
 if (STANDS) { camDist = camDistT = 11; camPitch = camPitchT = 0.62; } // looking down at the sand
 function makePlayerHero(look) {
   if (!BLENDER_HERO && !GLB_HERO) return makeHero(look);
-  const h = GLB_HERO ? makeGlbHero(look) : makeBlenderHero(look);
+  const h = GLB_HERO ? makeGlbHero({ ...look, body: MY_BODY, wear: GLB_WEAR }) : makeBlenderHero(look);
   scene.add(h.root);
   return h;
+}
+// Another player: their own body if they picked one. Its model loads on first sight, so they show
+// as the toon hero for that moment, then swap in place.
+function makeGhostHero(g, look) {
+  const body = look && HERO_URL[look.body] ? look.body : null;
+  if (!body) return makeHero(look || DEFAULT_CHAR);
+  if (glbHeroReady(body)) { const h = makeGlbHero({ ...look, body }); scene.add(h.root); return h; }
+  Promise.all([loadGlbHero(body), loadGlbGear()]).then(() => {
+    if (ghosts.get(g.id) !== g) return; // they left meanwhile
+    const old = g.hero, h = makeGlbHero({ ...look, body });
+    h.root.position.copy(old.root.position); h.root.rotation.y = old.root.rotation.y; h.root.visible = old.root.visible;
+    scene.add(h.root);
+    old.dispose?.(); old.root.removeFromParent();
+    g.hero = h;
+  }).catch(() => {});
+  return makeHero(look);
 }
 let hero = makePlayerHero(charData || DEFAULT_CHAR);
 const P = { x: spawnAt.x + 0.5, z: spawnAt.y + 0.75, y: 0, vy: 0, vx: 0, vz: 0, heading: Math.PI, phase: 0, atk: -1, atkL: -1, grounded: 0 };
@@ -2724,12 +2868,13 @@ const registered = new Set(); // monster ids this player's server session alread
 function addMonster(type, entry, ei, sid, x, z, hp, face) {
   const cfg = MONSTERS[type], view = makeMonster(type), el = document.createElement('div');
   el.className = 'tag';
-  el.innerHTML = `${cfg.name}<div class="thp"><i></i></div>`;
+  el.innerHTML = `<small class="lvl">Lv ${MOB_LVL[type] || 1}</small>${cfg.name}<div class="thp"><i></i></div>`;
   labelsEl.appendChild(el);
   if (!registered.has(sid)) { registered.add(sid); Ledger.act({ t: 'spawn', id: sid, m: type }); }
   // mine: damage this player dealt; the server pays a kill only to whoever dealt all of it
   const m = { sid, type, entry, ei, cfg, view, el, bar: el.querySelector('i'), x, z, tx: x, tz: z, hp, mine: 0, vx: 0, vz: 0, t: 0, kb: 0, kbx: 0, kbz: 0, flash: 0, face, tface: face, seed: Math.random() * 10 };
   monsters.push(m);
+  tagTargets(el, 'mob', m);
   return m;
 }
 function monsterFree(m, x, z) {
@@ -2764,6 +2909,7 @@ let sprintOn = false, shiftCancel = false;
 function setSprint(on) {
   if (sprintOn === on) return;
   sprintOn = on;
+  $('sprintBtn').classList.toggle('on', on);
   toast(on ? 'Sprint on (Shift or U to walk)' : 'Walking');
 }
 
@@ -2852,6 +2998,7 @@ function shopAct(act, id, extra) {
     if (ITEM(id)) { owned.push(id); saveOwned(); } else field.bag[id] = (field.bag[id] || 0) + n;
     Ledger.act({ t: 'buy', shop: modal.name, id, n });
     floatText(P.x, 2, P.z, `Bought ${n > 1 ? n + ' ' : ''}${nameOf(id)}`, '#ffe066');
+    sfx.play('buy');
   } else if (act === 'sell') {
     const n = Math.min(+extra, field.bag[id] || 0);
     if (!(n > 0)) return;
@@ -2859,6 +3006,7 @@ function shopAct(act, id, extra) {
     field.gold += SELL[id] * n;
     Ledger.act({ t: 'sell', id, n });
     floatText(P.x, 2, P.z, `+${SELL[id] * n} gold`, '#ffd34a');
+    sfx.play('coin');
   } else if (act === 'craft') {
     const r = RECIPES.find((x) => x.id === id);
     if (!r || field.gold < (r.gold || 0) || !Object.entries(r.needs).every(([k, n]) => (field.bag[k] || 0) >= n)) return;
@@ -2867,6 +3015,7 @@ function shopAct(act, id, extra) {
     if (ITEM(id)) { owned.push(id); saveOwned(); } else field.bag[id] = (field.bag[id] || 0) + (r.qty || 1);
     Ledger.act({ t: 'craft', id });
     floatText(P.x, 2.2, P.z, `Crafted ${nameOf(id)}!`, '#7ae0ff');
+    sfx.play('craft');
     hero.emote('happy', 1.2);
     burst(P.x, 1.2, P.z, '#7ae0ff', 14);
   } else if (act === 'equip') equip(id, extra);
@@ -2889,6 +3038,7 @@ function equip(id, slot) {
   if (HAD_CHAR) Ledger.act({ t: 'equip', eq });
   dressHero(charData);
   floatText(P.x, 2, P.z, `Equipped ${it.name}`, '#c8ff2e');
+  sfx.play('equip');
 }
 // rebuild the 3D hero, the stats and the portrait from a look (its equipment, hair, skin...)
 function dressHero(look) {
@@ -2912,6 +3062,7 @@ function drink(id) {
   const gain = Math.min(c.heal, stats.hp - hp);
   hp += gain;
   floatText(P.x, 1.8, P.z, `+${gain} HP`, '#6aff8a');
+  sfx.play('heal');
   burst(P.x, 1, P.z, '#6aff8a', 10);
   saveField();
   updateHud();
@@ -2925,12 +3076,14 @@ function jump() {
   if (P.grounded <= 0.12) { // on the ground, or only just off it
     P.vy = 7.4;
     P.grounded = 1;
+    sfx.play('jump');
     P.airJump = gear('feet') === 'hermes_sandals'; // the sandals hold one more jump in reserve
     return;
   }
   if (P.airJump) { // ...spent in mid-air
     P.airJump = false;
     P.vy = 7.0;
+    sfx.play('jump2');
     burst(P.x, P.y + 0.1, P.z, '#ffe08a', 10);
   }
 }
@@ -2945,6 +3098,7 @@ function swing(hand = 'R') {
   if (L) { attackCdL = caster ? caster.cd : 0.36; P.atkL = 0; mp.atkL = Math.round(performance.now()); }
   else { attackCd = caster ? caster.cd : 0.36; P.atk = 0; mp.atk = Math.round(performance.now()); } // stamp the swing so other players see it once
   if (caster) { setTimeout(() => castBall(hand), 120); return; } // wands and staffs shoot instead
+  sfx.play('swing');
   const att = newAttack();
   // auto-aim: a swing turns onto anything within reach in front of you
   const lock = assistTarget(P.x, P.z, Math.sin(P.heading), Math.cos(P.heading), 2.2, 0.8);
@@ -2972,6 +3126,7 @@ function hitMonster(m, power = statNow('atk'), kind = 'swing', hand = 'R', att =
     px: +P.x.toFixed(2), pz: +P.z.toFixed(2), mx: +m.x.toFixed(2), mz: +m.z.toFixed(2), pt: clientMs() });
   m.flash = 0.09;
   const dx = m.x - P.x, dz = m.z - P.z, d = Math.hypot(dx, dz) || 1, push = m.cfg.big ? 4.4 : 8.75;
+  sfx.play('hit');
   m.kb = 0.16; m.kbx = dx / d * push; m.kbz = dz / d * push;
   if (!mobHost() && mp.live) mp.channel.send({ type: 'broadcast', event: 'mobhit', payload: { id: m.sid, dmg, kbx: +m.kbx.toFixed(2), kbz: +m.kbz.toFixed(2) } });
   floatText(m.x, m.cfg.big ? 2.2 : 1.3, m.z, String(dmg), '#ffffff');
@@ -2986,6 +3141,7 @@ function castBall(hand = 'R') {
   const c = hand === 'L' ? hero.casterL : hero.caster;
   if (!c || fainted) return;
   (hand === 'L' ? hero.tipWorldL : hero.tipWorld)(V);
+  sfx.play('cast');
   // aim from the tip at a point straight ahead of the player, so shots from either hand converge on the target line
   const ax = P.x + Math.sin(P.heading) * 8 - V.x, az = P.z + Math.cos(P.heading) * 8 - V.z, al = Math.hypot(ax, az) || 1;
   let dx = ax / al, dz = az / al, dy = 0;
@@ -3150,6 +3306,7 @@ function throwTomato() {
   if (now - lastThrow < TOMATO_COOLDOWN_MS) return;
   lastThrow = now;
   const from = { x: P.x, y: P.y + 1.1, z: P.z }, to = tomatoTarget();
+  sfx.play('throw');
   spawnTomato(from, to);
   if (mp.live) mp.channel.send({ type: 'broadcast', event: 'tomato', payload: {
     id: mp.id, fx: +from.x.toFixed(2), fy: +from.y.toFixed(2), fz: +from.z.toFixed(2),
@@ -3157,6 +3314,7 @@ function throwTomato() {
 }
 
 function splat(t) {
+  sfx.play('splat', { dist: Math.hypot(t.x - P.x, t.z - P.z) });
   burst(t.x, t.y, t.z, '#d8372a', 10);
   burst(t.x, t.y, t.z, '#8ad84a', 3); // a little stalk green in the mess
   scene.remove(t.m);
@@ -3268,6 +3426,7 @@ function dropShot(fb) {
 
 function explode(fb) {
   const { x, y, z, c } = fb;
+  sfx.play('boom', { dist: Math.hypot(x - P.x, z - P.z), vol: 0.5 + 0.25 * (c.aoe || 0) });
   burst(x, y, z, c.color, 14);
   burst(x, y, z, '#fff4c0', 6);
   const b = new THREE.Mesh(FB_GEO, new THREE.MeshBasicMaterial({ color: c.color, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false }));
@@ -3358,7 +3517,8 @@ function killMonster(m, quiet) {
   field.kills += 1;
   saveField();
   floatText(m.x, 1.8, m.z, `+${m.cfg.xp} XP`, '#ffe066');
-  if (1 + Math.floor(field.xp / 100) > before) floatText(P.x, 2, P.z, 'LEVEL UP!', '#7ae0ff');
+  sfx.play('kill');
+  if (1 + Math.floor(field.xp / 100) > before) { floatText(P.x, 2, P.z, 'LEVEL UP!', '#7ae0ff'); sfx.play('levelup'); }
   updateHud();
 }
 function hurtPlayer(m, dx, dz, dist) {
@@ -3367,6 +3527,7 @@ function hurtPlayer(m, dx, dz, dist) {
   inv = 0.9;
   pkb = { x: dx / dist * 9.4, z: dz / dist * 9.4, t: 0.16 };
   shake = 0.15;
+  sfx.play('hurt');
   floatText(P.x, 1.5, P.z, `-${dmg}`, '#ff6b6b');
   hero.hurt();
   updateHud();
@@ -3375,6 +3536,7 @@ function hurtPlayer(m, dx, dz, dist) {
 function faint() {
   fainted = true;
   floatText(P.x, 2, P.z, 'You fainted...', '#ffffff');
+  sfx.play('faint');
   const fade = document.getElementById('fade');
   fade.style.opacity = 1;
   setTimeout(() => {
@@ -3404,6 +3566,7 @@ function spawnDrop(d, x, z) {
 function collect(d) {
   d.taken = 0.001;
   Ledger.act(d.kind === 'gold' ? { t: 'pickup', kind: 'gold', m: d.m, n: d.amount } : { t: 'pickup', kind: 'item', id: d.id });
+  sfx.play(d.kind === 'gold' ? 'coin' : 'pickup');
   if (d.kind === 'gold') { field.gold += d.amount; floatText(P.x, 1.6, P.z, `+${d.amount} gold`, '#ffd34a'); }
   else { field.bag[d.id] = (field.bag[d.id] || 0) + d.amount; floatText(P.x, 1.6, P.z, `+1 ${LOOT[d.id].name}`, '#ffffff'); }
   saveField();
@@ -3476,9 +3639,42 @@ function toggleHelp(show) {
 }
 try { if (localStorage.getItem('taproot_help_hidden') === '1') $('helpBar').hidden = true; } catch (e) {}
 
+// The chat sits on top of the controls bar, which wraps to a different height on each screen,
+// and on phones the bag opens under the counters and menu buttons: both read the real sizes.
+function layoutHud() {
+  const root = document.documentElement.style;
+  const box = (el) => (el && el.getClientRects().length ? el.getBoundingClientRect() : null);
+  const mini = box(document.querySelector('.mini')), stack = box(document.querySelector('.rstack')), help = box($('helpBar'));
+  root.setProperty('--right-top', Math.round(Math.max(mini ? mini.bottom : 0, stack ? stack.bottom : 0) + 12) + 'px');
+  root.setProperty('--help-h', (help ? Math.round(help.height) : 0) + 'px');
+}
+{
+  let queued = false;
+  const queue = () => { if (!queued) { queued = true; requestAnimationFrame(() => { queued = false; layoutHud(); }); } };
+  const ro = new ResizeObserver(queue);
+  for (const sel of ['.mini', '.rstack', '#helpBar']) ro.observe(document.querySelector(sel));
+  new MutationObserver(queue).observe($('helpBar'), { attributes: true, attributeFilter: ['hidden'] });
+  addEventListener('resize', queue);
+  document.fonts && document.fonts.ready.then(queue);
+  queue();
+}
+
+// sound on / off (M): remembered across visits by sfx.js
+function setSound(on) {
+  sfx.setMuted(!on);
+  const b = $('soundBtn');
+  b.classList.toggle('off', sfx.muted);
+  b.firstChild.textContent = sfx.muted ? '\u{1F507}' : '\u{1F50A}';
+  b.setAttribute('aria-pressed', String(!sfx.muted));
+  if (on) sfx.play('ui');
+}
+setSound(!sfx.muted);
+$('soundBtn').addEventListener('click', () => setSound(sfx.muted));
 function toggleBag(open) {
   const panel = $('bagPanel');
+  const was = panel.hidden;
   panel.hidden = open === undefined ? !panel.hidden : !open;
+  if (was !== panel.hidden) sfx.play(was ? 'open' : 'close');
   if (!panel.hidden) renderBag();
 }
 function renderBag() {
@@ -3526,8 +3722,8 @@ function drawMinimap(now) {
     mctx.fillStyle = m.cfg.big ? '#c06aff' : '#ff9a2a';
     mctx.beginPath(); mctx.arc(m.x * MINI, m.z * MINI, m.cfg.big ? 3 : 2, 0, Math.PI * 2); mctx.fill();
   }
-  mctx.fillStyle = '#5ab4ff'; mctx.strokeStyle = '#ffffff'; mctx.lineWidth = 1;
-  for (const g of ghosts.values()) { mctx.beginPath(); mctx.arc(g.x * MINI, g.z * MINI, 3, 0, Math.PI * 2); mctx.fill(); mctx.stroke(); }
+  mctx.strokeStyle = '#ffffff'; mctx.lineWidth = 1;
+  for (const g of ghosts.values()) { mctx.fillStyle = inParty(g.name) ? '#5aff7a' : '#5ab4ff'; mctx.beginPath(); mctx.arc(g.x * MINI, g.z * MINI, 3, 0, Math.PI * 2); mctx.fill(); mctx.stroke(); }
   mctx.translate(P.x * MINI, P.z * MINI);
   mctx.rotate(Math.atan2(Math.cos(P.heading), Math.sin(P.heading)));
   mctx.fillStyle = Math.floor(now / 350) % 2 ? '#c8ff2e' : '#ffffff';
@@ -3568,7 +3764,7 @@ function chatLine(name, msg, sys) {
   setTimeout(() => el.remove(), 30000);
 }
 function myState() {
-  return { id: mp.id, name: mp.name, char: charData, room: MP_ROOM, born: mp.born, map: A.title, x: +P.x.toFixed(2), z: +P.z.toFixed(2), y: +P.y.toFixed(2), h: +P.heading.toFixed(2), atk: mp.atk, atkL: mp.atkL, hp, mhp: stats.hp, air: P.y > groundAt(P.x, P.z, P.y) + 0.02, hid: smokedNow() };
+  return { id: mp.id, name: mp.name, char: charData, room: MP_ROOM, born: mp.born, map: A.title, lvl: level(field.xp), x: +P.x.toFixed(2), z: +P.z.toFixed(2), y: +P.y.toFixed(2), h: +P.heading.toFixed(2), atk: mp.atk, atkL: mp.atkL, hp, mhp: stats.hp, air: P.y > groundAt(P.x, P.z, P.y) + 0.02, hid: smokedNow() };
 }
 function addGhost(d) {
   if (d.id === mp.id || d.room !== MP_ROOM) return null;
@@ -3576,10 +3772,14 @@ function addGhost(d) {
   if (!g) {
     const tag = document.createElement('div');
     tag.className = PIT ? 'tag player foe' : 'tag player';
-    tag.innerHTML = safeText(d.name || 'Wanderer') + (PIT ? '<div class="thp"><i></i></div>' : '');
+    tag.innerHTML = `<small class="lvl">Lv ${Number(d.lvl) || 1}</small>${safeText(d.name || 'Wanderer')}<div class="thp"><i></i></div>`;
     labelsEl.appendChild(tag);
-    g = { id: d.id, name: d.name || 'Wanderer', hero: makeHero(d.char || DEFAULT_CHAR), tag, bubble: { el: null, until: 0 }, x: d.x, z: d.z, y: 0, h: d.h || 0, tx: d.x, tz: d.z, ty: 0, th: d.h || 0, atk: -1, atkSeen: d.atk || 0, atkL: -1, atkLSeen: d.atkL || 0 };
+    g = { id: d.id, name: d.name || 'Wanderer', hero: null, tag, bubble: { el: null, until: 0 }, x: d.x, z: d.z, y: 0, h: d.h || 0, tx: d.x, tz: d.z, ty: 0, th: d.h || 0, atk: -1, atkSeen: d.atk || 0, atkL: -1, atkLSeen: d.atkL || 0 };
+    g.hero = makeGhostHero(g, d.char);
     g.bar = tag.querySelector('.thp i');
+    g.lvl = Number(d.lvl) || 1;
+    tag.classList.toggle('party', inParty(g.name));
+    tagTargets(tag, 'player', g);
     g.hero.root.position.set(d.x, 0, d.z); // start in place: the hero's springs read speed from how far the root moves
     ghosts.set(d.id, g);
     chatLine('', `${g.name} is here`, true);
@@ -3599,17 +3799,470 @@ function onState(d) {
   if (!g) { if (ghosts.has(d.id)) removeGhost(d.id); return; } // they walked into another room
   Object.assign(g, { tx: d.x, tz: d.z, ty: d.y || 0, th: d.h || 0, air: !!d.air, hid: !!d.hid, seen: performance.now() });
   if (d.born) g.born = d.born;
+  if (d.lvl && d.lvl !== g.lvl) { g.lvl = Number(d.lvl) || 1; g.tag.querySelector('.lvl').textContent = `Lv ${g.lvl}`; }
   g.map = d.map; // rooms can span maps (the pit and the stands): monsters are only shared on the same one
   if (d.hp !== undefined) { g.hp = d.hp; g.mhp = d.mhp; }
   if (d.atk && d.atk !== g.atkSeen) { g.atkSeen = d.atk; g.atk = 0; }
   if (d.atkL && d.atkL !== g.atkLSeen) { g.atkLSeen = d.atkL; g.atkL = 0; }
 }
+/* ---------- social: parties, whispers, emotes, targets and trading ----------
+   A second Realtime channel, shared by every area, carries what has to reach a player wherever
+   they are: party invites and rosters, party members' health, party chat, whispers and trades.
+   It stays quiet unless someone uses it (party health goes out every 2 s, only while in a party).
+   Players are known here by their character name, as in chat. Emotes are seen by the people
+   around you, so they go out on the area's own channel. */
+const level = (xp) => 1 + Math.floor(xp / 100);
+const MOB_LVL = { slime: 1, bat: 2, shroom: 2, goblin: 4, gladiator: 7, king: 8 };
+const PARTY_MAX = 5;
+const social = { ch: null, live: false, reply: '', statAt: 0, rosterAt: 0, stats: new Map(), pending: null, asked: null };
+const rid = () => Math.random().toString(36).slice(2, 12).padEnd(8, '0');
+const sSend = (event, payload) => { if (social.live) social.ch.send({ type: 'broadcast', event, payload }); return social.live; };
+function chatFancy(cls, html) {
+  const el = document.createElement('div');
+  el.className = 'chat-msg ' + cls;
+  el.innerHTML = html;
+  const log = $('chatLog');
+  log.appendChild(el);
+  log.scrollTop = log.scrollHeight;
+  while (log.children.length > 30) log.firstChild.remove();
+  setTimeout(() => el.classList.add('fading'), 25000);
+  setTimeout(() => el.remove(), 30000);
+}
+const sys = (msg) => chatLine('', msg, true);
+
+/* ---- parties: up to five, led by whoever started it. The leader's roster is the real one;
+   they send it again every 15 s, so a member who was between pages picks up any change. ---- */
+let party = (() => {
+  try { const p = JSON.parse(sessionStorage.getItem('taproot_party')); return p && p.id && Array.isArray(p.members) && p.members.includes(mp.name) ? p : null; } catch (e) { return null; }
+})();
+function setParty(p) {
+  party = p && p.members.length > 1 ? p : null;
+  try { party ? sessionStorage.setItem('taproot_party', JSON.stringify(party)) : sessionStorage.removeItem('taproot_party'); } catch (e) {}
+  if (!party) social.stats.clear();
+  for (const g of ghosts.values()) g.tag.classList.toggle('party', inParty(g.name));
+  renderParty();
+}
+const inParty = (name) => !!party && name !== mp.name && party.members.includes(name);
+const leading = () => !!party && party.leader === mp.name;
+function inviteParty(name) {
+  if (!name || name === mp.name) return;
+  if (party && !leading()) return sys('Only the party leader can invite.');
+  if (party && party.members.length >= PARTY_MAX) return sys('Your party is full.');
+  if (inParty(name)) return sys(`${name} is already in your party.`);
+  const p = party || (social.pending ||= { id: rid(), leader: mp.name, members: [mp.name] });
+  if (sSend('pinv', { to: name, from: mp.name, id: p.id })) sys(`You invited ${name} to your party.`);
+}
+function leaveParty() {
+  if (!party) return sys('You are not in a party.');
+  sSend('pleave', { id: party.id, name: mp.name });
+  setParty(null);
+  sys('You left the party.');
+}
+function kickParty(name) {
+  if (!leading()) return sys('Only the party leader can remove someone.');
+  if (!inParty(name)) return sys(`${name} is not in your party.`);
+  const roster = { ...party, members: party.members.filter((m) => m !== name) };
+  sSend('party', roster);
+  setParty(roster);
+  sys(`${name} was removed from the party.`);
+}
+function onRoster(d) {
+  if (!d || !Array.isArray(d.members)) return;
+  if (d.members.includes(mp.name)) {
+    if (party && party.id !== d.id) return; // someone else's party claims me: mine comes first
+    const fresh = !party;
+    if (party) for (const m of d.members) if (!party.members.includes(m)) sys(`${m} joined the party.`);
+    if (party && party.leader !== d.leader) sys(`${d.leader} is now the party leader.`);
+    setParty({ id: d.id, leader: d.leader, members: d.members.slice(0, PARTY_MAX) });
+    if (fresh && party) sys(`You joined ${d.leader}'s party. Type /p to talk to it.`);
+  } else if (party && party.id === d.id) { setParty(null); sys('You were removed from the party.'); }
+}
+function sendPartyStat(now) {
+  if (!party || now - social.statAt < 2000) return;
+  social.statAt = now;
+  sSend('pstat', { id: party.id, name: mp.name, hp, mhp: stats.hp, lvl: level(field.xp), map: A.title, area: $('areaTitle').textContent });
+  if (leading() && now - social.rosterAt > 15000) { social.rosterAt = now; sSend('party', party); }
+}
+function renderParty() {
+  const el = $('partyFrames'), now = performance.now();
+  if (!party) { el.innerHTML = ''; el.hidden = true; return; }
+  el.hidden = false;
+  el.innerHTML = party.members.filter((m) => m !== mp.name).map((m) => {
+    const s = social.stats.get(m), away = !s || now - s.at > 30000, pct = s && s.mhp ? Math.max(0, Math.min(1, s.hp / s.mhp)) * 100 : 0;
+    const where = !s ? 'joining...' : away ? 'offline' : s.map === A.title ? '' : safeText(s.area || '');
+    return `<div class="pf${away ? ' away' : ''}" data-name="${safeText(m)}"><div class="pf-top">${party.leader === m ? '<span title="Party leader">&#128081;</span>' : ''}<b>${safeText(m)}</b>${s ? `<i>Lv ${s.lvl}</i>` : ''}</div>`
+      + `<div class="pf-hp"><div style="width:${pct}%"></div></div>${where ? `<small>${where}</small>` : ''}</div>`;
+  }).join('');
+}
+$('partyFrames').addEventListener('pointerdown', (e) => {
+  const f = e.target.closest('.pf');
+  const g = f && [...ghosts.values()].find((q) => q.name === f.dataset.name);
+  if (g) setTarget('player', g);
+});
+
+/* ---- whispers, party chat and emotes ---- */
+function whisper(to, msg) {
+  if (!to || !msg) return sys('Whisper with /w name message');
+  if (sSend('whisper', { to, from: mp.name, msg })) chatFancy('whisper', `To <b>${safeText(to)}</b>: ${safeText(msg)}`);
+  social.reply = to;
+}
+const EMOTE_LIST = {
+  wave: ['&#128075;', 'waves'], hello: ['&#128075;', 'waves hello'], hi: ['&#128075;', 'waves hello'], bye: ['&#128075;', 'waves goodbye'],
+  cheer: ['&#127881;', 'cheers!'], dance: ['&#128131;', 'dances'], bow: ['&#128583;', 'bows'], victory: ['&#127942;', 'celebrates'],
+  laugh: ['&#128514;', 'laughs'], cry: ['&#128546;', 'cries'], thank: ['&#128591;', 'thanks everyone'], thanks: ['&#128591;', 'thanks everyone'],
+  love: ['&#10084;&#65039;', 'loves this'], sleep: ['&#128164;', 'falls asleep'], flex: ['&#128170;', 'flexes'], shrug: ['&#129335;', 'shrugs'],
+};
+function playEmote(who, d) { // who: the local player or a ghost
+  const e = EMOTE_LIST[d.e];
+  const name = who === P ? mp.name : who.name, h = who === P ? hero : who.hero, y = who === P ? P.y : who.y;
+  if (e) { h.emote && h.emote(d.e === 'cry' ? 'hurt' : 'happy', 1.6); floatText(who.x, HERO_H + 0.9 + y, who.z, e[0], '#ffffff'); }
+  chatFancy('emote', `<b>${safeText(name)}</b> ${e ? e[1] : safeText(d.txt || '')}`);
+}
+function doEmote(e, txt) {
+  const d = { id: mp.id, e, txt: txt && txt.slice(0, 120) };
+  playEmote(P, d);
+  if (mp.live) mp.channel.send({ type: 'broadcast', event: 'emote', payload: d });
+}
+function onEmote(d) {
+  const g = ghosts.get(d.id);
+  if (g && (EMOTE_LIST[d.e] || d.txt)) playEmote(g, d);
+}
+
+// Chat commands. Returns true if it was one of these.
+function socialCommand(txt) {
+  const m = /^\/(\S+)\s*([\s\S]*)$/.exec(txt.trim());
+  if (!m) return false;
+  const cmd = m[1].toLowerCase(), rest = m[2].trim();
+  const [first, ...more] = rest.split(/\s+/), tail = more.join(' ');
+  if (cmd === 'w' || cmd === 'whisper' || cmd === 't' || cmd === 'tell') { whisper(first, tail); return true; }
+  if (cmd === 'r' || cmd === 'reply') { social.reply ? whisper(social.reply, rest) : sys('Nobody to reply to yet.'); return true; }
+  if (cmd === 'p' || cmd === 'party') {
+    if (first === 'invite' || first === 'inv') inviteParty(tail);
+    else if (first === 'leave') leaveParty();
+    else if (first === 'kick') kickParty(tail);
+    else if (!rest) sys(party ? `Party: ${party.members.join(', ')} (leader ${party.leader})` : 'Not in a party. Invite someone with /inv name.');
+    else if (!party) sys('You are not in a party.');
+    else if (sSend('pchat', { id: party.id, name: mp.name, msg: rest.slice(0, 200) })) chatFancy('party', `[Party] <b>${safeText(mp.name)}</b>: ${safeText(rest.slice(0, 200))}`);
+    return true;
+  }
+  if (cmd === 'inv' || cmd === 'pinvite') { inviteParty(rest); return true; }
+  if (cmd === 'leave' || cmd === 'pleave') { leaveParty(); return true; }
+  if (cmd === 'trade') { startTrade(rest); return true; }
+  if (cmd === 'e' || cmd === 'me' || cmd === 'emote') { if (rest) doEmote('', rest); return true; }
+  if (EMOTE_LIST[cmd]) { doEmote(cmd); return true; }
+  if (cmd === 'emotes') { sys('Emotes: ' + Object.keys(EMOTE_LIST).map((k) => '/' + k).join(' ') + ' · /e text'); return true; }
+  if (cmd === 'help' || cmd === '?') {
+    sys('/w name msg whisper · /r reply · /inv name party invite · /p msg party chat · /leave · /p kick name · /trade name · /emotes · Tab target');
+    return true;
+  }
+  return false;
+}
+
+/* ---- yes / no prompts (party invites, trade requests) ---- */
+function ask(text, onYes, onNo) {
+  if (social.asked) social.asked.no(); // one at a time: a new one turns down the old
+  const el = $('askBox');
+  $('askText').textContent = text;
+  el.hidden = false;
+  sfx.play('ask');
+  const done = (yes) => { if (social.asked !== a) return; social.asked = null; el.hidden = true; clearTimeout(a.timer); (yes ? onYes : onNo)(); };
+  const a = { yes: () => done(true), no: () => done(false), timer: setTimeout(() => done(false), 30000) };
+  social.asked = a;
+}
+$('askYes').addEventListener('click', () => social.asked && social.asked.yes());
+$('askNo').addEventListener('click', () => social.asked && social.asked.no());
+
+/* ---- targets: Tab cycles the nearest monsters and players, or click a name tag. The target
+   frame shows its level and health; for a player it has whisper, party and trade buttons. ---- */
+let target = null; // { kind: 'mob' | 'player', o }
+const targetRing = new THREE.Mesh(new THREE.RingGeometry(0.55, 0.7, 40),
+  new THREE.MeshBasicMaterial({ color: '#ff4a4a', transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide }));
+targetRing.rotation.x = -Math.PI / 2;
+targetRing.renderOrder = 2;
+targetRing.visible = false;
+scene.add(targetRing);
+function setTarget(kind, o) {
+  target = o ? { kind, o } : null;
+  renderTarget();
+}
+const targetGone = () => !target || (target.kind === 'mob' ? target.o.dead || !monsters.includes(target.o) : ghosts.get(target.o.id) !== target.o || target.o.hid);
+function cycleTarget() {
+  const list = [
+    ...monsters.filter((m) => !m.dead).map((o) => ({ kind: 'mob', o })),
+    ...[...ghosts.values()].filter((g) => !g.hid && !g.dead).map((o) => ({ kind: 'player', o })),
+  ].map((t) => ({ ...t, d: Math.hypot(t.o.x - P.x, t.o.z - P.z) })).filter((t) => t.d < 25).sort((a, b) => a.d - b.d);
+  if (!list.length) return setTarget(null);
+  const i = list.findIndex((t) => target && t.o === target.o);
+  const n = list[(i + 1) % list.length];
+  setTarget(n.kind, n.o);
+}
+function renderTarget() {
+  const el = $('targetFrame');
+  if (target && targetGone()) target = null;
+  el.hidden = !target;
+  targetRing.visible = !!target;
+  if (!target) return;
+  const { kind, o } = target, mob = kind === 'mob';
+  const name = mob ? o.cfg.name : o.name, lvl = mob ? MOB_LVL[o.type] || 1 : o.lvl || 1;
+  const cur = mob ? Math.max(0, Math.ceil(o.hp)) : o.hp, max = mob ? o.cfg.hp : o.mhp;
+  const key = `${kind}|${name}|${lvl}|${cur}|${max}|${inParty(name)}|${leading()}`;
+  if (el.dataset.key !== key) {
+    el.dataset.key = key;
+    el.className = `panel ${mob ? 'mob' : inParty(name) ? 'friend' : 'player'}`;
+    $('tfName').textContent = name;
+    $('tfLvl').textContent = `Lv ${lvl}${mob && o.cfg.big ? ' · Elite' : ''}`;
+    $('tfFill').style.width = `${max ? Math.max(0, Math.min(1, cur / max)) * 100 : 100}%`;
+    $('tfText').textContent = max ? `${cur} / ${max}` : '';
+    $('tfBtns').hidden = mob;
+    $('tfInvite').textContent = inParty(name) ? (leading() ? 'Remove' : 'In party') : 'Invite';
+    $('tfInvite').disabled = inParty(name) && !leading();
+  }
+  const y = mob ? 0 : o.y;
+  targetRing.position.set(o.x, y + 0.04, o.z);
+  targetRing.scale.setScalar(mob && o.cfg.big ? 1.8 : 1);
+  targetRing.material.color.set(mob ? '#ff4a4a' : inParty(name) ? '#5aff7a' : '#5ab4ff');
+}
+$('tfBtns').addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (!b || !target || target.kind !== 'player') return;
+  const name = target.o.name;
+  if (b.id === 'tfWhisper') { openChat(); $('chatIn').value = `/w ${name} `; }
+  if (b.id === 'tfInvite') inParty(name) ? kickParty(name) : inviteParty(name);
+  if (b.id === 'tfTrade') startTrade(name);
+});
+$('tfClose').addEventListener('click', () => setTarget(null));
+// name tags are clickable: pick that monster or player
+function tagTargets(el, kind, o) {
+  el.classList.add('pick');
+  el.addEventListener('pointerdown', (e) => { e.stopPropagation(); setTarget(kind, o); });
+}
+
+/* ---- trading: gold and bag items, face to face (within 8 tiles). Both sides set what they
+   give, both press Trade; any change un-readies both. Then the one who asked first confirms
+   with the server, the other completes it, and the server swaps both accounts at once
+   (api/game/[action].js trade). Gear isn't traded. Trades are anonymous: nobody's username
+   goes over the channel, only a fresh server-sealed handle for each trade (api 'handle'). ---- */
+let trade = null; // { id, with, user, first, mine, theirs, readyMe, readyThem, busy, posted }
+const sessionKey = () => { try { const k = localStorage.getItem('taproot_session'); return k && /^[a-f0-9]{64}$/.test(k) ? k : null; } catch (e) { return null; } };
+const HANDLE_RE = /^[A-Za-z0-9_-]{40,220}$/;
+async function tradeHandle() { // a new anonymous handle for this trade
+  try {
+    const r = await fetch('/api/game/handle', { headers: { Authorization: 'Bearer ' + sessionKey() } });
+    const d = await r.json();
+    return r.ok && HANDLE_RE.test(d.handle || '') ? d.handle : null;
+  } catch (e) { return null; }
+}
+const noTerms = () => ({ gold: 0, items: {} });
+const sameDeal = (a, b) => !!a && !!b && a.gold === b.gold && JSON.stringify(Object.entries(a.items).sort()) === JSON.stringify(Object.entries(b.items).sort());
+function itemInfo(id) {
+  if (CONSUMABLES[id]) return { name: CONSUMABLES[id].name, ico: `<span class="emo">${CONSUMABLES[id].emoji}</span>` };
+  if (FARM_ITEMS[id]) return { name: FARM_ITEMS[id].name, ico: `<span class="emo">${FARM_ITEMS[id].emoji}</span>` };
+  if (LOOT[id]) return { name: LOOT[id].name, ico: `<img src="/game/world/assets/loot/${id}.png" alt="">` };
+  return null;
+}
+async function startTrade(name) {
+  name = (name || '').trim();
+  if (!name || name === mp.name) return sys('Trade with /trade name, or from their target frame.');
+  if (!sessionKey()) return sys('Sign in to trade.');
+  if (trade) return sys('You are already trading.');
+  const g = [...ghosts.values()].find((q) => q.name === name);
+  if (!g || Math.hypot(g.x - P.x, g.z - P.z) > 8) return sys(`Get closer to ${name} to trade.`);
+  const t = trade = { id: rid(), with: name, user: null, first: true, mine: noTerms(), theirs: noTerms(), readyMe: false, readyThem: false, waiting: true };
+  const handle = await tradeHandle();
+  if (trade !== t) return;
+  if (!handle) { trade = null; return sys("Couldn't start the trade. Try again."); }
+  if (sSend('treq', { to: name, from: mp.name, handle, id: t.id })) sys(`You asked ${name} to trade.`);
+  setTimeout(() => { if (trade === t && t.waiting) { trade = null; sys(`${name} didn't answer the trade.`); } }, 30000);
+}
+function onTradeRequest(d) {
+  if (trade || !sessionKey() || !HANDLE_RE.test(d.handle || '')) return sSend('tans', { to: d.from, from: mp.name, id: d.id, ok: false });
+  ask(`${d.from} wants to trade with you.`, async () => {
+    if (trade) return sSend('tans', { to: d.from, from: mp.name, id: d.id, ok: false });
+    const t = trade = { id: d.id, with: d.from, user: d.handle, first: false, mine: noTerms(), theirs: noTerms(), readyMe: false, readyThem: false };
+    const handle = await tradeHandle();
+    if (trade !== t) return;
+    if (!handle) { trade = null; sSend('tans', { to: d.from, from: mp.name, id: d.id, ok: false }); return sys("Couldn't start the trade. Try again."); }
+    sSend('tans', { to: d.from, from: mp.name, id: d.id, ok: true, handle });
+    openTrade();
+  }, () => sSend('tans', { to: d.from, from: mp.name, id: d.id, ok: false }));
+}
+function onTradeAnswer(d) {
+  if (!trade || trade.id !== d.id || !trade.waiting) return;
+  if (!d.ok || !HANDLE_RE.test(d.handle || '')) { trade = null; return sys(`${d.from} declined the trade.`); }
+  trade.waiting = false; trade.user = d.handle; // their anonymous handle, all the server needs
+  openTrade();
+}
+function openTrade() { exitLock(); toggleBag(false); closeModal(); renderTrade(); }
+function closeTrade(msg) {
+  if (!trade) return;
+  if (trade.posted) tradeApi({ id: trade.id, cancel: true }); // take back an offer still on my account
+  trade = null;
+  $('tradePanel').hidden = true;
+  if (msg) sys(msg);
+}
+function cancelTrade() {
+  if (!trade) return;
+  sSend('tcancel', { to: trade.with, from: mp.name, id: trade.id });
+  closeTrade('Trade cancelled.');
+}
+function offerChanged() {
+  trade.readyMe = trade.readyThem = false;
+  sSend('toffer', { to: trade.with, from: mp.name, id: trade.id, terms: trade.mine });
+  renderTrade();
+}
+function renderTrade() {
+  const el = $('tradePanel');
+  if (!trade || trade.waiting) { el.hidden = true; return; }
+  el.hidden = false;
+  $('tradeTitle').textContent = `Trade with ${trade.with}`;
+  const { mine, theirs } = trade;
+  const have = Object.entries(field.bag).filter(([id, n]) => n > 0 && itemInfo(id));
+  $('tradeMine').innerHTML = `<div class="tr-gold">&#128176; <button data-g="-10">-10</button><button data-g="-1">-1</button><b>${mine.gold}</b><button data-g="1">+1</button><button data-g="10">+10</button><small>of ${field.gold}</small></div>`
+    + (have.length ? have.map(([id, n]) => {
+      const it = itemInfo(id), k = mine.items[id] || 0;
+      return `<div class="tr-item${k ? ' on' : ''}">${it.ico}<span>${it.name}</span><button data-i="${id}" data-n="-1">-</button><b>${k}/${n}</b><button data-i="${id}" data-n="1">+</button></div>`;
+    }).join('') : '<p class="shop-empty">Nothing in your bag to trade.</p>');
+  const theirItems = Object.entries(theirs.items);
+  $('tradeTheirs').innerHTML = `<div class="tr-gold">&#128176; <b>${theirs.gold}</b> gold</div>`
+    + (theirItems.length ? theirItems.map(([id, n]) => { const it = itemInfo(id) || { name: id, ico: '' }; return `<div class="tr-item on">${it.ico}<span>${it.name}</span><b>x${n}</b></div>`; }).join('') : '<p class="shop-empty">Nothing yet.</p>');
+  $('tradeMineHead').className = trade.readyMe ? 'ready' : '';
+  $('tradeTheirsHead').className = trade.readyThem ? 'ready' : '';
+  $('tradeTheirsHead').textContent = `${trade.with} gives${trade.readyThem ? ' ✓' : ''}`;
+  $('tradeMineHead').textContent = `You give${trade.readyMe ? ' ✓' : ''}`;
+  $('tradeGo').disabled = trade.readyMe || trade.busy;
+  $('tradeGo').textContent = trade.busy ? 'Trading...' : trade.readyMe ? 'Waiting...' : 'Trade';
+}
+$('tradeMine').addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (!b || !trade || trade.busy) return;
+  if (b.dataset.g) trade.mine.gold = Math.max(0, Math.min(field.gold, trade.mine.gold + Number(b.dataset.g)));
+  if (b.dataset.i) {
+    const id = b.dataset.i, n = Math.max(0, Math.min(field.bag[id] || 0, (trade.mine.items[id] || 0) + Number(b.dataset.n)));
+    if (n) trade.mine.items[id] = n; else delete trade.mine.items[id];
+    if (Object.keys(trade.mine.items).length > 12) delete trade.mine.items[id];
+  }
+  offerChanged();
+});
+$('tradeGo').addEventListener('click', () => {
+  if (!trade || trade.readyMe) return;
+  if (!trade.mine.gold && !Object.keys(trade.mine.items).length && !trade.theirs.gold && !Object.keys(trade.theirs.items).length) return toast('Put something in the trade first');
+  trade.readyMe = true;
+  sSend('tready', { to: trade.with, from: mp.name, id: trade.id, mine: trade.mine, theirs: trade.theirs });
+  renderTrade();
+  tradeStep();
+});
+$('tradeCancel').addEventListener('click', cancelTrade);
+$('tradeClose').addEventListener('click', cancelTrade);
+async function tradeApi(body) {
+  try {
+    const r = await fetch('/api/game/trade', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + sessionKey() }, body: JSON.stringify(body) });
+    return { status: r.status, data: await r.json().catch(() => ({})) };
+  } catch (e) { return { status: 0, data: { error: 'No connection' } }; }
+}
+// Both ready: the one who asked confirms first; the other completes it when told.
+async function tradeStep(theyPosted) {
+  const t = trade;
+  if (!t || !t.readyMe || !t.readyThem || t.busy || (!t.first && !theyPosted)) return;
+  t.busy = true; renderTrade();
+  await Ledger.flush(); // the server must see the bag as it is now
+  if (trade !== t) return;
+  const r = await tradeApi({ id: t.id, with: t.user, give: t.mine, get: t.theirs });
+  if (trade !== t) return;
+  if (r.status !== 200) {
+    sSend('tcancel', { to: t.with, from: mp.name, id: t.id });
+    return closeTrade(`Trade failed: ${r.data.error || 'try again'}`);
+  }
+  if (r.data.done) {
+    sSend('tdone', { to: t.with, from: mp.name, id: t.id });
+    trade = null; $('tradePanel').hidden = true;
+    sys(`Trade with ${t.with} complete.`);
+    Ledger.load();
+    return;
+  }
+  if (!t.first) { sSend('tcancel', { to: t.with, from: mp.name, id: t.id }); t.posted = true; return closeTrade('Trade failed: the offers did not match.'); }
+  t.posted = true;
+  sSend('tposted', { to: t.with, from: mp.name, id: t.id });
+  t.timer = setTimeout(() => { if (trade === t) { sSend('tcancel', { to: t.with, from: mp.name, id: t.id }); closeTrade('Trade timed out.'); } }, 20000);
+}
+function onTrade(event, d) {
+  if (event === 'treq') return onTradeRequest(d);
+  if (event === 'tans') return onTradeAnswer(d);
+  if (!trade || trade.id !== d.id || trade.with !== d.from) return;
+  if (event === 'toffer') {
+    const items = {};
+    for (const [id, n] of Object.entries((d.terms && d.terms.items) || {}).slice(0, 12)) if (Number.isInteger(n) && n > 0) items[id] = n;
+    trade.theirs = { gold: Math.max(0, Math.floor(Number(d.terms && d.terms.gold) || 0)), items };
+    trade.readyMe = trade.readyThem = false;
+    if (trade.posted) { clearTimeout(trade.timer); trade.posted = false; trade.busy = false; tradeApi({ id: trade.id, cancel: true }); } // the deal changed
+    renderTrade();
+  }
+  if (event === 'tready' && sameDeal(d.mine, trade.theirs) && sameDeal(d.theirs, trade.mine)) { trade.readyThem = true; renderTrade(); tradeStep(); }
+  if (event === 'tposted') tradeStep(true);
+  if (event === 'tdone') { clearTimeout(trade.timer); const w = trade.with; trade = null; $('tradePanel').hidden = true; sys(`Trade with ${w} complete.`); Ledger.load(); }
+  if (event === 'tcancel') { clearTimeout(trade.timer); closeTrade(`${d.from} cancelled the trade.`); }
+}
+
+/* ---- the channel ---- */
+function onSocial(event, d) {
+  if (!d || typeof d !== 'object') return;
+  const forMe = d.to === mp.name;
+  if (event === 'whisper' && forMe) { chatFancy('whisper', `<b>${safeText(d.from)}</b> whispers: ${safeText(String(d.msg || '').slice(0, 200))}`); social.reply = d.from; return; }
+  if (event === 'pinv' && forMe) {
+    if (party) return sSend('pno', { to: d.from, from: mp.name, why: 'is already in a party' });
+    return ask(`${d.from} invites you to a party.`, () => sSend('pjoin', { to: d.from, id: d.id, name: mp.name }), () => sSend('pno', { to: d.from, from: mp.name, why: 'declined your invite' }));
+  }
+  if (event === 'pno' && forMe) return sys(`${d.from} ${d.why === 'is already in a party' ? 'is already in a party' : 'declined your invite'}.`);
+  if (event === 'pjoin' && forMe) {
+    const p = party && party.id === d.id ? party : social.pending && social.pending.id === d.id ? social.pending : null;
+    if (!p || p.leader !== mp.name || p.members.includes(d.name)) return;
+    if (p.members.length >= PARTY_MAX) return sys(`${d.name} couldn't join: the party is full.`);
+    const roster = { ...p, members: [...p.members, d.name] };
+    social.pending = null;
+    setParty(roster);
+    sSend('party', roster);
+    sys(`${d.name} joined the party.`);
+    return;
+  }
+  if (event === 'party') return onRoster(d);
+  if (event[0] === 't') { if (forMe) onTrade(event, d); return; }
+  if (!party || d.id !== party.id) return;
+  if (event === 'pleave') {
+    const members = party.members.filter((m) => m !== d.name), leader = members.includes(party.leader) ? party.leader : members[0];
+    sys(`${d.name} left the party.`);
+    if (leader !== party.leader && members.length > 1) sys(`${leader} is now the party leader.`);
+    setParty({ ...party, leader, members });
+  }
+  if (event === 'pstat' && inParty(d.name)) { social.stats.set(d.name, { ...d, at: performance.now() }); renderParty(); }
+  if (event === 'pchat' && inParty(d.name)) chatFancy('party', `[Party] <b>${safeText(d.name)}</b>: ${safeText(String(d.msg || '').slice(0, 200))}`);
+}
+async function connectSocial(sb, LOCAL) {
+  social.ch = sb.channel(LOCAL ? 'world3d-social-dev' : 'world3d-social', { config: { broadcast: { self: false } } });
+  for (const ev of ['whisper', 'pinv', 'pno', 'pjoin', 'party', 'pleave', 'pstat', 'pchat', 'treq', 'tans', 'toffer', 'tready', 'tposted', 'tdone', 'tcancel']) {
+    social.ch.on('broadcast', { event: ev }, ({ payload }) => onSocial(ev, payload));
+  }
+  social.ch.subscribe((status) => {
+    if (status !== 'SUBSCRIBED') return;
+    social.live = true;
+    if (party) { social.statAt = 0; sendPartyStat(performance.now()); }
+  });
+}
+// once a second: party frames (offline marks), the target frame, a trade partner walking off
+setInterval(() => {
+  if (party) renderParty();
+  if (trade && !trade.waiting) {
+    const g = [...ghosts.values()].find((q) => q.name === trade.with);
+    if (!g || Math.hypot(g.x - P.x, g.z - P.z) > 12) { sSend('tcancel', { to: trade.with, from: mp.name, id: trade.id }); closeTrade(`${trade.with} is too far away to trade.`); }
+  }
+}, 1000);
+renderParty();
+
 if (window.supabase && !new URLSearchParams(location.search).has('nomp')) (async () => {
   const RT = await Ledger.realtime(); // the accounts' Supabase project, once the server has its public key
   const sb = window.supabase.createClient(RT.url, RT.key);
   // local dev / test runs get their own channel, so they never show up for players on the live site
   const LOCAL = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
   // one channel per area, so players elsewhere don't receive — and aren't billed for — this area's traffic
+  connectSocial(sb, LOCAL);
   mp.channel = sb.channel(`${LOCAL ? 'world3d-mp-dev' : 'world3d-mp'}:${MP_ROOM}`, { config: { broadcast: { self: false } } });
   mp.channel
     .on('broadcast', { event: 'join' }, ({ payload }) => {
@@ -3636,6 +4289,7 @@ if (window.supabase && !new URLSearchParams(location.search).has('nomp')) (async
       if (!PIT || payload.id === mp.id) return; // the channel is global, the pit is not
       spawnTomato({ x: payload.fx, y: payload.fy, z: payload.fz }, { x: payload.tx, y: payload.ty, z: payload.tz });
     })
+    .on('broadcast', { event: 'emote' }, ({ payload }) => onEmote(payload))
     .on('broadcast', { event: 'mobs' }, ({ payload }) => onMobs(payload))
     .on('broadcast', { event: 'mobhit' }, ({ payload }) => onMobHit(payload))
     .on('broadcast', { event: 'mobdie' }, ({ payload }) => {
@@ -3646,7 +4300,7 @@ if (window.supabase && !new URLSearchParams(location.search).has('nomp')) (async
     .on('broadcast', { event: 'ouch' }, ({ payload }) => onOuch(payload))
     .on('broadcast', { event: 'ko' }, ({ payload }) => onKo(payload))
     .on('broadcast', { event: 'chat' }, ({ payload }) => {
-      chatLine(payload.name, payload.msg);
+      chatLine(payload.name, payload.msg); sfx.play('chat');
       const g = ghosts.get(payload.id);
       if (g) addBubble(g.bubble, payload.msg);
     })
@@ -3664,7 +4318,7 @@ function sendChat() {
   const txt = $('chatIn').value.trim().slice(0, 200);
   $('chatIn').value = '';
   if (!txt) return;
-  if (txt.startsWith('/') && farmCommand(txt)) return;
+  if (txt.startsWith('/') && (socialCommand(txt) || farmCommand(txt))) return;
   if (mp.live) mp.channel.send({ type: 'broadcast', event: 'chat', payload: { id: mp.id, name: mp.name, msg: txt } });
   chatLine(mp.name, txt);
   addBubble(myBubble, txt);
@@ -3749,6 +4403,8 @@ function updateMobs(now) {
 }
 
 function updateMultiplayer(dt, now) {
+  sendPartyStat(now);
+  renderTarget();
   if (mp.live) {
     const st = myState(), prev = mp.sent;
     /* Supabase counts every broadcast once for the sender and once more for each player who
@@ -3830,6 +4486,7 @@ function buffNow() { return buff && performance.now() < buff.until ? buff : null
 const gear = (slot) => (charData && charData.equipment && charData.equipment[slot]) || null;
 let chillUntil = 0, chillMul = 1;
 function chill(slow) {
+  sfx.play('chill');
   chillUntil = performance.now() + slow.ms;
   chillMul = slow.mul;
   burst(P.x, 1, P.z, '#cfefff', 10);
@@ -3846,6 +4503,7 @@ function parry() {
   if (now < parryReady) return;
   parryUntil = now + 450;
   parryReady = now + 1100;
+  sfx.play('parry', { vol: 0.5 });
   P.atkL = 0;
   burst(P.x + Math.sin(P.heading) * 0.5, 1.2, P.z + Math.cos(P.heading) * 0.5, '#cfefff', 10);
 }
@@ -3853,6 +4511,7 @@ function parry() {
 let smokeUntil = 0, smokePuff = 0;
 const smokedNow = () => performance.now() < smokeUntil;
 function smoke(secs) {
+  sfx.play('poof');
   smokeUntil = performance.now() + secs * 1000;
   for (let k = 0; k < 3; k++) burst(P.x, 0.6 + k * 0.4, P.z, '#9a9aa8', 14);
   floatText(P.x, 2.2, P.z, 'Poof!', '#d0d0e0');
@@ -3879,6 +4538,7 @@ function hazardHurt(power, weapon) {
   hp = Math.max(0, hp - dmg);
   hero.hurt();
   shake = 0.22;
+  sfx.play('hurt');
   floatText(P.x, 1.5, P.z, `-${dmg}`, '#ff6b6b');
   updateHud();
   if (mp.live) mp.channel.send({ type: 'broadcast', event: 'ouch', payload: { id: mp.id, dmg, hp, mhp: stats.hp } });
@@ -4035,6 +4695,7 @@ function smashCrate(hx, hz) {
     if (Math.hypot(v.e.x - hx, v.e.z - hz) > 1.3) continue;
     v.hp -= 1;
     burst(v.e.x, 0.8, v.e.z, '#b07a3a', 6);
+    sfx.play('break');
     if (v.hp <= 0) {
       openCrate(v);
       if (mp.live) mp.channel.send({ type: 'broadcast', event: 'smash', payload: { id: mp.id, n: v.e.n } });
@@ -4045,6 +4706,7 @@ function smashCrate(hx, hz) {
 // the crate breaks and the prize drops out; it grants nothing until somebody touches it
 function openCrate(v) {
   v.crate.visible = false;
+  sfx.play('crate', { dist: Math.hypot(v.e.x - P.x, v.e.z - P.z) });
   burst(v.e.x, 0.8, v.e.z, '#e0b450', 16);
   const cfg = BUFFS[buffAt(v.e.n)];
   const m = new THREE.Mesh(FB_GEO, new THREE.MeshBasicMaterial({ color: cfg.color }));
@@ -4068,6 +4730,7 @@ function claimPickup(v, id) {
   buff = { id: buffAt(v.e.n), stat: cfg.stat, mul: cfg.mul, until: performance.now() + cfg.ms, from: v.e.n };
   v.pickup.visible = false;
   burst(v.e.x, 1.0, v.e.z, cfg.color, 14);
+  sfx.play('levelup');
   floatText(P.x, 2.0, P.z, `${cfg.name}!`, cfg.color);
   hero.emote && hero.emote('happy', 1);
   if (mp.live) mp.channel.send({ type: 'broadcast', event: 'claim', payload: { id: mp.id, n: v.e.n } });
@@ -4166,6 +4829,7 @@ function onHit(d) {
     floatText(P.x, 2, P.z, 'Reflected!', '#cfefff');
     burst(P.x, 1.2, P.z, '#cfefff', 12);
     shootAt(d.x, d.z);
+    sfx.play('parry');
     return;
   }
   if (d.slow) chill(d.slow);
@@ -4174,6 +4838,7 @@ function onHit(d) {
   const dx = P.x - d.x, dz = P.z - d.z, dist = Math.hypot(dx, dz) || 1;
   pkb = { x: dx / dist * 7, z: dz / dist * 7, t: 0.14 };
   shake = 0.15;
+  sfx.play('hurt');
   hero.hurt();
   floatText(P.x, 1.5, P.z, `-${dmg}`, '#ff6b6b');
   updateHud();
@@ -4185,11 +4850,12 @@ function onOuch(d) {
   if (!g) return;
   g.hp = d.hp; g.mhp = d.mhp;
   floatText(g.x, 1.15, g.z, `-${d.dmg}`, "#ffffff");
+  sfx.play('hit', { dist: Math.hypot(g.x - P.x, g.z - P.z) });
 }
 function onKo(d) {
   const g = ghosts.get(d.id);
   if (g) { g.dead = true; g.hp = 0; burst(g.x, 0.8, g.z, '#ff5a5a', 16); }
-  if (d.by === mp.id) { arena.kills++; saveArena(); floatText(P.x, 2.2, P.z, `You took down ${d.name}!`, '#c8ff2e'); hero.emote('happy', 1); }
+  if (d.by === mp.id) { arena.kills++; saveArena(); floatText(P.x, 2.2, P.z, `You took down ${d.name}!`, '#c8ff2e'); hero.emote('happy', 1); sfx.play('win'); }
   killFeed(d.byName, d.magic, d.name, d.by === mp.id);
 }
 function killFeed(by, magic, victim, mine, meDied) {
@@ -4205,6 +4871,7 @@ function killFeed(by, magic, victim, mine, meDied) {
 function knockedOut(d) {
   exitLock();
   fainted = true;
+  sfx.play('faint');
   arena.deaths++;
   saveArena();
   if (mp.live) mp.channel.send({ type: 'broadcast', event: 'ko', payload: { id: mp.id, name: mp.name, by: d.by, byName: d.name, weapon: d.weapon, magic: d.magic } });
@@ -4327,6 +4994,7 @@ function claimPlot(p) {
   myFarm = { id: p.id, owner: mp.name, claimed: Date.now(), crops: {}, builds: [], blocks: '', boost: [0, 0], members: [] };
   farms.set(p.id, myFarm);
   Ledger.act({ t: 'claim', plot: p.id });
+  sfx.play('claim');
   farmChanged();
   floatText(P.x, 2.2, P.z, `Plot ${p.id} is yours!`, '#c8ff2e');
   hero.emote('happy', 1.2);
@@ -4339,6 +5007,7 @@ function plant(key) {
   field.bag[id] -= 1;
   myFarm.crops[key] = { k: selSeed, t: Date.now() };
   { const [i, j] = key.split(',').map(Number); Ledger.act({ t: 'plant', k: selSeed, i, j }); }
+  sfx.play('plant');
   saveField(); renderBag(); farmChanged();
   burst(P.x, 0.3, P.z, '#8a5a36', 6);
 }
@@ -4349,6 +5018,7 @@ function harvest(key) {
   field.bag[c.k] = (field.bag[c.k] || 0) + n;
   delete myFarm.crops[key];
   { const [i, j] = key.split(',').map(Number); Ledger.act({ t: 'harvest', i, j }); }
+  sfx.play('harvest');
   saveField(); renderBag(); updateHud(); farmChanged();
   floatText(P.x, 1.7, P.z, `+${n} ${CROPS[c.k].name}`, '#ffb04a');
   burst(P.x, 0.5, P.z, '#ffd23a', 8);
@@ -4357,6 +5027,7 @@ function offerAltar() {
   if (!(field.bag[ALTAR.offering] > 0) || boosted(myFarm)) return;
   field.bag[ALTAR.offering] -= 1;
   Ledger.act({ t: 'offer' });
+  sfx.play('heal');
   const now = Date.now();
   myFarm.boost = [now, now + ALTAR.minutes * MIN];
   saveField(); renderBag(); farmChanged();
@@ -4471,6 +5142,7 @@ function placeBlock() {
   field.bag['block_' + t] -= 1;
   vox.set(a.place[0], a.place[1], a.place[2], t, building.r);
   Ledger.act({ t: 'place', b: t, i: a.place[0], j: a.place[1], k: a.place[2], r: building.r });
+  sfx.play('build');
   setPlotBlocks(p, vox);
 }
 function breakBlock() {
@@ -4481,6 +5153,7 @@ function breakBlock() {
   vox.del(a.i, a.j, a.k);
   field.bag['block_' + c.t] = (field.bag['block_' + c.t] || 0) + 1;
   Ledger.act({ t: 'break', i: a.i, j: a.j, k: a.k });
+  sfx.play('break');
   setPlotBlocks(p, vox);
   burst(p.i0 + a.i + 0.5, a.k + 0.5, p.j0 + a.j + 0.5, '#d8c8a8', 8);
 }
@@ -4522,6 +5195,7 @@ function placeBuild() {
   field.gold -= it.cost;
   myFarm.builds.push({ k: building.k, i: t.i, j: t.j, r: building.r });
   Ledger.act({ t: 'build', k: building.k, i: t.i, j: t.j, r: building.r });
+  sfx.play('build');
   saveField(); updateHud(); farmChanged();
   burst(t.p.i0 + t.i + t.s / 2, 1, t.p.j0 + t.j + t.s / 2, '#c8ff2e', 16);
   floatText(P.x, 2.2, P.z, `Built a ${it.name}!`, '#c8ff2e');
@@ -4909,6 +5583,9 @@ addEventListener('keydown', (e) => {
   if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
   if (e.repeat) return;
   if (chatOpen) return; // typing: the chat box handles its own keys
+  if (e.code === 'Tab') { e.preventDefault(); cycleTarget(); return; }
+  if (e.code === 'Escape' && trade && !trade.waiting) { cancelTrade(); return; }
+  if (e.code === 'Escape' && target) setTarget(null);
   if ((e.code === 'KeyT' || e.code === 'Enter') && !modal) { e.preventDefault(); openChat(); return; }
   keys[e.code] = true;
   if (modal) { if (e.code === 'Escape' || e.code === 'KeyF') closeModal(); return; } // a shop / crafting panel is open
@@ -4924,6 +5601,7 @@ addEventListener('keydown', (e) => {
   if (e.code === 'KeyV') cycleView();
   if (e.code === 'KeyL') setAutoAim(!autoAim);
   if (e.code === 'KeyI') toggleHelp();
+  if (e.code === 'KeyM') setSound(sfx.muted);
   if (e.code === 'KeyF' && action) action.run();
   if (e.code === 'Escape') toggleBag(false);
   farmKey(e.code);
@@ -4966,6 +5644,7 @@ canvas.addEventListener('pointercancel', endPointer);
 canvas.addEventListener('wheel', (e) => { e.preventDefault(); camDistT = Math.max(3, Math.min(18, camDistT + e.deltaY * 0.006)); }, { passive: false });
 $('attackBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); swing(); });
 $('jumpBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); jump(); });
+$('sprintBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); setSprint(!sprintOn); });
 $('sailBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); if (action) action.run(); });
 $('shopClose').addEventListener('click', closeModal);
 $('shopTabs').addEventListener('click', (e) => { const b = e.target.closest('[data-tab]'); if (b && modal) { modal.tab = b.dataset.tab; renderModal(); } });
@@ -5041,6 +5720,7 @@ function update(dt, now) {
       if (free(P.x + P.vx * dt, P.z)) P.x += P.vx * dt;
       if (free(P.x, P.z + P.vz * dt)) P.z += P.vz * dt;
       P.phase += dt * sp * 2.4;
+      if (P.grounded === 0 && (P.stride = (P.stride || 0) + dt * sp) > 1.6) { P.stride = 0; sfx.play('step', { vol: sprintOn ? 1 : 0.7 }); }
     } else { P.vx = P.vz = 0; }
     if (moving) P.heading = damp(P.heading, P.heading + wrapAngle(Math.atan2(mx, mz) - P.heading), 14, dt);
     // The camera does not turn on its own. You move relative to it, so if it swung round after
@@ -5059,7 +5739,7 @@ function update(dt, now) {
   // the ground is the soil or the top of whatever block is under you (slopes are walked up)
   if (P.vy > 0 && solidAt(P.x, P.z, P.y) && !solidAt(P.x, P.z, prevY)) { P.y = prevY; P.vy = 0; } // bumped your head
   const ground = groundAt(P.x, P.z, prevY);
-  if (P.y <= ground) { P.y = ground; P.vy = 0; P.grounded = 0; } else P.grounded += dt;
+  if (P.y <= ground) { if (P.vy < -5) sfx.play('land'); P.y = ground; P.vy = 0; P.grounded = 0; } else P.grounded += dt;
   if (solidAt(P.x, P.z, P.y)) { P.y = groundAt(P.x, P.z, MAX_H); P.vy = 0; P.grounded = 0; } // never stuck inside a block
   U.player.value.set(P.x, P.y, P.z);
 
@@ -5071,7 +5751,7 @@ function update(dt, now) {
   for (const n of npcs) { const d = Math.hypot(n.x - P.x, n.z - P.z); if (d < Math.min(ld, 4)) { ld = d; look = n; } }
   hero.root.position.set(P.x, P.y, P.z);
   hero.root.rotation.y = P.heading;
-  hero.update(dt, { atk: P.atk, atkL: P.atkL, lookAt: look, air: P.y > groundAt(P.x, P.z, P.y) + 0.001, vy: P.vy });
+  hero.update(dt, { atk: P.atk, atkL: P.atkL, lookAt: look, air: P.y > groundAt(P.x, P.z, P.y) + 0.001, vy: P.vy, down: fainted });
   hero.root.visible = !firstPerson && !(ARENA && fainted) && !(inv > 0 && Math.floor(inv / 0.08) % 2);
   if (smokedNow() && (smokePuff -= dt) <= 0) { smokePuff = 0.12; burst(P.x, 0.4 + Math.random() * 1.2, P.z, '#9a9aa8', 3); }
   attackCd -= dt;
@@ -5431,7 +6111,7 @@ Ledger.load();
 
 SPAWN_LIST.forEach((entry, i) => spawnMonster(entry, i));
 // debug hook for tests and screenshots: __world3d.tp(x, z) teleports, .P is the player state
-window.__world3d = { P, ghosts, arena, farms, updateIndoor, aimPoint, spectating: () => STANDS, tomatoes, throwTomato,
+window.__world3d = { sfx, P, ghosts, arena, social, party: () => party, trade: () => trade, target: () => target, farms, updateIndoor, aimPoint, spectating: () => STANDS, tomatoes, throwTomato,
   arenaMod, buff: () => buffNow(), free,
   equip: (id, slot) => equip(id, slot), gearOf: (slot) => gear(slot), parrying: () => parrying(),
   view: viewName, autoAim: () => autoAim, setAutoAim: (on) => setAutoAim(on), camYaw: () => camYaw, setCamYaw: (v) => { camYaw = v; }, nitro: () => nitro, setNitro: (v) => { nitro = v; nitroLock = false; }, jump,

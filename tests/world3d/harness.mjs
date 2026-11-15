@@ -7,7 +7,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import WebSocket from 'ws';
 
-export const BASE = 'http://localhost:8137';
+export const BASE = process.env.BASE || 'http://localhost:8137';
 export const OUT = join(dirname(fileURLToPath(import.meta.url)), 'out');
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const CHROME = process.env.CHROME || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
@@ -70,7 +70,7 @@ export async function launch() {
 }
 
 // Waits for the game to boot and join the multiplayer channel.
-export const ready = (p) => p.ev(`new Promise((r) => { const t = setInterval(() => { if (window.__world3d && __world3d.mp.live) { clearInterval(t); r(true); } }, 200); setTimeout(() => r(false), 25000); })`);
+export const ready = (p, ms = 25000) => p.ev(`new Promise((r) => { const t = setInterval(() => { if (window.__world3d && __world3d.mp.live) { clearInterval(t); r(true); } }, 200); setTimeout(() => r(false), ${ms}); })`);
 // The prompt in the near-chip (F actions), or '' when hidden.
 export const near = (p) => p.ev(`document.getElementById('nearChip').hidden ? '' : document.getElementById('nearText').textContent`);
 export const AVENUES = `${BASE}/game/world3d/?area=avenues&farmfast=1&hour=13`;

@@ -129,6 +129,18 @@ const server = http.createServer(async (req, res) => {
     return respond(200, cost > 0 ? hits <= a.max_hits : hits < a.max_hits);
   }
 
+  // Mock of game_trade() (supabase/migrations/20261115_trading.sql): both rows or neither.
+  if (url.pathname === '/rest/v1/rpc/game_trade') {
+    let a = {};
+    try { a = JSON.parse((await collectBody(req)) || '{}'); } catch (e) {}
+    const ra = rows.find((r) => r.id === a.a_id), rb = rows.find((r) => r.id === a.b_id);
+    if (!ra || !rb || ra === rb || (ra.econ_rev || 0) !== a.a_rev || (rb.econ_rev || 0) !== a.b_rev) return respond(200, false);
+    Object.assign(ra, { econ: a.a_econ, econ_rev: a.a_rev + 1 });
+    Object.assign(rb, { econ: a.b_econ, econ_rev: a.b_rev + 1 });
+    saveDb();
+    return respond(200, true);
+  }
+
   // Mock Supabase REST endpoint the handler talks to.
   if (url.pathname === '/rest/v1/game_players') {
     const raw = await collectBody(req);

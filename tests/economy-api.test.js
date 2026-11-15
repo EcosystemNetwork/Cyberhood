@@ -27,7 +27,7 @@ test.before(async () => {
 test.after(() => { server.kill(); fs.rmSync(dir, { recursive: true, force: true }); });
 
 async function api(action, key, body) {
-  const get = ['me', 'state', 'farms', 'config'].includes(action);
+  const get = ['me', 'state', 'farms', 'config', 'handle'].includes(action);
   const res = await fetch(`${BASE}/api/game/${action}`, {
     method: get ? 'GET' : 'POST',
     headers: { 'Content-Type': 'application/json', ...(key ? { Authorization: 'Bearer ' + key } : {}) },
@@ -261,4 +261,70 @@ test('config hands the browser no realtime key unless one is set', async () => {
   const r = await api('config');
   assert.equal(r.status, 200);
   assert.equal(r.data.realtime, null);
+});
+
+// A fresh anonymous trade handle for a player, as the game fetches before each trade.
+const handle = async (p) => (await api('handle', p.key)).data.handle;
+
+test('trade handles: anonymous, all different, and only the server can read them', async () => {
+  const a = await account();
+  const h1 = await handle(a), h2 = await handle(a);
+  assert.match(h1, /^[A-Za-z0-9_-]{40,}$/);
+  assert.notEqual(h1, h2, 'a new handle every time, so two can\'t be linked');
+  for (const h of [h1, h2]) {
+    const raw = Buffer.from(h, 'base64url').toString('latin1');
+    assert.ok(!raw.includes(a.username) && !h.includes(a.username), 'the username is nowhere in it');
+  }
+  assert.equal((await api('handle', null)).status, 401, 'only signed-in players get one');
+  // a handle with one byte changed is refused, not taken for someone else
+  const b = await account();
+  assert.ok(ok(await act(b.key, ...CHESTS)));
+  const bad = Buffer.from(h1, 'base64url'); bad[bad.length - 1] ^= 1;
+  const r = await api('trade', b.key, { id: 't' + rid(), with: bad.toString('base64url'), give: { gold: 10, items: {} }, get: { gold: 0, items: {} } });
+  assert.equal(r.status, 400);
+});
+
+test('trading: both confirm the mirror-image terms, and both accounts change at once', async () => {
+  const a = await account(), b = await account();
+  assert.ok(ok(await act(a.key, ...CHESTS))); // A: 120 gold
+  assert.ok(ok(await act(b.key, ...fight('slime', 3), { t: 'pickup', kind: 'item', id: 'slime_gel' }))); // B: 1 slime gel
+  const id = 't' + rid(), deal = { gold: 50, items: {} }, gel = { gold: 0, items: { slime_gel: 1 } };
+
+  // A confirms first: an offer, nothing moves yet
+  let r = await api('trade', a.key, { id, with: await handle(b), give: deal, get: gel });
+  assert.equal(r.status, 200); assert.equal(r.data.done, false);
+  assert.equal(r.data.state.econ.gold, 120);
+  // B's confirm must be the exact mirror
+  r = await api('trade', b.key, { id, with: await handle(a), give: gel, get: { gold: 80, items: {} } });
+  assert.equal(r.data.done, false, 'different terms only leave an offer');
+  r = await api('trade', b.key, { id, with: await handle(a), give: gel, get: deal });
+  assert.equal(r.status, 200); assert.equal(r.data.done, true);
+  assert.equal(r.data.state.econ.gold, (await api('state', b.key)).data.econ.gold);
+  const sa = (await api('state', a.key)).data.econ, sb = (await api('state', b.key)).data.econ;
+  assert.equal(sa.gold, 70); assert.equal(sa.bag.slime_gel, 1);
+  assert.ok(!sb.bag.slime_gel); assert.ok(sb.gold >= 50);
+  // done once: confirming again only leaves a new offer, which A no longer matches
+  r = await api('trade', b.key, { id, with: await handle(a), give: gel, get: deal });
+  assert.equal(r.status, 409, 'B has no gel left to give');
+});
+
+test('trading: no giving what you lack, no trading with yourself, and offers can be taken back', async () => {
+  const a = await account(), b = await account();
+  assert.ok(ok(await act(a.key, ...CHESTS)));
+  const id = 't' + rid(), deal = { gold: 100, items: {} }, none = { gold: 0, items: {} };
+  assert.equal((await api('trade', b.key, { id, with: await handle(a), give: deal, get: none })).status, 409, 'B has no gold');
+  assert.equal((await api('trade', a.key, { id, with: await handle(a), give: deal, get: none })).status, 400);
+  assert.equal((await api('trade', a.key, { id, with: await handle(b), give: { gold: -5 }, get: none })).status, 400);
+  assert.equal((await api('trade', a.key, { id, with: await handle(b), give: none, get: none })).status, 400);
+  assert.equal((await api('trade', a.key, { id, with: 'nobody_here_at_all_forged_handle_xx', give: deal, get: none })).status, 400, 'a made-up handle');
+  // A offers, then takes it back: B's confirm finds nothing to complete
+  assert.equal((await api('trade', a.key, { id, with: await handle(b), give: deal, get: none })).data.done, false);
+  assert.equal((await api('trade', a.key, { id, cancel: true })).status, 200);
+  assert.equal((await api('trade', b.key, { id, with: await handle(a), give: none, get: deal })).data.done, false);
+  assert.equal((await api('state', a.key)).data.econ.gold, 120);
+  // A spends the gold after offering: B's confirm is turned away, nobody loses anything
+  const id2 = 't' + rid();
+  await api('trade', a.key, { id: id2, with: await handle(b), give: deal, get: none });
+  assert.ok(ok(await act(a.key, { t: 'buy', shop: 'The Armoury', id: 'leather_boots' })));
+  assert.equal((await api('trade', b.key, { id: id2, with: await handle(a), give: none, get: deal })).status, 409);
 });

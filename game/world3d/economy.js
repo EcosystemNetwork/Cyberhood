@@ -597,4 +597,36 @@ export function applyAction(s, a, ctx) {
 
 // What the browser gets to see of the economy (not the rate limits or pending drops).
 // barrels: how many times each barrel slot has been taken, so the browser floats them where the server expects.
+/* ---- trading between two players ----
+   Terms are { gold, items: { bag id: count } }. The first player to confirm leaves an offer on
+   their own account (`econ.offer`); the other completes it with the exact mirror of those terms,
+   and the server swaps both accounts in one database transaction (api/game/[action].js). Gear
+   isn't traded, only gold and bag items. */
+export const TRADE_MS = 60000;   // an offer lapses after this
+export const TRADE_KINDS = 12;   // different items per side
+export function cleanTerms(t) {
+  if (!t || typeof t !== 'object') return null;
+  const gold = t.gold === undefined ? 0 : t.gold;
+  if (!Number.isInteger(gold) || gold < 0 || gold > 1e9) return null;
+  const src = t.items && typeof t.items === 'object' && !Array.isArray(t.items) ? t.items : {};
+  const ids = Object.keys(src).sort();
+  if (ids.length > TRADE_KINDS) return null;
+  const items = {};
+  for (const id of ids) {
+    const n = src[id];
+    if (!/^[a-z0-9_]{1,40}$/.test(id) || !Number.isInteger(n) || n < 1 || n > BAG_MAX) return null;
+    items[id] = n;
+  }
+  return { gold, items };
+}
+export const emptyTerms = (t) => !t.gold && !Object.keys(t.items).length;
+export const sameTerms = (a, b) => !!a && !!b && a.gold === b.gold && JSON.stringify(cleanTerms(a).items) === JSON.stringify(cleanTerms(b).items);
+export const canGive = (e, t) => e.gold >= t.gold && Object.entries(t.items).every(([id, n]) => has(e.bag, id, n));
+// Moves `give` out of the economy and `get` into it (check canGive first).
+export function swapTerms(e, give, get) {
+  e.gold += get.gold - give.gold;
+  for (const [id, n] of Object.entries(give.items)) add(e.bag, id, -n);
+  for (const [id, n] of Object.entries(get.items)) add(e.bag, id, n);
+}
+
 export const publicEcon = (e) => ({ gold: e.gold, xp: e.xp, kills: e.kills, bag: e.bag, loot: e.loot, imported: e.imported, barrels: (e.sea && e.sea.gen) || {} });

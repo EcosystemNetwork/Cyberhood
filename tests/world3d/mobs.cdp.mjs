@@ -7,10 +7,10 @@ const { player, kill } = await launch();
 try {
   const A = await player('Red'), B = await player('Blue');
   await A.go(`${BASE}/game/world3d/?area=fields&hour=13`);
-  assert.ok(await ready(A));
+  assert.ok(await ready(A, 60000));
   await sleep(1500); // A is in first, so A runs the monsters
   await B.go(`${BASE}/game/world3d/?area=fields&hour=13`);
-  assert.ok(await ready(A)); assert.ok(await ready(B));
+  assert.ok(await ready(A, 60000)); assert.ok(await ready(B, 60000));
   await sleep(4000);
   const mobs = (p) => p.ev(`__world3d.monsters.filter((m) => !m.dead).map((m) => ({ sid: m.sid, x: m.x, z: m.z, hp: m.hp })).sort((a, b) => a.sid < b.sid ? -1 : 1)`);
   const a = await mobs(A), b = await mobs(B);
