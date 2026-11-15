@@ -207,6 +207,8 @@
   #aimArc i { position: absolute; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: #ffd23a; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5); }
   #viewBtn { padding: 6px 12px; border-radius: 999px; font-size: 15px; }
   #aimBtn { padding: 6px 12px; border-radius: 999px; font-size: 15px; opacity: 0.55; }
+  #ctrlBtn { padding: 6px 12px; border-radius: 999px; font-size: 14px; background: #241040; box-shadow: 0 3px 0 #12031a; }
+  @media (pointer: coarse) { #ctrlBtn { display: none; } }
   #aimBtn.on { opacity: 1; box-shadow: 0 0 0 2px #ff4a3a inset; }
   .actions .touch { padding: 6px 12px; border-radius: 999px; font-size: 14px; background: linear-gradient(#ffd27a, #e89a2a); box-shadow: 0 3px 0 #8a4a10; }
   .actions .touch.on { background: linear-gradient(#ff8a8a, #e04a4a); box-shadow: 0 3px 0 #8a1a1a; }
@@ -306,6 +308,7 @@ if (!window.SOLO) {
   <div class="tilt"><button id="camUpBtn" type="button" tabindex="-1" aria-label="Camera higher">&#9650;</button><button id="camDownBtn" type="button" tabindex="-1" aria-label="Camera lower">&#9660;</button></div>
   <button id="viewBtn" type="button" tabindex="-1" aria-label="Change view">&#128065;<kbd>V</kbd></button>
   <button id="aimBtn" type="button" tabindex="-1" aria-label="Auto-aim">&#127919;<kbd>L</kbd></button>
+  <button id="ctrlBtn" type="button" tabindex="-1" aria-label="Controls">Classic<kbd>M</kbd></button>
   <button id="buildBtn" class="touch" type="button" tabindex="-1" hidden>&#128296; Build</button>
   <button id="nextBtn" class="touch" type="button" tabindex="-1" hidden>&#9654; Next</button>
   <button id="rotBtn" class="touch" type="button" tabindex="-1" hidden>&#8635; Turn</button>
@@ -315,7 +318,7 @@ if (!window.SOLO) {
   <button id="attackBtn" type="button" tabindex="-1" aria-label="Attack">&#9876;&#65039;</button></div>
 </div>
 <div id="joyRing" hidden><i></i></div>
-<div class="help"><b>WASD</b> move &middot; <b>Drag / Q E</b> look &middot; <b>Z X</b> tilt &middot; <b>Space</b> jump &middot; <b>'</b> / <b>J</b> right hand &middot; <b>;</b> left hand &middot; <b>Shift</b> nitro &middot; <b>C</b> camera &middot; <b>F</b> use &middot; <b>H</b> potion &middot; <b>N</b> smoke &middot; <b>B</b> bag &middot; <b>U</b> sprint toggle &middot; <b>V</b> view &middot; <b>L</b> auto-aim &middot; <b>T</b> chat</div>
+<div class="help"><span id="lookHelp"><b>WASD</b> move &middot; <b>Drag / Q E</b> look &middot; <b>Z X</b> tilt &middot;</span> <b>Space</b> jump &middot; <b>'</b> / <b>J</b> right hand &middot; <b>;</b> left hand &middot; <b>Shift</b> nitro &middot; <b>C</b> camera &middot; <b>F</b> use &middot; <b>H</b> potion &middot; <b>N</b> smoke &middot; <b>B</b> bag &middot; <b>U</b> sprint toggle &middot; <b>V</b> view &middot; <b>L</b> auto-aim &middot; <b>T</b> chat &middot; <b>M</b> controls</div>
 <div id="crosshair" hidden></div>
 <div id="aimRing" hidden></div>
 <div id="aimArc" hidden></div>
@@ -2848,6 +2851,10 @@ let fov = 58, shake = 0, lastDrag = -1e9;
 let firstPerson = false, shoulder = false, fpPitch = 0, camGround = 0;
 try { const v = localStorage.getItem('taproot3d_fp'); firstPerson = v === '1'; shoulder = v === 'shoulder'; } catch (e) {}
 const mouseLook = () => firstPerson || shoulder;
+// Controls (M or the button): Classic is the original set; Laptop is Minecraft-style for a trackpad —
+// WASD walks, the arrow keys look, and after one click the trackpad steers the camera in every view.
+let laptop = false;
+try { laptop = localStorage.getItem('taproot3d_ctrl') === 'laptop'; } catch (e) {}
 const viewName = () => (firstPerson ? 'first' : shoulder ? 'shoulder' : 'third');
 const exitLock = () => { if (document.pointerLockElement) document.exitPointerLock(); };
 function setView(v) {
@@ -2855,7 +2862,7 @@ function setView(v) {
   shoulder = v === 'shoulder';
   fpPitch = 0;
   try { localStorage.setItem('taproot3d_fp', firstPerson ? '1' : shoulder ? 'shoulder' : '0'); } catch (e) {}
-  if (!mouseLook()) exitLock();
+  if (!mouseLook() && !laptop) exitLock();
   toast(shoulder ? 'Over the shoulder: click to aim with the mouse (V for first person)'
     : firstPerson ? 'First person (V for third person)' : `Third person: ${CAM_MODES[camMode].name} (V for over the shoulder)`);
 }
@@ -4723,6 +4730,7 @@ function setBuilding(on) {
   building = on ? { k: (building && building.k) || BAR[0], r: (building && building.r) || (plotOf(myFarm.id).side === 's' ? 0 : 2), ghost: null } : null;
   $('buildBar').hidden = $('buildMode').hidden = !building;
   document.body.classList.toggle('building', !!building);
+  if (building && !mouseLook()) exitLock();
   if (building) renderBuildBar();
 }
 function farmKey(code) {
@@ -5106,6 +5114,7 @@ addEventListener('keydown', (e) => {
   if (e.code === 'KeyC') cycleCam();
   if (e.code === 'KeyV') cycleView();
   if (e.code === 'KeyL') setAutoAim(!autoAim);
+  if (e.code === 'KeyM') setControls(!laptop, true);
   if (e.code === 'KeyF' && action) action.run();
   if (e.code === 'Escape') toggleBag(false);
   farmKey(e.code);
@@ -5137,12 +5146,15 @@ canvas.addEventListener('pointerdown', (e) => {
   canvas.classList.add('drag');
 });
 canvas.addEventListener('pointerdown', (e) => {
-  if (mouseLook() && e.pointerType === 'mouse' && !document.pointerLockElement && !modal && !chatOpen) try { canvas.requestPointerLock(); } catch (err) {}
+  // Laptop: click the game and the trackpad (or mouse) steers the camera in every view — but not
+  // while building in third person, where you point at the soil with the cursor
+  if ((mouseLook() || (laptop && !building)) && e.pointerType === 'mouse' && !document.pointerLockElement && !modal && !chatOpen) try { canvas.requestPointerLock(); } catch (err) {}
 });
 document.addEventListener('mousemove', (e) => {
   if (document.pointerLockElement !== canvas) return;
   camYaw -= e.movementX * 0.0025;
-  fpPitch = clamp(fpPitch - e.movementY * 0.0025, -1.3, 1.3);
+  if (mouseLook()) fpPitch = clamp(fpPitch - e.movementY * 0.0025, -1.3, 1.3);
+  else camPitchT = clamp(camPitchT + e.movementY * 0.003, 0.05, 1.35); // third person: tilt the chase camera
 });
 canvas.addEventListener('pointermove', (e) => {
   if (touches.has(e.pointerId)) touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -5198,6 +5210,17 @@ for (const [id, dir] of [['camUpBtn', 1], ['camDownBtn', -1]]) {
 $('viewBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); cycleView(); });
 $('aimBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); setAutoAim(!autoAim); });
 $('aimBtn').classList.toggle('on', autoAim);
+const LOOK_HELP = { classic: $('lookHelp').innerHTML, laptop: '<b>WASD</b> move &middot; <b>Arrows</b> look &middot; <b>Click</b> the game, then the trackpad looks (<b>Esc</b> frees it) &middot;' };
+function setControls(on, say) {
+  laptop = on;
+  try { localStorage.setItem('taproot3d_ctrl', on ? 'laptop' : 'classic'); } catch (e) {}
+  $('ctrlBtn').firstChild.textContent = on ? 'Laptop' : 'Classic';
+  $('lookHelp').innerHTML = LOOK_HELP[on ? 'laptop' : 'classic'];
+  if (!on && !mouseLook()) exitLock();
+  if (say) toast(on ? 'Laptop controls: WASD walk, arrows look, click the game to look with the trackpad (M to switch back)' : 'Classic controls (M for laptop controls)');
+}
+setControls(laptop, false);
+$('ctrlBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); setControls(!laptop, true); });
 $('bagBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); toggleBag(); });
 // Fold open (a near-square touch screen): pull the camera back a little to show more world
 let squareBoost = 0;
@@ -5225,11 +5248,15 @@ function update(dt, now) {
 
   // movement relative to the camera
   const k = (c) => (keys[c] ? 1 : 0);
-  let fy = fainted || modal ? 0 : k('KeyW') + k('ArrowUp') - k('KeyS') - k('ArrowDown');
-  let fx = fainted || modal ? 0 : k('KeyD') + k('ArrowRight') - k('KeyA') - k('ArrowLeft');
+  const arrows = laptop ? 0 : 1; // Classic: the arrows walk too
+  let fy = fainted || modal ? 0 : k('KeyW') - k('KeyS') + arrows * (k('ArrowUp') - k('ArrowDown'));
+  let fx = fainted || modal ? 0 : k('KeyD') - k('KeyA') + arrows * (k('ArrowRight') - k('ArrowLeft'));
   if (joy && !fainted) { fx += joy.fx; fy += joy.fy; }
-  camYaw += (k('KeyQ') - k('KeyE')) * 2.2 * dt;
-  if (!building) camPitchT = clamp(camPitchT + (k('KeyZ') - k('KeyX')) * 1.7 * dt, 0.05, 1.35); // tilt up / down
+  // Laptop: the arrow keys are the camera, like Q E (turn) and Z X (tilt)
+  const arrowLook = laptop ? 1 : 0;
+  camYaw += (k('KeyQ') - k('KeyE') + arrowLook * (k('ArrowLeft') - k('ArrowRight'))) * 2.2 * dt;
+  if (laptop && mouseLook()) fpPitch = clamp(fpPitch + (k('ArrowUp') - k('ArrowDown')) * 1.5 * dt, -1.3, 1.3);
+  if (!building) camPitchT = clamp(camPitchT + (k('KeyZ') - k('KeyX') + (laptop && !mouseLook() ? k('ArrowDown') - k('ArrowUp') : 0)) * 1.7 * dt, 0.05, 1.35); // tilt up / down
   const moving = Math.hypot(fx, fy) > 0.15;
   const boosting = moving && (sprintOn || ((keys.ShiftLeft || keys.ShiftRight) && !shiftCancel)) && !nitroLock && nitro > 0;
   if (boosting) { if (gear('feet') !== 'windrunner_boots') nitro -= dt * 0.12; if (nitro <= 0) { nitro = 0; nitroLock = true; } } // windrunner boots never tire
