@@ -210,6 +210,7 @@
   #aimBtn.on { opacity: 1; box-shadow: 0 0 0 2px #ff4a3a inset; }
   .actions .touch { padding: 6px 12px; border-radius: 999px; font-size: 14px; background: linear-gradient(#ffd27a, #e89a2a); box-shadow: 0 3px 0 #8a4a10; }
   .actions .touch.on { background: linear-gradient(#ff8a8a, #e04a4a); box-shadow: 0 3px 0 #8a1a1a; }
+  body.solo #chat, body.solo #chatBtn, body.solo .links, body.solo #gearBtn { display: none !important; }
   #fade { position: fixed; inset: 0; z-index: 9; background: #000; opacity: 0; pointer-events: none; transition: opacity 0.7s; }
 
   @media (max-width: 640px) {
@@ -226,10 +227,14 @@
     .links { display: none; }
   }
 </style>
+<script src="/game/world3d/solo.js"></script>
 <script>
 // Signed-in players with a character only: no session -> sign in; no character -> the creator.
-if (!localStorage.getItem('taproot_session')) window.location.replace('/game/');
-else if (!localStorage.getItem('taproot_character')) window.location.replace('/game/?create=1');
+// Solo (?solo=1) needs neither: it plays offline with its own saves.
+if (!window.SOLO) {
+  if (!localStorage.getItem('taproot_session')) window.location.replace('/game/');
+  else if (!localStorage.getItem('taproot_character')) window.location.replace('/game/?create=1');
+}
 </script>
 <script src="/game/items.js"></script>
 <script src="/game/sprite.js"></script>
@@ -834,6 +839,8 @@ function stitch(title, size, parts) {
   for (const k of ['fields', 'city', 'avenues', 'woods', 'docks']) AREAS[k] = world;
 }
 const A = AREAS[AREA] || AREAS.fields;
+if (SOLO) A.doors = (A.doors || []).filter((d) => !/area=(arena|stands)/.test(d.href)); // no PvP in solo: the colosseum gates stay shut
+if (SOLO) document.body.classList.add('solo');
 // a floor of the Mine: its map is generated (mine.js); 1F builds on the old cave map
 const MINE = FLOORS[AREA] ? floorMap(AREA, A.map ? (await (await fetch(A.map)).json()).rows : null) : null;
 if (MINE) A.size = [MINE.rows[0].length, MINE.rows.length];
@@ -2364,6 +2371,7 @@ function currentAction() {
 }
 function setSail() {
   if (!BOARD_AT || leaving || Math.hypot(P.x - BOARD_AT.x, P.z - BOARD_AT.z) > 2) return;
+  if (SOLO) { toast("Sailing isn't in solo yet"); return; }
   leaving = true;
   $('fade').style.opacity = 1;
   setTimeout(() => { location.href = '/game/sea3d/?from=docks'; }, 450);
@@ -3815,7 +3823,7 @@ function onState(d) {
   if (d.atk && d.atk !== g.atkSeen) { g.atkSeen = d.atk; g.atk = 0; }
   if (d.atkL && d.atkL !== g.atkLSeen) { g.atkLSeen = d.atkL; g.atkL = 0; }
 }
-if (window.supabase && !new URLSearchParams(location.search).has('nomp')) {
+if (window.supabase && !SOLO && !new URLSearchParams(location.search).has('nomp')) {
   const sb = window.supabase.createClient('https://azvdqigaqwbeakjieaps.supabase.co',
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF6dmRxaWdhcXdiZWFramllYXBzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0OTE0NjEsImV4cCI6MjA5OTA2NzQ2MX0.QXBpcGKsot8A8w6rq76F6lvGjCVJN0NytDmfmE8C-Dw');
   // local dev / test runs get their own channel, so they never show up for players on the live site
@@ -3952,7 +3960,7 @@ const hazardNow = () => (HAZ.pinned !== null ? HAZ.pinned : Date.now() + HAZ.off
 // Browser clocks drift, and a 2.5 s telegraph does not survive a five-second disagreement.
 // One HEAD request at load gives a shared reference: every client's schedule is then read
 // off the same wall clock. If it fails we keep the local clock, which is usually NTP-close.
-if (window.supabase && !new URLSearchParams(location.search).has('nomp')) {
+if (window.supabase && !SOLO && !new URLSearchParams(location.search).has('nomp')) {
   (async () => {
     try {
       const t0 = Date.now();
@@ -4297,7 +4305,7 @@ function goTo(href) {
   if (leaving) return;
   leaving = true;
   $('fade').style.opacity = 1;
-  setTimeout(() => { location.href = href; }, 350);
+  setTimeout(() => { location.href = withSolo(href); }, 350);
 }
 function hitPlayer(g, power, hand, magic, slow) {
   if (!ARENA || !mp.live || g.dead || g.hid || fainted) return;
