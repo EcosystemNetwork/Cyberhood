@@ -9,6 +9,8 @@ import { SHOPS } from '../game/world3d/shops.js';
 
 const T0 = 1_800_000_000_000;
 const MIN = 60000;
+// where a hit happens: you and the monster side by side (the server checks reach and movement)
+const NEAR = { px: 0, pz: 0, mx: 1, mz: 0 };
 function player(gold = 0, bag = {}) {
   const s = { econ: { ...newEcon(), gold, bag: { ...bag } }, owned: [], farm: null };
   const ctx = { now: T0, isGear: (id) => id === 'iron_sword' || id === 'inferno_staff', owner: 'Hero' };
@@ -67,14 +69,14 @@ function slay(run, s, m) {
   run({ t: 'spawn', id, m });
   let why = '';
   for (let n = 0; n < 50 && s.econ.foes[id]; n++) {
-    why = run({ t: 'hit', id, k: 'swing', hand: 'R', a: 'a' + n + id, at: (s.t = (s.t || T0) + 400), dmg: 14 }, 400);
+    why = run({ t: 'hit', ...NEAR, id, k: 'swing', hand: 'R', a: 'a' + n + id, at: (s.t = (s.t || T0) + 400), dmg: 14 }, 400);
   }
   return why;
 }
 
 test('group kills: real damage earns the full kill once it goes down, a tag or a fake does not', () => {
   const { s, run } = player();
-  const hit = (id, n, dmg) => run({ t: 'hit', id, k: 'swing', hand: 'R', a: 'g' + n + id, at: (s.t = (s.t || T0) + 400), dmg }, 400);
+  const hit = (id, n, dmg) => run({ t: 'hit', ...NEAR, id, k: 'swing', hand: 'R', a: 'g' + n + id, at: (s.t = (s.t || T0) + 400), dmg }, 400);
   run({ t: 'spawn', id: 'groupa', m: 'goblin' }); // 60 HP: 6 is the least that counts
   hit('groupa', 1, 5);
   assert.equal(run({ t: 'down', id: 'groupa' }), 'not enough damage');
@@ -108,7 +110,7 @@ test('hits: weapon kinds, damage caps, cooldowns and target limits', () => {
   run({ t: 'spawn', id: 'king2', m: 'king' });
   run({ t: 'spawn', id: 'king3', m: 'king' });
   const shot = 20 * 0.6 + 30 * 1.4; // 54
-  const hit = (o) => run({ t: 'hit', hand: 'R', ...o });
+  const hit = (o) => run({ t: 'hit', ...NEAR, hand: 'R', ...o });
   assert.equal(hit({ id: 'king1', k: 'swing', a: 'a1', at: T0, dmg: 5 }), 'wrong weapon');
   assert.equal(hit({ id: 'king1', k: 'shot', a: 'a1', at: T0, dmg: 999 }), '');
   assert.equal(s.econ.foes.king1.hp, 200 - Math.round(shot + 4));
@@ -120,7 +122,7 @@ test('hits: weapon kinds, damage caps, cooldowns and target limits', () => {
   assert.equal(hit({ id: 'king1', k: 'shot', a: 'a2', at: T0 + 500, dmg: 5 }), 'too fast');      // staff cooldown 0.8 s
   assert.equal(hit({ id: 'king1', k: 'shot', a: 'a2', at: T0 + 800, dmg: 5 }, 800), '');
   assert.equal(hit({ id: 'king1', k: 'aoe', a: 'a2', at: T0 + 800, dmg: 5 }), 'wrong weapon');   // no splash on this staff
-  assert.equal(run({ t: 'hit', hand: 'L', id: 'king1', k: 'mirror', a: 'm1', at: T0 + 900, dmg: 5 }), '');
+  assert.equal(run({ t: 'hit', ...NEAR, hand: 'L', id: 'king1', k: 'mirror', a: 'm1', at: T0 + 900, dmg: 5 }), '');
   assert.equal(run({ t: 'area' }), '');
   assert.equal(hit({ id: 'king1', k: 'shot', a: 'a3', at: T0 + 2000, dmg: 5 }, 1200), 'no such monster'); // a new map
 });
@@ -129,7 +131,7 @@ test('the gladiator can be hit as hard as the arena buffs allow', () => {
   const { s, ctx, run } = player();
   ctx.stats = { atk: 20, mag: 2 };
   run({ t: 'spawn', id: 'glad1', m: 'gladiator' });
-  run({ t: 'hit', id: 'glad1', k: 'swing', hand: 'R', a: 'g1', at: T0, dmg: 999 });
+  run({ t: 'hit', ...NEAR, id: 'glad1', k: 'swing', hand: 'R', a: 'g1', at: T0, dmg: 999 });
   assert.equal(s.econ.foes.glad1.hp, 150 - Math.round(20 * 1.7 + 4));
 });
 

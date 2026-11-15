@@ -1,328 +1,36 @@
-const crypto = require('crypto');
-const fs = require('fs');
+// The game API for node: a (req, res) adapter onto the same code the Supabase Edge Function runs
+// (supabase/functions/game/api.js). Used by game-dev-server.js (local play and the tests) and
+// the Docker image. The live game calls the Edge Function directly.
 const path = require('path');
 const { pathToFileURL } = require('url');
-const G = require('../../game/items.js');
 
-const BASE_URL = process.env.SUPABASE_URL || 'https://rxplfcuhsdvqposhpzyp.supabase.co';
-const TABLE = BASE_URL + '/rest/v1/game_players';
-const SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
-// Public key for Supabase Realtime (multiplayer) in the browser. Same project as the accounts.
-const ANON_KEY = process.env.SUPABASE_ANON_KEY || '';
-// Local testing only (game-dev-server.js sets it): every account owns every item.
-const DEV = process.env.GAME_DEV === '1';
-
-const STYLES = ['short', 'long', 'bald'];
-const ALL_ITEMS = Object.keys(G.ITEMS);
-/* Rate limits, counted in the database (game_hit(), supabase/migrations/20261114_auth_rate_limits.sql)
-   as [max, window seconds]. Per IP, and per IP + username for wrong passwords, so a stranger can't
-   lock someone out of their own account; the per-username cap only slows a guesser spread over
-   many IPs, and is far above what an owner who forgot their password would hit. */
-const RATE = {
-  signup: [5, 3600],          // new accounts per IP
-  login: [30, 600],           // log-in attempts per IP
-  loginFail: [5, 900],        // wrong passwords per IP + username
-  loginFailUser: [50, 3600],  // wrong passwords per username, from anywhere
-};
-const SESSION_MS = 30 * 24 * 60 * 60 * 1000;
-const DUMMY_HASH = '00'.repeat(16) + ':' + '00'.repeat(64);
-const MAX_ACTIONS = 60; // per request
-const ROW = 'id,username,character,inventory,econ,econ_rev,farm,farm_plot';
-
-// The economy rules are an ES module shared with the game (game/world3d/economy.js).
-// Netlify ships it with the function (netlify.toml included_files); depending on the bundler it
-// sits next to this file's original path or at the root of the function bundle.
-const ECON_PATH = [
-  path.join(__dirname, '../../game/world3d/economy.js'),
-  path.join(process.env.LAMBDA_TASK_ROOT || process.cwd(), 'game/world3d/economy.js'),
-  path.join(process.cwd(), 'game/world3d/economy.js'),
-].find((p) => fs.existsSync(p));
-let econMod = null;
-const ECON = () => (econMod ||= import(pathToFileURL(ECON_PATH || path.join(__dirname, '../../game/world3d/economy.js')).href));
-
-const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');
-const scrypt = (pw, salt) => new Promise((ok, no) => crypto.scrypt(pw, salt, 64, (e, k) => (e ? no(e) : ok(k))));
-const has = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
-
-async function hashPassword(pw) {
-  const salt = crypto.randomBytes(16);
-  return salt.toString('hex') + ':' + (await scrypt(pw, salt)).toString('hex');
-}
-
-async function checkPassword(pw, stored) {
-  const [salt, hash] = stored.split(':');
-  const got = await scrypt(pw, Buffer.from(salt, 'hex'));
-  return crypto.timingSafeEqual(got, Buffer.from(hash, 'hex'));
-}
-
-async function db(query, init = {}) {
-  const res = await fetch(TABLE + query, {
-    ...init,
-    headers: {
-      apikey: SERVICE_KEY,
-      Authorization: 'Bearer ' + SERVICE_KEY,
-      'Content-Type': 'application/json',
-      Prefer: 'return=representation',
-    },
+let handle = null;
+const api = async () => {
+  if (handle) return handle;
+  const { makeGameApi } = await import(pathToFileURL(path.join(__dirname, '../../supabase/functions/game/api.js')).href);
+  handle = makeGameApi({
+    url: process.env.SUPABASE_URL,
+    serviceKey: process.env.SUPABASE_SERVICE_KEY,
+    anonKey: process.env.SUPABASE_ANON_KEY,
+    dev: process.env.GAME_DEV === '1', // local testing: every account owns every item
   });
-  const text = await res.text();
-  let data = null;
-  try { data = text ? JSON.parse(text) : null; } catch (e) { data = text; }
-  return { status: res.status, data };
-}
-// The caller's IP. Netlify and Vercel set these themselves; x-forwarded-for's last entry is the one
-// the nearest proxy added (the first can be anything the client sent).
+  return handle;
+};
+
+// The caller's IP behind a proxy: x-forwarded-for's last entry is the one the nearest proxy added.
 function clientIp(req) {
   const h = req.headers || {};
   const xff = String(h['x-forwarded-for'] || '').split(',').map((x) => x.trim()).filter(Boolean);
-  return String(h['x-nf-client-connection-ip'] || h['x-real-ip'] || xff[xff.length - 1] || 'unknown').slice(0, 64);
-}
-/* Counts `cost` hits against a limit and says whether the caller is still within it (cost 0 only
-   checks). Until the migration is run the function doesn't exist; then it lets everything through
-   and says so in the log, rather than lock everyone out. */
-let warnedNoLimits = false;
-async function within(name, key, cost = 1) {
-  const [max, windowS] = RATE[name];
-  try {
-    const res = await fetch(BASE_URL + '/rest/v1/rpc/game_hit', {
-      method: 'POST',
-      headers: { apikey: SERVICE_KEY, Authorization: 'Bearer ' + SERVICE_KEY, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ k: name + ':' + sha256(key), max_hits: max, window_s: windowS, cost }),
-    });
-    if (res.ok) return (await res.json()) !== false;
-    if (!warnedNoLimits) { warnedNoLimits = true; console.warn('rate limits are off: game_hit() answered ' + res.status + ' (run supabase/migrations)'); }
-  } catch (e) { console.error('rate limit check failed', e); }
-  return true;
-}
-const TOO_MANY = { error: 'Too many attempts. Try again in a few minutes' };
-
-// PostgREST answers 400 for a column it doesn't know: the migration hasn't been run.
-const notMigrated = (r) => r.status === 400 && /econ|farm/.test(JSON.stringify(r.data || ''));
-class NotMigrated extends Error {}
-
-function newSession() {
-  const key = crypto.randomBytes(32).toString('hex');
-  const expires = new Date(Date.now() + SESSION_MS).toISOString();
-  return { key, fields: { session_hash: sha256(key), session_expires: expires } };
-}
-
-async function sessionUser(req) {
-  const m = /^Bearer ([a-f0-9]{64})$/.exec(req.headers.authorization || '');
-  if (!m) return null;
-  const now = encodeURIComponent(new Date().toISOString());
-  const r = await db(`?session_hash=eq.${sha256(m[1])}&session_expires=gt.${now}&select=${ROW}`);
-  if (notMigrated(r)) throw new NotMigrated();
-  return (r.data && r.data[0]) || null;
-}
-
-// The gear an account owns. Local testing owns everything.
-const ownedItems = (user) => {
-  const saved = Array.isArray(user.inventory) ? user.inventory.filter((id) => typeof id === 'string' && has(G.ITEMS, id)) : [];
-  return [...new Set(DEV ? [...saved, ...ALL_ITEMS] : saved)];
-};
-// A class's starting kit, given with the first character an account makes.
-const kitOf = (cls) => Object.values(G.defaultEquipment(cls) || {}).filter((id) => id && has(G.ITEMS, id));
-
-// Validates a character. Gear the account doesn't own is taken off rather than refused.
-function cleanCharacter(c, owned) {
-  if (!c || typeof c !== 'object') return null;
-  const skin = Number(c.skin);
-  const hc = Number(c.hc);
-  if (!has(G.BASE, c.cls) || !STYLES.includes(c.hs)) return null;
-  if (!Number.isInteger(skin) || skin < 0 || skin > 4) return null;
-  if (!Number.isInteger(hc) || hc < 0 || hc > 5) return null;
-
-  const wanted = c.equipment && typeof c.equipment === 'object' ? G.migrateEquipment({ ...c.equipment }) : G.defaultEquipment(c.cls);
-  const equipment = {};
-  for (const slot of G.SLOTS) {
-    const id = wanted[slot] ?? null;
-    const ok = typeof id === 'string' && has(G.ITEMS, id) && G.fits(G.ITEMS[id], slot) && owned.includes(id);
-    equipment[slot] = ok ? id : null;
-  }
-  for (const h of ['lhand']) if (equipment[h] && equipment[h] === equipment.rhand) equipment[h] = null; // one item, one hand
-  return {
-    name: String(c.name ?? '').trim().slice(0, 16),
-    cls: c.cls, skin, hs: c.hs, hc, equipment,
-    stats: G.computeStats(c.cls, equipment),
-  };
-}
-
-const patch = (id, fields) => db(`?id=eq.${id}`, { method: 'PATCH', body: JSON.stringify(fields) });
-
-// Everything the game needs to know about an account's progress.
-async function stateOf(user) {
-  const E = await ECON();
-  return {
-    econ: E.publicEcon(E.normEcon(user.econ)),
-    owned: ownedItems(user),
-    farm: user.farm || null,
-    now: Date.now(),
-  };
-}
-
-// The player's real attack stats and weapons, from the saved character and only gear they own.
-function fighter(user, owned) {
-  const c = user.character;
-  if (!c || !has(G.BASE, c.cls)) return { stats: { atk: 10, mag: 2 }, hands: {} };
-  const eq = {};
-  for (const [slot, id] of Object.entries(G.migrateEquipment({ ...(c.equipment || {}) }))) if (id && owned.includes(id)) eq[slot] = id;
-  const st = G.computeStats(c.cls, eq);
-  return { stats: { atk: st.atk, mag: st.mag }, hands: { R: eq.rhand || null, L: eq.lhand || null } };
-}
-
-/* Runs a batch of actions against the account, then saves it in one compare-and-swap write on
-   econ_rev, so two requests at once can't both spend the same gold. Retries on a clash. */
-async function act(user, actions, opts) {
-  const E = await ECON();
-  for (let attempt = 0; attempt < 4; attempt++) {
-    const s = { econ: E.normEcon(user.econ), owned: ownedItems(user), farm: user.farm ? JSON.parse(JSON.stringify(user.farm)) : null };
-    const ctx = {
-      now: Date.now(), dev: DEV, isGear: (id) => has(G.ITEMS, id),
-      owner: (user.character && user.character.name) || user.username,
-      minute: DEV && opts.fast ? 1000 : 60000,
-      rand: () => crypto.randomInt(0, 2 ** 32) / 2 ** 32, // gold drops are rolled here, not in the browser
-      ...fighter(user, s.owned),
-    };
-    let character = user.character;
-    const results = actions.map((a) => {
-      if (a && a.t === 'claim' && opts.plotTaken === a.plot) return 'plot taken';
-      if (a && a.t === 'equip') { // gear changed in the world: in the queue, so later hits use it
-        if (!character) return 'no character';
-        const c = cleanCharacter({ ...character, equipment: a.eq }, s.owned);
-        if (!c) return 'bad gear';
-        character = c;
-        Object.assign(ctx, fighter({ character }, s.owned));
-        return '';
-      }
-      return E.applyAction(s, a, ctx);
-    });
-    const rev = user.econ_rev || 0;
-    const r = await db(`?id=eq.${user.id}&econ_rev=eq.${rev}`, {
-      method: 'PATCH',
-      body: JSON.stringify({
-        econ: s.econ, econ_rev: rev + 1, inventory: s.owned, farm: s.farm, farm_plot: s.farm ? s.farm.id : null,
-        ...(character !== user.character ? { character } : {}),
-      }),
-    });
-    if (notMigrated(r)) throw new NotMigrated();
-    if (r.status === 409 && /farm_plot/.test(JSON.stringify(r.data))) { // someone else holds that plot
-      const claim = actions.find((a) => a && a.t === 'claim');
-      if (!claim || opts.plotTaken) throw new Error('plot conflict');
-      opts.plotTaken = claim.plot;
-      continue;
-    }
-    if (r.status >= 300) throw new Error('act write failed: ' + r.status);
-    const saved = r.data && r.data[0];
-    if (saved) return { results, state: await stateOf(saved), ...(character !== user.character ? { character } : {}) };
-    // econ_rev moved on (another request saved first): reload and run the batch again
-    const fresh = await db(`?id=eq.${user.id}&select=${ROW}`);
-    user = fresh.data && fresh.data[0];
-    if (!user) throw new Error('account vanished');
-  }
-  throw new Error('too many save conflicts');
+  return String(h['x-nf-client-connection-ip'] || h['x-real-ip'] || xff[xff.length - 1] || (req.socket && req.socket.remoteAddress) || 'unknown').slice(0, 64);
 }
 
 module.exports = async (req, res) => {
-  const send = (code, body) => res.status(code).json(body);
-  if (!SERVICE_KEY) return send(500, { error: 'Server is not set up yet' });
-
-  const action = req.query.action;
-  const GETS = ['me', 'state', 'farms', 'config'];
-  if (req.method !== (GETS.includes(action) ? 'GET' : 'POST')) return send(405, { error: 'Method not allowed' });
-
-  const body = typeof req.body === 'object' && req.body ? req.body : {};
-  const username = String(body.username ?? '').trim().toLowerCase();
-  const password = String(body.password ?? '');
-
-  try {
-    /* ---- public ---- */
-    if (action === 'config') {
-      return send(200, { realtime: ANON_KEY ? { url: BASE_URL, key: ANON_KEY } : null });
-    }
-    if (action === 'farms') { // every claimed plot, so farms show while their owners are offline
-      const r = await db('?farm_plot=not.is.null&select=farm');
-      if (notMigrated(r)) throw new NotMigrated();
-      if (r.status >= 300) throw new Error('farms read failed: ' + r.status);
-      return send(200, { farms: (r.data || []).map((row) => row.farm).filter(Boolean), now: Date.now() });
-    }
-
-    if (action === 'signup') {
-      if (!/^[a-z0-9_]{3,20}$/.test(username)) return send(400, { error: 'Username must be 3-20 letters, numbers or underscores' });
-      if (password.length < 8 || password.length > 128) return send(400, { error: 'Password must be 8-128 characters' });
-      if (!(await within('signup', clientIp(req)))) return send(429, { error: 'Too many new accounts from here. Try again later' });
-      const s = newSession();
-      const E = await ECON();
-      const inventory = DEV ? ALL_ITEMS : [];
-      const econ = E.newEcon();
-      if (DEV) econ.bag.smoke_bomb = 5; // local testing: a few to hand
-      const r = await db('', {
-        method: 'POST',
-        body: JSON.stringify({ username, password_hash: await hashPassword(password), inventory, econ, ...s.fields }),
-      });
-      if (r.status === 409) return send(409, { error: 'That username is taken' });
-      if (notMigrated(r)) throw new NotMigrated();
-      if (r.status >= 300) throw new Error('insert failed: ' + r.status);
-      const user = r.data[0];
-      return send(200, { key: s.key, username, character: null, inventory: ownedItems(user), state: await stateOf(user) });
-    }
-
-    if (action === 'login') {
-      const valid = /^[a-z0-9_]{3,20}$/.test(username) && password.length <= 128;
-      const ip = clientIp(req), ipUser = ip + '|' + username;
-      if (!(await within('login', ip))) return send(429, TOO_MANY);
-      if (!(await within('loginFail', ipUser, 0)) || !(await within('loginFailUser', username, 0))) return send(429, TOO_MANY);
-      const r = valid
-        ? await db(`?username=eq.${username}&select=${ROW},password_hash`)
-        : { data: null };
-      if (notMigrated(r)) throw new NotMigrated();
-      const user = r.data && r.data[0];
-      const ok = valid && (await checkPassword(password, user ? user.password_hash : DUMMY_HASH));
-      if (!user || !ok) {
-        await within('loginFail', ipUser);
-        await within('loginFailUser', username);
-        return send(401, { error: 'Wrong username or password' });
-      }
-      const s = newSession();
-      await patch(user.id, s.fields);
-      return send(200, { key: s.key, username: user.username, character: user.character, inventory: ownedItems(user), state: await stateOf(user) });
-    }
-
-    /* ---- signed in ---- */
-    const user = await sessionUser(req);
-    if (!user) return send(401, { error: 'Please sign in again' });
-
-    if (action === 'me') {
-      return send(200, { username: user.username, character: user.character, inventory: ownedItems(user), state: await stateOf(user) });
-    }
-
-    if (action === 'state') return send(200, { username: user.username, ...(await stateOf(user)) });
-
-    if (action === 'act') {
-      const actions = Array.isArray(body.actions) ? body.actions : null;
-      if (!actions || !actions.length || actions.length > MAX_ACTIONS) return send(400, { error: 'Invalid actions' });
-      const out = await act(user, actions, { fast: !!body.fast });
-      return send(200, out);
-    }
-
-    if (action === 'save') {
-      let owned = ownedItems(user);
-      const first = !user.character;
-      if (first && body.character && has(G.BASE, body.character.cls)) owned = [...new Set([...owned, ...kitOf(body.character.cls)])];
-      const character = cleanCharacter(body.character, owned);
-      if (!character) return send(400, { error: 'Invalid character' });
-      await patch(user.id, first ? { character, inventory: owned } : { character });
-      return send(200, { ok: true, character, inventory: owned });
-    }
-
-    if (action === 'logout') {
-      await patch(user.id, { session_hash: null, session_expires: null });
-      return send(200, { ok: true });
-    }
-
-    return send(404, { error: 'Not found' });
-  } catch (e) {
-    if (e instanceof NotMigrated) return send(503, { error: 'The game database needs its latest update (supabase/migrations)' });
-    console.error(e);
-    return send(500, { error: 'Something went wrong' });
-  }
+  const out = await (await api())({
+    method: req.method,
+    action: req.query.action,
+    headers: req.headers || {},
+    body: typeof req.body === 'object' && req.body ? req.body : {},
+    ip: clientIp(req),
+  });
+  res.status(out.status).json(out.body);
 };

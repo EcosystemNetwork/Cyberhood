@@ -27,6 +27,16 @@
     key: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF6dmRxaWdhcXdiZWFramllYXBzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0OTE0NjEsImV4cCI6MjA5OTA2NzQ2MX0.QXBpcGKsot8A8w6rq76F6lvGjCVJN0NytDmfmE8C-Dw',
   };
 
+  /* Where the game API lives: the Supabase Edge Function `game` on the live site, the dev server
+     (game-dev-server.js) when playing locally. window.TAPROOT_API, or a taproot_api entry in
+     localStorage, points it anywhere else (a self-hosted server, a staging project). */
+  const API = (() => {
+    try { if (window.TAPROOT_API) return String(window.TAPROOT_API); } catch (e) {}
+    try { const v = window.localStorage.getItem('taproot_api'); if (v) return v; } catch (e) {}
+    const local = /^(localhost|127\.0\.0\.1|\[::1\]|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+)$/.test(location.hostname);
+    return local ? '/api/game/' : 'https://rxplfcuhsdvqposhpzyp.supabase.co/functions/v1/game/';
+  })();
+
   const proto = Storage.prototype;
   const raw = { get: proto.getItem, set: proto.setItem, remove: proto.removeItem };
   const ls = (() => { try { return window.localStorage; } catch (e) { return null; } })();
@@ -76,7 +86,7 @@
     if (!key) return { status: 0, data: {} };
     const isGet = body === undefined;
     const payload = isGet ? undefined : JSON.stringify(body);
-    const res = await fetch('/api/game/' + action, {
+    const res = await fetch(API + action, {
       method: isGet ? 'GET' : 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key },
       body: payload,
@@ -113,7 +123,7 @@
     inflight = (async () => {
       const batch = queue.slice(0, BATCH);
       let r;
-      try { r = await call('act', { actions: batch, fast: opts.fast || undefined }, keepalive); } catch (e) { r = null; }
+      try { r = await call('act', { actions: batch, fast: opts.fast || undefined, sent: Math.round(performance.timeOrigin + performance.now()) }, keepalive); } catch (e) { r = null; }
       if (!r || r.status === 0) { retryMs = Math.min(30000, (retryMs || 2000) * 2); schedule(retryMs); return; } // offline: try again
       if (r.status === 401) { lostSession(); return; }
       if (r.status === 200) {
@@ -168,13 +178,18 @@
   // Progress a browser saved before the server kept it, from the old localStorage keys.
   function legacyImport() {
     const field = getJSON(K.field), owned = getJSON(K.owned), loot = getJSON('taproot_sea_loot');
+    // the farm plot, saved per character name before farms moved to the server
+    let farm = null;
+    try { for (let i = 0; i < ls.length && !farm; i++) { const k = ls.key(i); if (k && k.startsWith('taproot_farm2_')) farm = getJSON(k); } } catch (e) {}
+    if (!farm || typeof farm !== 'object' || !farm.id) farm = null;
     const any = (field && (field.gold || field.xp || field.kills || Object.keys(field.bag || {}).length))
-      || (Array.isArray(owned) && owned.length) || (Array.isArray(loot) && loot.length);
-    return any ? { t: 'import', field: field || {}, owned: owned || [], loot: loot || [] } : null;
+      || (Array.isArray(owned) && owned.length) || (Array.isArray(loot) && loot.length) || farm;
+    return any ? { t: 'import', field: field || {}, owned: owned || [], loot: loot || [], ...(farm ? { farm } : {}) } : null;
   }
 
   const Ledger = {
     init(o) { Object.assign(opts, o || {}); return Ledger; },
+    api: API, // the game API's base address (ends with /)
     // Queue an action for the server: { t: 'kill', m: 'slime' }, { t: 'buy', shop, id, n }, ...
     act(a) {
       if (!a || !sessionKey()) return;
@@ -209,7 +224,7 @@
     // Where multiplayer connects: the accounts' Supabase project once it has a public key set.
     async realtime() {
       try {
-        const r = await fetch('/api/game/config');
+        const r = await fetch(API + 'config');
         const d = await r.json();
         if (d && d.realtime && d.realtime.url && d.realtime.key) return d.realtime;
       } catch (e) {}
@@ -218,7 +233,7 @@
     // Every claimed plot (for showing farms whose owners are offline), in this browser's clock.
     async farms() {
       try {
-        const r = await fetch('/api/game/farms');
+        const r = await fetch(API + 'farms');
         if (!r.ok) return [];
         const d = await r.json();
         const off = d.now ? d.now - Date.now() : offset;

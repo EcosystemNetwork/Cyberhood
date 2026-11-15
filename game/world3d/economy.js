@@ -15,18 +15,20 @@ import { SHOPS, SELL, RECIPES, CONSUMABLES } from './shops.js';
 import { CROPS, BUILDS, ALTAR } from './farm.js';
 import { BLOCKS, unpack, pack, canPlace } from './blocks.js';
 
-// Each monster's HP, and what it pays out: XP on the kill, then a gold drop and an item drop
-// to pick up. (Speed, damage and the rest of how it fights are in /game/world3d MONSTERS.)
+// Each monster's HP and walking speed (tiles a second), and what it pays out: XP on the kill,
+// then a gold drop and an item drop to pick up. (Damage and the rest of how it fights are in
+// /game/world3d MONSTERS.)
 export const MONSTER_LOOT = {
-  slime:     { hp: 30,  xp: 5,  gold: [1, 2],   drop: 'slime_gel' },
-  shroom:    { hp: 45,  xp: 8,  gold: [1, 3],   drop: 'spore_cap' },
-  bat:       { hp: 24,  xp: 7,  gold: [1, 2],   drop: 'bat_fang' },
-  goblin:    { hp: 60,  xp: 15, gold: [3, 5],   drop: 'goblin_ear' },
-  king:      { hp: 200, xp: 60, gold: [15, 25], drop: 'royal_jelly' },
-  gladiator: { hp: 150, xp: 45, gold: [10, 18], drop: 'laurel' },
-  // the two giants of the Mine's deepest floor (B2, The Hollow)
-  golem_crystal: { hp: 1000, xp: 400, gold: [120, 160], drop: 'golem_core' },
-  spider_queen:  { hp: 800,  xp: 350, gold: [100, 140], drop: 'queen_silk' },
+  slime:     { hp: 30,  speed: 1.5,  xp: 5,  gold: [1, 2],   drop: 'slime_gel' },
+  shroom:    { hp: 45,  speed: 1.1,  xp: 8,  gold: [1, 3],   drop: 'spore_cap' },
+  bat:       { hp: 24,  speed: 2.75, xp: 7,  gold: [1, 2],   drop: 'bat_fang' },
+  goblin:    { hp: 60,  speed: 2,    xp: 15, gold: [3, 5],   drop: 'goblin_ear' },
+  king:      { hp: 200, speed: 1,    xp: 60, gold: [15, 25], drop: 'royal_jelly' },
+  gladiator: { hp: 150, speed: 2.1,  xp: 45, gold: [10, 18], drop: 'laurel' },
+  // the two giants of the Mine's deepest floor (B2, The Hollow). The queen lunges (12 tiles a
+  // second for 0.45 s): `dash` is how far that carries her past her walking speed.
+  golem_crystal: { hp: 1000, speed: 0.9, xp: 400, gold: [120, 160], drop: 'golem_core' },
+  spider_queen:  { hp: 800,  speed: 2.0, dash: 5.4, xp: 350, gold: [100, 140], drop: 'queen_silk' },
 };
 
 /* ---- combat ----
@@ -37,14 +39,40 @@ export const MONSTER_LOOT = {
    count makes a kill. So nobody can out-damage a perfect player with the same gear. */
 // Wands, staffs and the boomerang shoot instead of swinging (same numbers as /game/lib/hero3d.js).
 export const CASTERS = {
-  oak_staff:       { cd: 0.55 },
-  apprentice_wand: { cd: 0.4 },
-  fire_wand:       { cd: 0.45 },
-  inferno_staff:   { cd: 0.6, aoe: 1.8 },
-  ice_wand:        { cd: 0.5 },
-  thunder_staff:   { cd: 0.8, chain: 2 },
-  boomerang:       { cd: 1.1, boomerang: true },
+  oak_staff:       { cd: 0.55, range: 14 },
+  apprentice_wand: { cd: 0.4,  range: 12 },
+  fire_wand:       { cd: 0.45, range: 14 },
+  inferno_staff:   { cd: 0.6,  range: 16, aoe: 1.8 },
+  ice_wand:        { cd: 0.5,  range: 15 },
+  thunder_staff:   { cd: 0.8,  range: 16, chain: 2 },
+  boomerang:       { cd: 1.1,  range: 9, boomerang: true },
 };
+/* Where things are. Each hit says where the player and the monster stood (tiles, on the map's
+   grid). The player can't have moved faster than a sprint since their last hit, the monster
+   faster than it walks, and the monster must be within reach of the weapon. Fainting sends
+   you back to the map's start: that's a 'warp', allowed a couple of times a minute. */
+export const PLAYER_SPEED = 7.4;  // sprinting, tiles a second
+export const KNOCKBACK = 1.6;     // how far a hit can shove someone
+export const MOVE_SLACK = 1.25;   // frame timing, lag, monsters synced from another player
+export const JITTER = 1.5;        // tiles of slack on every distance
+export const SWING_REACH = 4;     // a swing reaches about 1.1 tiles past the body, big monsters are wider, and other players' monsters lag a little
+export const MIRROR_RANGE = 16;
+export const SHOT_EXTRA = 8;      // you keep moving while a shot is in the air
+export const CHAIN_HOP = 4.5;     // a thunder bolt's jump
+export function reachOf(kind, item) {
+  const c = CASTERS[item] || {};
+  if (kind === 'swing') return SWING_REACH;
+  if (kind === 'mirror') return MIRROR_RANGE + SHOT_EXTRA;
+  if (kind === 'aoe') return (c.range || 0) + (c.aoe || 0) + SHOT_EXTRA;
+  if (kind === 'chain') return (c.range || 0) + CHAIN_HOP * 2 + SHOT_EXTRA;
+  return (c.range || 0) + SHOT_EXTRA; // shot, boom
+}
+// Could something at `from` ([x, z, ms]) be at (x, z) at `ms`, moving at most `speed`?
+function couldReach(from, x, z, ms, speed, dash = 0) {
+  if (!from) return true;
+  const secs = Math.abs(ms - from[2]) / 1000;
+  return Math.hypot(x - from[0], z - from[1]) <= secs * speed * MOVE_SLACK + JITTER + KNOCKBACK + dash;
+}
 export const SWING_CD = 0.36;   // seconds between swings of one hand
 export const MIRROR_CD = 0.5;   // a mirror shield's reflected shot
 export const HIT_RAND = 4;      // a hit does its power plus up to this much
@@ -124,6 +152,7 @@ export const LIMITS = {
   'kill:gladiator': [2, 22],
   'kill:golem_crystal': [2, 110], // the giants come back after 120 s
   'kill:spider_queen': [2, 110],
+  warp: [2, 20],
   barrel: [4, 8],
 };
 export const MAX_PENDING = 30;   // uncollected drops kept per kind
@@ -175,13 +204,18 @@ export function normEcon(e) {
     foes: { ...(e.foes || {}) },
     hands: { ...(e.hands || {}) },
     sea: { gen: { ...((e.sea && e.sea.gen) || {}) }, back: { ...((e.sea && e.sea.back) || {}) }, last: (e.sea && e.sea.last) || null },
+    pos: Array.isArray(e.pos) ? [...e.pos] : null,
   };
 }
 
 // The client's game clock may not run ahead of the server's (no speeding up the game).
 // Combat and barrels share it. Returns false if `at` is ahead.
-function clockOk(e, at, now) {
-  if (!e.clock || at < e.clock[0] || now - e.clock[1] > 120000) e.clock = [at, now];
+// The baseline pairs the time the browser sent a request (`sent`, its clock) with when the server
+// got it, so it holds only network delay, never time an action waited in the queue (a slow
+// machine or a lost connection). Actions from before the baseline are fine; an action can't be
+// stamped further ahead of it than the server's clock has moved.
+function clockOk(e, at, now, sent) {
+  if (!e.clock || now - e.clock[1] > 120000) e.clock = [Number.isFinite(sent) ? sent : at, now];
   return at - e.clock[0] <= now - e.clock[1] + CLOCK_SLACK_MS;
 }
 
@@ -235,6 +269,46 @@ const buildAt = (farm, i, j) => (farm.builds || []).find((b) => {
   return i >= b.i && i < b.i + s && j >= b.j && j < b.j + s;
 });
 
+/* A farm from before farms were kept on the server, rebuilt under the plot rules and paid for out
+   of the import budget: buildings at their price, then crops at a seed each, then blocks at
+   their price. Anything that breaks a rule or doesn't fit the budget is left out. Returns
+   what's left of the budget. */
+function importFarm(s, f, budget, ctx) {
+  const soil = PLOT_SOIL[f.id], now = ctx.now;
+  const farm = newFarm(f.id, String(ctx.owner || '').slice(0, 16) || 'Wanderer', now);
+  const inSoil = (i, j, n = 1) => i >= 0 && j >= 0 && i + n <= soil[0] && j + n <= soil[1];
+  for (const b of (Array.isArray(f.builds) ? f.builds : []).slice(0, 20)) {
+    const B = b && BUILDS[b.k], i = int(b && b.i), j = int(b && b.j), r = int((b && b.r) ?? 0);
+    if (!B || !(r >= 0 && r < 4) || !inSoil(i, j, B.size) || B.cost > budget) continue;
+    if (farm.builds.filter((q) => q.k === b.k).length >= B.max) continue;
+    let clear = true;
+    for (let y = j; y < j + B.size; y++) for (let x = i; x < i + B.size; x++) if (buildAt(farm, x, y)) clear = false;
+    if (!clear) continue;
+    budget -= B.cost; farm.builds.push({ k: b.k, i, j, r });
+  }
+  for (const [key, c] of Object.entries(f.crops && typeof f.crops === 'object' ? f.crops : {}).slice(0, 600)) {
+    const m = /^(\d+),(\d+)$/.exec(key), seed = c && CROPS[c.k] ? valueOf(c.k + '_seed') : undefined;
+    if (!m || seed === undefined || seed > budget) continue;
+    const i = +m[1], j = +m[2];
+    if (!inSoil(i, j) || buildAt(farm, i, j)) continue;
+    const t = Number(c.t);
+    budget -= seed;
+    farm.crops[`${i},${j}`] = { k: c.k, t: Number.isFinite(t) ? Math.max(now - 30 * 86400000, Math.min(now, t)) : now };
+  }
+  const old = unpack(typeof f.blocks === 'string' ? f.blocks.slice(0, 40000) : '', soil[0], soil[1]), vox = unpack('', soil[0], soil[1]);
+  old.forEach((i, j, k, t, r) => {
+    const cost = BLOCKS[t].price;
+    if (cost > budget || (k === 0 && (farm.crops[`${i},${j}`] || buildAt(farm, i, j)))) return;
+    if (canPlace(vox, i, j, k, t, { crops: new Set(), builds: [], players: [] })) return;
+    vox.set(i, j, k, t, r); budget -= cost;
+  });
+  farm.blocks = pack(vox);
+  farm.members = [...new Set((Array.isArray(f.members) ? f.members : []).filter((x) => typeof x === 'string' && x.trim())
+    .map((x) => x.trim().slice(0, 16)))].slice(0, MAX_MEMBERS);
+  s.farm = farm;
+  return budget;
+}
+
 /* Applies one action to a player's state, in place. Returns '' if it went through, or why not
    (and then nothing was changed).
      s   = { econ, owned: [gear ids], farm: farm or null }
@@ -247,8 +321,15 @@ export function applyAction(s, a, ctx) {
   const farm = s.farm, soil = farm && PLOT_SOIL[farm.id];
 
   switch (a.t) {
-    case 'area': { // a new map loaded: the monsters of the last one are gone
-      e.foes = {}; e.hands = {};
+    case 'area': { // a new map loaded: the monsters of the last one are gone, and you're somewhere new
+      e.foes = {}; e.hands = {}; e.pos = null;
+      return '';
+    }
+    case 'warp': { // { x, z, at }: fainted and woke at the map's start
+      const x = Number(a.x), z = Number(a.z), at = Number(a.at);
+      if (![x, z, at].every(Number.isFinite)) return 'bad warp';
+      if (!take(e, 'warp', now)) return 'too fast';
+      e.pos = [x, z, at];
       return '';
     }
     case 'spawn': { // { id, m }: a monster appeared, with full HP
@@ -268,7 +349,18 @@ export function applyAction(s, a, ctx) {
       if (!handAllows(a.k, item, other)) return 'wrong weapon';
       const at = Number(a.at), att = typeof a.a === 'string' ? a.a.slice(0, 16) : '';
       if (!Number.isFinite(at) || !att) return 'bad hit';
-      if (!clockOk(e, at, now)) return 'too fast';
+      if (!clockOk(e, at, now, ctx.sent)) return 'too fast';
+      // where everyone stood: { px, pz } the player, { mx, mz } the monster, at `pt` (client ms)
+      const px = Number(a.px), pz = Number(a.pz), mx = Number(a.mx), mz = Number(a.mz), pt = a.pt === undefined ? at : Number(a.pt);
+      if (![px, pz, mx, mz, pt].every(Number.isFinite)) return 'bad hit';
+      if (!ctx.dev) { // local testing teleports around freely
+        if (!clockOk(e, pt, now, ctx.sent)) return 'too fast';
+        if (!couldReach(e.pos, px, pz, pt, PLAYER_SPEED)) return 'moved too fast';
+        if (!couldReach(foe.pos, mx, mz, pt, MONSTER_LOOT[foe.m].speed, MONSTER_LOOT[foe.m].dash)) return 'monster moved too fast';
+        if (Math.hypot(mx - px, mz - pz) > reachOf(a.k, item)) return 'out of reach';
+      }
+      if (!e.pos || pt >= e.pos[2]) e.pos = [px, pz, pt];
+      if (!foe.pos || pt >= foe.pos[2]) foe.pos = [mx, mz, pt];
       // one attack per cooldown per hand, and only so many targets per attack
       const h = e.hands[a.hand] || { a: '', at: -Infinity, n: {} };
       if (h.a !== att) {
@@ -362,7 +454,7 @@ export function applyAction(s, a, ctx) {
     case 'barrel': { // { slot, at: client ms }: sailed through barrel `slot` where barrelSpot() put it
       const slot = int(a.slot), at = Number(a.at), sea = e.sea;
       if (!(slot >= 0 && slot < BARREL_SLOTS) || !Number.isFinite(at)) return 'bad barrel';
-      if (!clockOk(e, at, now)) return 'too fast';
+      if (!clockOk(e, at, now, ctx.sent)) return 'too fast';
       if (at < (sea.back[slot] || -Infinity)) return 'not back yet';
       const [x, z] = barrelSpot(slot, sea.gen[slot] || 0);
       if (sea.last) { // could the boat have got here from the last barrel?
@@ -496,6 +588,10 @@ export function applyAction(s, a, ctx) {
           if (k > 0) { add(e.bag, id, k); budget -= k * v; }
         }
       }
+      // then a farm plot kept in the browser before farms moved to the server, if the plot is free
+      if (a.farm && typeof a.farm === 'object' && !s.farm && PLOT_SOIL[a.farm.id] && ctx.plotTaken !== a.farm.id) {
+        budget = importFarm(s, a.farm, budget, ctx);
+      }
       e.gold += cap(f.gold, budget); // then gold, with what's left
       if (Array.isArray(a.loot)) for (const id of a.loot) if (SEA_TREASURE[id] && !e.loot.includes(id)) e.loot.push(id);
       e.imported = true;
@@ -507,4 +603,36 @@ export function applyAction(s, a, ctx) {
 
 // What the browser gets to see of the economy (not the rate limits or pending drops).
 // barrels: how many times each barrel slot has been taken, so the browser floats them where the server expects.
+/* ---- trading between two players ----
+   Terms are { gold, items: { bag id: count } }. The first player to confirm leaves an offer on
+   their own account (`econ.offer`); the other completes it with the exact mirror of those terms,
+   and the server swaps both accounts in one database transaction (api/game/[action].js). Gear
+   isn't traded, only gold and bag items. */
+export const TRADE_MS = 60000;   // an offer lapses after this
+export const TRADE_KINDS = 12;   // different items per side
+export function cleanTerms(t) {
+  if (!t || typeof t !== 'object') return null;
+  const gold = t.gold === undefined ? 0 : t.gold;
+  if (!Number.isInteger(gold) || gold < 0 || gold > 1e9) return null;
+  const src = t.items && typeof t.items === 'object' && !Array.isArray(t.items) ? t.items : {};
+  const ids = Object.keys(src).sort();
+  if (ids.length > TRADE_KINDS) return null;
+  const items = {};
+  for (const id of ids) {
+    const n = src[id];
+    if (!/^[a-z0-9_]{1,40}$/.test(id) || !Number.isInteger(n) || n < 1 || n > BAG_MAX) return null;
+    items[id] = n;
+  }
+  return { gold, items };
+}
+export const emptyTerms = (t) => !t.gold && !Object.keys(t.items).length;
+export const sameTerms = (a, b) => !!a && !!b && a.gold === b.gold && JSON.stringify(cleanTerms(a).items) === JSON.stringify(cleanTerms(b).items);
+export const canGive = (e, t) => e.gold >= t.gold && Object.entries(t.items).every(([id, n]) => has(e.bag, id, n));
+// Moves `give` out of the economy and `get` into it (check canGive first).
+export function swapTerms(e, give, get) {
+  e.gold += get.gold - give.gold;
+  for (const [id, n] of Object.entries(give.items)) add(e.bag, id, -n);
+  for (const [id, n] of Object.entries(get.items)) add(e.bag, id, n);
+}
+
 export const publicEcon = (e) => ({ gold: e.gold, xp: e.xp, kills: e.kills, bag: e.bag, loot: e.loot, imported: e.imported, barrels: (e.sea && e.sea.gen) || {} });

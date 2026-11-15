@@ -5,6 +5,8 @@ RUN npm ci --omit=dev
 COPY game-dev-server.js ./
 COPY api/ ./api/
 COPY game/ ./game/
+# the game API's code (the live game runs it as a Supabase Edge Function; api/game is the node adapter)
+COPY supabase/functions/ ./supabase/functions/
 EXPOSE 8137
 VOLUME /app/data
 ENV DB_PATH=/app/data/game-local-db.json

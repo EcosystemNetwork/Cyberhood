@@ -27,7 +27,7 @@ test.before(async () => {
 test.after(() => { server.kill(); fs.rmSync(dir, { recursive: true, force: true }); });
 
 async function api(action, key, body) {
-  const get = ['me', 'state', 'farms', 'config'].includes(action);
+  const get = ['me', 'state', 'farms', 'config', 'handle'].includes(action);
   const res = await fetch(`${BASE}/api/game/${action}`, {
     method: get ? 'GET' : 'POST',
     headers: { 'Content-Type': 'application/json', ...(key ? { Authorization: 'Bearer ' + key } : {}) },
@@ -36,6 +36,8 @@ async function api(action, key, body) {
   return { status: res.status, data: await res.json() };
 }
 const PW = 'hunter2hunter2';
+// where a hit happens: you and the monster side by side (the server checks reach and movement)
+const NEAR = { px: 0, pz: 0, mx: 1, mz: 0 };
 async function account() {
   const username = 'e' + Math.random().toString(36).slice(2, 10);
   const r = await api('signup', null, { username, password: PW });
@@ -51,7 +53,7 @@ let T = Date.now();
 const rid = () => Math.random().toString(36).slice(2, 10);
 function fight(m, swings, dmg = 14) {
   const id = 'f' + rid();
-  return [{ t: 'spawn', id, m }, ...Array.from({ length: swings }, () => ({ t: 'hit', id, k: 'swing', hand: 'R', a: rid(), at: (T += 400), dmg }))];
+  return [{ t: 'spawn', id, m }, ...Array.from({ length: swings }, () => ({ t: 'hit', ...NEAR, id, k: 'swing', hand: 'R', a: rid(), at: (T += 400), dmg }))];
 }
 const ok = (r) => r.data.results.every((x) => x === '');
 
@@ -98,20 +100,20 @@ test('combat: only hits the server believes can kill', async () => {
   const id = 'goblin1';
   let r = await act(key,
     { t: 'kill', m: 'slime' },                                                         // kills aren't taken on trust
-    { t: 'hit', id: 'nobody', k: 'swing', hand: 'R', a: rid(), at: (T += 400), dmg: 5 }, // no such monster
+    { t: 'hit', ...NEAR, id: 'nobody', k: 'swing', hand: 'R', a: rid(), at: (T += 400), dmg: 5 }, // no such monster
     { t: 'spawn', id, m: 'goblin' },
     { t: 'spawn', id, m: 'goblin' },                                                   // already there
-    { t: 'hit', id, k: 'shot', hand: 'R', a: rid(), at: (T += 400), dmg: 5 },          // no wand in hand
-    { t: 'hit', id, k: 'swing', hand: 'R', a: rid(), at: (T += 400), dmg: 9999 },       // capped at 14
-    { t: 'hit', id, k: 'swing', hand: 'R', a: rid(), at: T + 50, dmg: 14 },             // faster than a swing
-    { t: 'hit', id, k: 'swing', hand: 'R', a: rid(), at: (T += 400), dmg: 14 });
+    { t: 'hit', ...NEAR, id, k: 'shot', hand: 'R', a: rid(), at: (T += 400), dmg: 5 },          // no wand in hand
+    { t: 'hit', ...NEAR, id, k: 'swing', hand: 'R', a: rid(), at: (T += 400), dmg: 9999 },       // capped at 14
+    { t: 'hit', ...NEAR, id, k: 'swing', hand: 'R', a: rid(), at: T + 50, dmg: 14 },             // faster than a swing
+    { t: 'hit', ...NEAR, id, k: 'swing', hand: 'R', a: rid(), at: (T += 400), dmg: 14 });
   assert.deepEqual(r.data.results, ['kills come from hits', 'no such monster', '', 'bad id', 'wrong weapon', '', 'too fast', '']);
   assert.equal(r.data.state.econ.kills, 0); // 28 of the goblin's 60 HP
-  r = await act(key, ...[1, 2, 3].map(() => ({ t: 'hit', id, k: 'swing', hand: 'R', a: rid(), at: (T += 400), dmg: 14 })));
+  r = await act(key, ...[1, 2, 3].map(() => ({ t: 'hit', ...NEAR, id, k: 'swing', hand: 'R', a: rid(), at: (T += 400), dmg: 14 })));
   assert.ok(ok(r));
   assert.equal(r.data.state.econ.kills, 1);
   assert.equal(r.data.state.econ.xp, 15);
-  r = await act(key, { t: 'hit', id, k: 'swing', hand: 'R', a: rid(), at: (T += 400), dmg: 14 });
+  r = await act(key, { t: 'hit', ...NEAR, id, k: 'swing', hand: 'R', a: rid(), at: (T += 400), dmg: 14 });
   assert.deepEqual(r.data.results, ['no such monster']); // dead is dead
 });
 
@@ -119,7 +121,7 @@ test('a game clock that runs fast is caught', async () => {
   const { key } = await account();
   const acts = [{ t: 'spawn', id: 'kingslime', m: 'king' }];
   let at = Date.now();
-  for (let i = 0; i < 30; i++) acts.push({ t: 'hit', id: 'kingslime', k: 'swing', hand: 'R', a: rid(), at: (at += 400), dmg: 14 });
+  for (let i = 0; i < 30; i++) acts.push({ t: 'hit', ...NEAR, id: 'kingslime', k: 'swing', hand: 'R', a: rid(), at: (at += 400), dmg: 14 });
   const r = await act(key, ...acts); // 12 s of swings sent in a moment
   assert.ok(r.data.results.includes('too fast'));
   assert.equal(r.data.state.econ.kills, 0);
@@ -129,10 +131,10 @@ test('equipping in the world changes what the next hits may do', async () => {
   const { key } = await account();
   await api('save', key, { character: { ...KNIGHT, cls: 'mage', equipment: {} } }); // the mage kit: oak staff
   const r = await act(key, { t: 'spawn', id: 'slime01', m: 'slime' },
-    { t: 'hit', id: 'slime01', k: 'swing', hand: 'R', a: rid(), at: (T += 700), dmg: 3 },
+    { t: 'hit', ...NEAR, id: 'slime01', k: 'swing', hand: 'R', a: rid(), at: (T += 700), dmg: 3 },
     { t: 'equip', eq: { rhand: 'oak_staff' } },
-    { t: 'hit', id: 'slime01', k: 'swing', hand: 'R', a: rid(), at: (T += 700), dmg: 3 },
-    { t: 'hit', id: 'slime01', k: 'shot', hand: 'R', a: rid(), at: (T += 700), dmg: 3 },
+    { t: 'hit', ...NEAR, id: 'slime01', k: 'swing', hand: 'R', a: rid(), at: (T += 700), dmg: 3 },
+    { t: 'hit', ...NEAR, id: 'slime01', k: 'shot', hand: 'R', a: rid(), at: (T += 700), dmg: 3 },
     { t: 'equip', eq: { rhand: 'cutlass' } }); // not owned: taken off
   assert.deepEqual(r.data.results, ['', '', '', 'wrong weapon', '', '']);
   assert.equal(r.data.character.equipment.rhand, null);
@@ -259,4 +261,70 @@ test('config hands the browser no realtime key unless one is set', async () => {
   const r = await api('config');
   assert.equal(r.status, 200);
   assert.equal(r.data.realtime, null);
+});
+
+// A fresh anonymous trade handle for a player, as the game fetches before each trade.
+const handle = async (p) => (await api('handle', p.key)).data.handle;
+
+test('trade handles: anonymous, all different, and only the server can read them', async () => {
+  const a = await account();
+  const h1 = await handle(a), h2 = await handle(a);
+  assert.match(h1, /^[A-Za-z0-9_-]{40,}$/);
+  assert.notEqual(h1, h2, 'a new handle every time, so two can\'t be linked');
+  for (const h of [h1, h2]) {
+    const raw = Buffer.from(h, 'base64url').toString('latin1');
+    assert.ok(!raw.includes(a.username) && !h.includes(a.username), 'the username is nowhere in it');
+  }
+  assert.equal((await api('handle', null)).status, 401, 'only signed-in players get one');
+  // a handle with one byte changed is refused, not taken for someone else
+  const b = await account();
+  assert.ok(ok(await act(b.key, ...CHESTS)));
+  const bad = Buffer.from(h1, 'base64url'); bad[bad.length - 1] ^= 1;
+  const r = await api('trade', b.key, { id: 't' + rid(), with: bad.toString('base64url'), give: { gold: 10, items: {} }, get: { gold: 0, items: {} } });
+  assert.equal(r.status, 400);
+});
+
+test('trading: both confirm the mirror-image terms, and both accounts change at once', async () => {
+  const a = await account(), b = await account();
+  assert.ok(ok(await act(a.key, ...CHESTS))); // A: 120 gold
+  assert.ok(ok(await act(b.key, ...fight('slime', 3), { t: 'pickup', kind: 'item', id: 'slime_gel' }))); // B: 1 slime gel
+  const id = 't' + rid(), deal = { gold: 50, items: {} }, gel = { gold: 0, items: { slime_gel: 1 } };
+
+  // A confirms first: an offer, nothing moves yet
+  let r = await api('trade', a.key, { id, with: await handle(b), give: deal, get: gel });
+  assert.equal(r.status, 200); assert.equal(r.data.done, false);
+  assert.equal(r.data.state.econ.gold, 120);
+  // B's confirm must be the exact mirror
+  r = await api('trade', b.key, { id, with: await handle(a), give: gel, get: { gold: 80, items: {} } });
+  assert.equal(r.data.done, false, 'different terms only leave an offer');
+  r = await api('trade', b.key, { id, with: await handle(a), give: gel, get: deal });
+  assert.equal(r.status, 200); assert.equal(r.data.done, true);
+  assert.equal(r.data.state.econ.gold, (await api('state', b.key)).data.econ.gold);
+  const sa = (await api('state', a.key)).data.econ, sb = (await api('state', b.key)).data.econ;
+  assert.equal(sa.gold, 70); assert.equal(sa.bag.slime_gel, 1);
+  assert.ok(!sb.bag.slime_gel); assert.ok(sb.gold >= 50);
+  // done once: confirming again only leaves a new offer, which A no longer matches
+  r = await api('trade', b.key, { id, with: await handle(a), give: gel, get: deal });
+  assert.equal(r.status, 409, 'B has no gel left to give');
+});
+
+test('trading: no giving what you lack, no trading with yourself, and offers can be taken back', async () => {
+  const a = await account(), b = await account();
+  assert.ok(ok(await act(a.key, ...CHESTS)));
+  const id = 't' + rid(), deal = { gold: 100, items: {} }, none = { gold: 0, items: {} };
+  assert.equal((await api('trade', b.key, { id, with: await handle(a), give: deal, get: none })).status, 409, 'B has no gold');
+  assert.equal((await api('trade', a.key, { id, with: await handle(a), give: deal, get: none })).status, 400);
+  assert.equal((await api('trade', a.key, { id, with: await handle(b), give: { gold: -5 }, get: none })).status, 400);
+  assert.equal((await api('trade', a.key, { id, with: await handle(b), give: none, get: none })).status, 400);
+  assert.equal((await api('trade', a.key, { id, with: 'nobody_here_at_all_forged_handle_xx', give: deal, get: none })).status, 400, 'a made-up handle');
+  // A offers, then takes it back: B's confirm finds nothing to complete
+  assert.equal((await api('trade', a.key, { id, with: await handle(b), give: deal, get: none })).data.done, false);
+  assert.equal((await api('trade', a.key, { id, cancel: true })).status, 200);
+  assert.equal((await api('trade', b.key, { id, with: await handle(a), give: none, get: deal })).data.done, false);
+  assert.equal((await api('state', a.key)).data.econ.gold, 120);
+  // A spends the gold after offering: B's confirm is turned away, nobody loses anything
+  const id2 = 't' + rid();
+  await api('trade', a.key, { id: id2, with: await handle(b), give: deal, get: none });
+  assert.ok(ok(await act(a.key, { t: 'buy', shop: 'The Armoury', id: 'leather_boots' })));
+  assert.equal((await api('trade', b.key, { id: id2, with: await handle(a), give: none, get: deal })).status, 409);
 });

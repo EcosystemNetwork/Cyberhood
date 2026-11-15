@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hero Anim Lab</title>
+<!-- Dev tool: replays the GLB hero's moves with world3d's physics and timing, frame-exact.
+     /game/world3d/anim-lab.html?hero=rogue&mode=combo&eq=iron_sword&view=front&bg=dark  (eq: a real item id, e.g. iron_sword, ember_blade, void_blade)
+     mode: idle | run | jump | flip (double jump) | land (drop from 4 m) | attack | combo (3 chained swings)
+           | hurt | turn (run a circle) | stop (run, then halt) | down (faint) | emote | fidget
+     name: the emote / fidget to play (emote: happy | wave | victory | cheer | bow; fidget: look | stretch | fold)
+     wear: gear ids to put on (green_cloak), or none. Left off, the hero wears its starting gear (human: green_cloak).
+     t: seconds into the move, frozen there, or leave it off to loop live. w / h pin the canvas for captures. -->
+<style>html, body { margin: 0; background: #b9c7d6; overflow: hidden; } canvas { display: block; }
+#hud { position: fixed; left: 8px; top: 6px; font: 13px/1.3 system-ui, sans-serif; color: #102030; }</style>
+<script type="importmap">{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }</script>
+</head>
+<body>
+<div id="hud"></div>
+<script>
+// surface load errors in the HUD (headless captures can't see the console)
+addEventListener('error', (e) => { document.title = 'ERROR'; document.getElementById('hud').textContent = 'error: ' + e.message; });
+addEventListener('unhandledrejection', (e) => { document.title = 'ERROR'; document.getElementById('hud').textContent = 'error: ' + (e.reason && (e.reason.stack || e.reason.message) || e.reason); });
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { loadGlbHero, makeGlbHero, loadGlbGear, wearFor } from '/game/lib/glbhero.js';
+
+const q = new URLSearchParams(location.search);
+const HEROES = { rogue: '/game/assets/characterart/rogue.glb', human: '/game/assets/characterart/human_game.glb' };
+const mode = q.get('mode') || 'live', live = q.get('t') === 'live' || !q.has('t');
+const T = parseFloat(q.get('t') || '0'), moving = q.get('move') !== '0', eq = q.get('eq') || '';
+const LOOP = { combo: 2.6, land: 2.4, fidget: 6, emote: 3.5, down: 3.5, turn: 4 }[mode] || 2.4;
+const view = q.get('view') || 'side';
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setSize(innerWidth, innerHeight);
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(q.get('bg') === 'dark' ? '#141826' : '#b9c7d6'); // bg=dark shows additive trails as in-game at night
+scene.add(new THREE.HemisphereLight('#ffffff', '#506070', 2.2));
+const sun = new THREE.DirectionalLight('#ffffff', 2.2); sun.position.set(3, 6, 4); scene.add(sun);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshLambertMaterial({ color: '#7d9a6a' }));
+ground.rotation.x = -Math.PI / 2; scene.add(ground);
+const grid = new THREE.GridHelper(400, 400, '#55704a', '#55704a'); grid.position.y = 0.002; scene.add(grid);
+const cam = new THREE.PerspectiveCamera(35 / (+q.get('zoom') || 1), innerWidth / innerHeight, 0.1, 200); // zoom=3 for close-ups
+
+// seeded Math.random, so captures of random picks (hit variant, emote) repeat exactly
+let seed = +(q.get('seed') || 7);
+Math.random = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
+await loadGlbHero(HEROES[q.get('hero') || 'rogue']);
+const wear = wearFor(q.get('hero') || 'rogue', q.get('wear')); // wear=green_cloak, wear=none; default: the hero's START_WEAR
+if (wear.length) await loadGlbGear(wear);
+const hero = makeGlbHero({ equipment: eq ? { rhand: eq } : {}, wear });
+scene.add(hero.root);
+// hide=tripo_part_12,tripo_part_32: hide mesh pieces by name (debugging which piece is which)
+const hide = (q.get('hide') || '').split(',').filter(Boolean);
+hero.root.traverse((o) => { if (o.isMesh && hide.some((n) => o.name === n || o.name.startsWith(n + '_') || o.name.startsWith(n + '.'))) o.visible = false; });
+
+// world3d's numbers: run 4.2 m/s, jump vy 7.4 (air jump 7.0), gravity 22, swing 0.38 s
+const DT = 1 / 60, name = q.get('name') || '';
+const P = { x: 0, z: 0, y: mode === 'land' ? 4 : 0, vy: 0, atk: -1, t: 0, yaw: 0, speed: 0 };
+const at = (s) => Math.abs(P.t - 1 - s) < DT / 2; // the move starts after 1 s
+function step() {
+  const tm = P.t - 1;
+  if (mode === 'jump' && at(0)) P.vy = 7.4;
+  if (mode === 'flip' && at(0)) P.vy = 7.4;
+  if (mode === 'flip' && at(0.28)) P.vy = 7.0;
+  if (mode === 'land' && P.t < 1) { P.y = 4; P.vy = 0; } // hang, then drop at t=0
+  if ((mode === 'attack' && at(0)) || (mode === 'combo' && (at(0) || at(0.4) || at(0.8)))) P.atk = 0;
+  if (mode === 'hurt' && at(0)) hero.hurt();
+  if (mode === 'emote' && at(0)) hero.emote(name || 'happy');
+  if (mode === 'fidget' && at(0)) hero.fidget(name || 'look');
+  const run = moving && !['idle', 'emote', 'fidget', 'down'].includes(mode) && !(mode === 'stop' && tm >= 0);
+  P.speed += ((run ? 4.2 : 0) - P.speed) * (1 - Math.exp(-(run ? 22 : 14) * DT));
+  if (mode === 'turn' && tm >= 0) P.yaw += 2.6 * DT;
+  P.vy -= 22 * DT; P.y = Math.max(0, P.y + P.vy * DT); if (P.y === 0) P.vy = Math.max(P.vy, 0);
+  if (P.atk >= 0) { P.atk += DT / 0.38; if (P.atk >= 1) P.atk = -1; }
+  P.x += Math.sin(P.yaw) * P.speed * DT; P.z += Math.cos(P.yaw) * P.speed * DT;
+  hero.root.position.set(P.x, P.y, P.z); hero.root.rotation.y = P.yaw;
+  hero.update(DT, { atk: P.atk, atkL: -1, air: P.y > 0.001, vy: P.vy, down: mode === 'down' && tm >= 0 });
+  P.t += DT;
+}
+function shoot() {
+  const w = +q.get('w') || innerWidth, h = +q.get('h') || innerHeight; // w/h pin the size for headless captures
+  if (renderer.domElement.width !== w || renderer.domElement.height !== h) { renderer.setSize(w, h); cam.aspect = w / h; cam.updateProjectionMatrix(); }
+  const r = hero.root.position;
+  // camera offsets in the hero's frame (front / back / side), so it follows a turning hero too
+  const o = view === 'front' ? [0.3, 4.2] : view === 'back' ? [1.5, -4.5] : [4.2, 0.4];
+  const sy = Math.sin(P.yaw), cy = Math.cos(P.yaw);
+  cam.position.set(r.x + o[0] * cy + o[1] * sy, (view === 'side' ? 0.9 : r.y) + 0.55, r.z - o[0] * sy + o[1] * cy);
+  cam.lookAt(r.x, r.y + (+q.get('ly') || 0.8), r.z); // ly: height to look at
+  renderer.render(scene, cam);
+  document.getElementById('hud').textContent = `${mode} t=${(P.t - 1).toFixed(2)}s y=${P.y.toFixed(2)} vy=${P.vy.toFixed(1)}${P.atk >= 0 ? ' atk=' + P.atk.toFixed(2) : ''}`;
+}
+window.__lab = { THREE, hero, scene, step, P }; // for tests (tests/world3d/human.cdp.mjs)
+if (!live) {
+  while (P.t < 1 + T) step();
+  shoot();
+  document.title = 'READY';
+} else {
+  let acc = 0, last = performance.now();
+  renderer.setAnimationLoop((now) => {
+    acc += Math.min(0.1, (now - last) / 1000); last = now;
+    while (acc >= DT) { step(); acc -= DT; if (P.t > 1 + LOOP) Object.assign(P, { x: 0, z: 0, y: mode === 'land' ? 4 : 0, vy: 0, atk: -1, t: 0, yaw: 0 }); }
+    shoot();
+  });
+}
+</script>
+</body>
+</html>

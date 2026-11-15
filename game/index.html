@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Taproot the Game</title>
+<script type="importmap">{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }</script>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Alegreya+Sans:wght@400;500;700&display=swap">
 <style>
   /* Layout: flat plum background. Landing = title + button left, character art right (fades into the bg). Creator = preview stage left, controls right. */
@@ -73,6 +76,13 @@
     background: linear-gradient(#2a2148 0%, #5a4272 62%, #8a6a78 62.5%, #2e2538 62.6%, #1c1626 100%);
   }
   .stage .big { width: 160px; }
+  .stage { position: relative; overflow: hidden; }
+  .stage canvas.p3d { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .stage .p3dmsg { position: absolute; inset: auto 0 12px; text-align: center; font-size: 13px; color: var(--dim); }
+  #creator.human .stage .big, #creator.human .sizes, #creator.human .look2d { display: none; }
+  .body-pick { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .body-pick .opt { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; }
+  .body-pick .opt small { font-size: 12px; color: var(--dim); }
   .caption { text-align: center; margin: 10px 0 0; font-family: var(--display); font-size: 16px; }
   .caption small { display: block; font-family: var(--body); font-size: 13px; color: var(--dim); margin-top: 2px; }
   .sizes { display: flex; align-items: flex-end; justify-content: center; gap: 22px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
@@ -221,7 +231,7 @@
   .arm-footer { display: flex; align-items: center; margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line); }
 
   @media (max-width: 780px) {
-    .grid, .home-grid { grid-template-columns: minmax(0, 1fr); }
+    .grid, #creator .grid, .home-grid { grid-template-columns: minmax(0, 1fr); } /* #creator .grid too: it outranks .grid */
     .stage { height: 180px; }
     .stage .big { width: 120px; }
   }
@@ -261,7 +271,7 @@
     </div>
     <div class="grid">
       <section class="panel" aria-label="Preview">
-        <div class="stage"><div class="big" id="big"></div></div>
+        <div class="stage" id="stage"><div class="big" id="big"></div></div>
         <p class="caption" id="caption"></p>
         <div class="sizes">
           <div><div class="s1" id="s1"></div><span>Map size</span></div>
@@ -270,10 +280,14 @@
       </section>
       <section class="panel" aria-label="Customize">
         <div class="grp"><label class="lbl" for="name">Name</label><input class="name" id="name" maxlength="16" value="Aldric" autocomplete="off"></div>
+        <div class="grp"><span class="lbl">Body</span><div class="body-pick" id="body">
+          <button type="button" class="opt" data-k="body" data-v="classic"><span>Classic</span><small>Stylized hero, your colours</small></button>
+          <button type="button" class="opt" data-k="body" data-v="human"><span>Human</span><small>Realistic, hooded cloak</small></button>
+        </div></div>
         <div class="grp"><span class="lbl">Class</span><div class="classes" id="cls"></div></div>
-        <div class="grp"><span class="lbl">Skin</span><div class="row" id="skin"></div></div>
-        <div class="grp"><span class="lbl">Hair</span><div class="row" id="hs"></div></div>
-        <div class="grp"><span class="lbl">Hair color</span><div class="row" id="hc"></div></div>
+        <div class="grp look2d"><span class="lbl">Skin</span><div class="row" id="skin"></div></div>
+        <div class="grp look2d"><span class="lbl">Hair</span><div class="row" id="hs"></div></div>
+        <div class="grp look2d"><span class="lbl">Hair color</span><div class="row" id="hc"></div></div>
         <div class="actions">
           <span id="saveMsg" role="status"></span>
           <button class="btn ghost" id="rand" type="button">Randomize</button>
@@ -389,7 +403,10 @@
     $('s1').innerHTML = sprite(S);
     $('s2').innerHTML = sprite(S);
     document.querySelectorAll('[data-mini]').forEach((el) => { el.innerHTML = sprite({ ...S, equipment: defaultEquipment(el.dataset.mini) }); });
-    document.querySelectorAll('[data-k]').forEach((b) => b.setAttribute('aria-pressed', String(String(S[b.dataset.k]) === b.dataset.v)));
+    const val = (k) => k === 'body' ? (S.body || 'classic') : String(S[k]);
+    document.querySelectorAll('[data-k]').forEach((b) => b.setAttribute('aria-pressed', String(val(b.dataset.k) === b.dataset.v)));
+    $('creator').classList.toggle('human', S.body === 'human');
+    preview3d();
     const label = CLASSES.find(([k]) => k === S.cls)[1];
     $('caption').innerHTML = `${S.name.trim() || 'Unnamed'}<small>${label}</small>`;
   }
@@ -399,6 +416,7 @@
     if (!b) return;
     const k = b.dataset.k;
     S[k] = (k === 'skin' || k === 'hc') ? Number(b.dataset.v) : b.dataset.v;
+    if (k === 'body' && S.body === 'classic') delete S.body; // the classic hero is the default: no field
     if (k === 'cls') S.equipment = defaultEquipment(S.cls);
     update();
   });
@@ -410,8 +428,20 @@
     update();
   });
 
+  // The 3D human preview (a module, loaded the first time it's wanted). It reads S itself.
+  let p3d = null;
+  function preview3d() {
+    const on = S.body === 'human' && !$('creator').hidden;
+    if (p3d) { p3d.sync(on); return; }
+    if (!on) return;
+    p3d = { sync() {} }; // loading
+    import('/game/lib/preview3d.js').then((m) => { p3d = m.mountPreview($('stage'), () => S); p3d.sync(S.body === 'human' && !$('creator').hidden); })
+      .catch((e) => { p3d = null; console.error(e); });
+  }
+
   function show(name) {
     ['landing', 'creator', 'home', 'armory'].forEach((n) => { $(n).hidden = n !== name; });
+    preview3d();
     $('bg').classList.toggle('dim', name !== 'landing');
     window.scrollTo(0, 0);
   }
@@ -458,7 +488,7 @@
   async function api(action, body) {
     const key = getKey();
     const get = action === 'me';
-    const res = await fetch('/api/game/' + action, {
+    const res = await fetch(Ledger.api + action, {
       method: get ? 'GET' : 'POST',
       headers: { 'Content-Type': 'application/json', ...(key ? { Authorization: 'Bearer ' + key } : {}) },
       body: get ? undefined : JSON.stringify(body || {}),
