@@ -40,6 +40,20 @@
   .mini { position: fixed; z-index: 3; right: 12px; top: 10px; width: 180px; height: 180px; border-radius: 50%; padding: 5px; background: #12031a; box-shadow: 0 0 0 3px #2a0a3a, 0 0 18px rgba(200, 255, 46, 0.35); }
   #minimap { width: 100%; height: 100%; display: block; }
   .mini-label { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); font: 400 16px/1 'Lilita One', sans-serif; white-space: nowrap; text-shadow: 0 2px 0 #000, 0 0 6px #000; }
+  /* the Mine: which floor you are on, and the giants' health across the top */
+  .floor-badge { position: fixed; z-index: 3; right: 206px; top: 12px; padding: 6px 14px 7px; text-align: center; font: 400 28px/1 'Lilita One', sans-serif; color: var(--orange);
+    background: var(--panel); border: 3px solid var(--rim); border-radius: 16px; text-shadow: 0 2px 0 rgba(0, 0, 0, 0.5); }
+  .floor-badge small { display: block; margin-top: 3px; font: 800 10px/1 'Nunito', sans-serif; letter-spacing: 1px; color: #c8b8e8; text-shadow: none; }
+  .bosses { position: fixed; z-index: 3; left: 50%; top: 58px; transform: translateX(-50%); width: min(520px, calc(100vw - 32px)); padding: 10px 16px 12px;
+    background: var(--panel); border: 3px solid #ff4a4a; border-radius: 16px; pointer-events: none; }
+  .boss + .boss { margin-top: 8px; }
+  .boss b { display: flex; justify-content: space-between; gap: 10px; font: 400 17px/1.1 'Lilita One', sans-serif; }
+  .boss b em { font: 800 12px/1.4 'Nunito', sans-serif; font-style: normal; color: #c8b8e8; }
+  .boss .bar { margin-top: 4px; height: 14px; border-radius: 6px; background: #2a1a3a; border: 2px solid #12031a; overflow: hidden; }
+  .boss .bar i { display: block; height: 100%; transition: width 0.2s; }
+  .boss.golem_crystal .bar i { background: linear-gradient(#a8f0ff, #3aa8d8); }
+  .boss.spider_queen .bar i { background: linear-gradient(#ff8a8a, #c8283a); }
+  .boss.down { opacity: 0.55; }
   .pills { position: fixed; z-index: 3; right: 12px; top: 200px; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
   .pill { display: flex; align-items: center; gap: 8px; padding: 6px 14px; font-size: 18px; border-radius: 999px; background: #160a2e; border: 3px solid #2a1650; box-shadow: 0 0 0 2px var(--c, #5ab4ff), 0 0 14px var(--c, #5ab4ff); text-shadow: 0 2px 0 rgba(0, 0, 0, 0.5); }
   .pill .lv { color: var(--gold); }
@@ -199,6 +213,35 @@
   #aimBtn.on { opacity: 1; box-shadow: 0 0 0 2px #ff4a3a inset; }
   .actions .touch { padding: 6px 12px; border-radius: 999px; font-size: 14px; background: linear-gradient(#ffd27a, #e89a2a); box-shadow: 0 3px 0 #8a4a10; }
   .actions .touch.on { background: linear-gradient(#ff8a8a, #e04a4a); box-shadow: 0 3px 0 #8a1a1a; }
+  /* phones: a visible joystick under the left thumb, jump + attack side by side under the right */
+  #joyRing { position: fixed; z-index: 3; width: 120px; height: 120px; margin: -60px 0 0 -60px; border-radius: 50%; pointer-events: none;
+    border: 3px solid rgba(255, 255, 255, 0.55); background: rgba(18, 6, 28, 0.25); }
+  #joyRing i { position: absolute; left: 50%; top: 50%; width: 50px; height: 50px; margin: -25px 0 0 -25px; border-radius: 50%; background: rgba(255, 255, 255, 0.7); }
+  .thumbs { display: contents; }
+  @media (pointer: coarse) {
+    .help { display: none; }
+    .thumbs { display: flex; gap: 12px; align-items: flex-end; }
+    #attackBtn { width: 84px; height: 84px; }
+    #jumpBtn { width: 64px; height: 64px; }
+    .actions button { min-height: 44px; min-width: 44px; }
+    .nitro { pointer-events: none; } /* display only: never steal a joystick touch */
+  }
+  /* Fold closed (very narrow): small buttons two abreast so the column stays short */
+  @media (pointer: coarse) and (max-width: 400px) {
+    .actions { display: grid; grid-template-columns: auto auto; justify-items: center; }
+    .actions .thumbs, .actions .tilt { grid-column: 1 / -1; }
+    .mini { width: 104px; height: 104px; }
+    .pills { top: 120px; }
+    .tl { width: calc(100% - 132px); }
+    body .nitro { bottom: auto; top: 92px; } body .nitro .bar { width: 50px; } body #nitroText { display: none; } /* under the HP panel: the bottom row belongs to the thumbs */
+  }
+  /* Fold open (near-square): nothing tappable on the crease down the middle */
+  @media (pointer: coarse) and (min-aspect-ratio: 4/5) and (max-aspect-ratio: 5/4) {
+    body .nitro { right: auto; left: max(12px, env(safe-area-inset-left, 0px)); bottom: 16px; }
+    #nearChip { left: 12px; top: 96px; transform: none; }
+    .farmbar { left: 12px; transform: none; }
+  }
+  body.solo #chat, body.solo #chatBtn, body.solo .links, body.solo #gearBtn { display: none !important; }
   #fade { position: fixed; inset: 0; z-index: 9; background: #000; opacity: 0; pointer-events: none; transition: opacity 0.7s; }
 
   @media (max-width: 640px) {
@@ -215,10 +258,14 @@
     .links { display: none; }
   }
 </style>
+<script src="/game/world3d/solo.js"></script>
 <script>
 // Signed-in players with a character only: no session -> sign in; no character -> the creator.
-if (!localStorage.getItem('taproot_session')) window.location.replace('/game/');
-else if (!localStorage.getItem('taproot_character')) window.location.replace('/game/?create=1');
+// Solo (?solo=1) needs neither: it plays offline with its own saves.
+if (!window.SOLO) {
+  if (!localStorage.getItem('taproot_session')) window.location.replace('/game/');
+  else if (!localStorage.getItem('taproot_character')) window.location.replace('/game/?create=1');
+}
 </script>
 <script src="/game/lib/ledger.js"></script>
 <script>Ledger.init({ fast: new URLSearchParams(location.search).has('farmfast') });</script>
@@ -247,6 +294,8 @@ else if (!localStorage.getItem('taproot_character')) window.location.replace('/g
 <div class="chip" id="nearChip" hidden><span class="dot">&#10140;</span><span id="nearText"></span></div>
 
 <div class="mini"><canvas id="minimap" width="240" height="240" aria-label="Minimap"></canvas><div class="mini-label" id="miniLabel"></div></div>
+<div class="floor-badge" id="floorBadge" hidden></div>
+<div class="bosses" id="bosses" hidden></div>
 <div class="pills">
   <div class="pill" style="--c: #ffb03a"><span>&#127942;</span><b class="lv" id="lvText">Lv 1</b><i id="xpText">0/100 XP</i></div>
   <div class="pill" style="--c: #ffcf3a"><span>&#128176;</span><b id="goldText">0</b></div>
@@ -267,9 +316,10 @@ else if (!localStorage.getItem('taproot_character')) window.location.replace('/g
   <button id="rotBtn" class="touch" type="button" tabindex="-1" hidden>&#8635; Turn</button>
   <button id="breakBtn" class="touch" type="button" tabindex="-1" hidden>&#9935; Break</button>
   <button id="bagBtn" type="button" tabindex="-1">Bag<kbd>B</kbd></button>
-  <button id="jumpBtn" type="button" tabindex="-1" aria-label="Jump">JUMP</button>
-  <button id="attackBtn" type="button" tabindex="-1" aria-label="Attack">&#9876;&#65039;</button>
+  <div class="thumbs"><button id="jumpBtn" type="button" tabindex="-1" aria-label="Jump">JUMP</button>
+  <button id="attackBtn" type="button" tabindex="-1" aria-label="Attack">&#9876;&#65039;</button></div>
 </div>
+<div id="joyRing" hidden><i></i></div>
 <div class="help" id="helpBar"><b>I</b> hide &middot; <b>WASD</b> move &middot; <b>Drag / Q E</b> look &middot; <b>Z X</b> tilt &middot; <b>Space</b> jump &middot; <b>'</b> / <b>J</b> right hand &middot; <b>;</b> left hand &middot; <b>Shift</b> nitro &middot; <b>C</b> camera &middot; <b>F</b> use &middot; <b>H</b> potion &middot; <b>N</b> smoke &middot; <b>B</b> bag &middot; <b>U</b> sprint toggle &middot; <b>V</b> view &middot; <b>L</b> auto-aim &middot; <b>T</b> chat</div>
 <div id="crosshair" hidden></div>
 <div id="aimRing" hidden></div>
@@ -335,6 +385,7 @@ import { MONSTER_LOOT, ASSIST_SHARE } from './economy.js';
 import { ARENA_CENTER, ARENA_RADIUS, standY, standBlocked, tomatoArc, TOMATO_GRAVITY, TOMATO_COOLDOWN_MS,
   HAZARDS, TELL_MS, eventsNear, BUFFS, buffAt } from './arena.js';
 import * as arenaMod from './arena.js';
+import { FLOORS, floorMap, BELOW, ABOVE, SHIFT_1F } from './mine.js';
 for (const id of BLOCK_IDS) FARM_ITEMS['block_' + id] = { name: BLOCKS[id].name, emoji: BLOCKS[id].emoji, info: 'Building block · place it on your plot in build mode (G)' };
 
 const AREA = new URLSearchParams(location.search).get('area');
@@ -658,7 +709,58 @@ const AREAS = {
     arrive: { fields: { x: 22, y: 31 } },
     spawn: ['bat', 'bat', 'bat', 'bat', 'bat', 'slime', 'slime', 'shroom', 'shroom', 'shroom', 'goblin', 'goblin'],
   },
+
+  // The deeper floors of the Mine. Their maps are made in mine.js; you reach them by ladder.
+  cave_b1: {
+    title: 'Crystal Tunnels',
+    paths: [], ponds: [], tall: [], bushes: [], stumps: [], flowers: [], trees: [], treeKind: () => 'tree_pine',
+    objects: [
+      ['crystal_blue', 58, 9, 2, 1], ['crystal_purple', 61, 14, 2, 1], ['crystal_blue', 42, 37, 2, 1], ['crystal_purple', 26, 29, 2, 1],
+      ['crystal_blue', 17, 40, 2, 1], ['crystal_purple', 9, 31, 2, 1], ['crystal_blue', 13, 19, 2, 1], ['crystal_purple', 53, 45, 2, 1],
+      ['node_crystal', 56, 13, 2, 1], ['node_crystal', 39, 25, 2, 1], ['node_gold', 21, 38, 2, 1],
+      ['stalagmite_big', 46, 40, 1, 1], ['stalagmite_small', 30, 31, 1, 1], ['stalagmite_small', 11, 36, 1, 1], ['boulders', 6, 15, 2, 1],
+    ],
+    props: [['glowshrooms', 54, 44], ['glowshrooms', 36, 28], ['glowshrooms', 14, 33], ['bones', 24, 31], ['bones', 9, 22]],
+    torches: [[63, 36], [9, 8]],
+    lights: [[59, 10, 44], [42, 38, 44], [26, 30, 44], [17, 41, 44], [9, 32, 44], [13, 20, 44], [54, 45, 34], [62, 14, 34]],
+    start: { x: 64, y: 40 },
+    exits: [], arrive: {},
+    spawn: ['goblin', 'goblin', 'goblin', 'goblin', 'goblin', 'bat', 'bat', 'bat', 'bat', 'bat', 'bat', 'shroom', 'shroom'],
+    tough: 1.6, // everything down here hits harder and takes more to bring down
+  },
+  cave_b2: {
+    title: 'The Hollow',
+    paths: [], ponds: [], tall: [], bushes: [], stumps: [], flowers: [], trees: [], treeKind: () => 'tree_pine',
+    objects: [
+      ['crystal_blue', 10, 22, 2, 1], ['crystal_purple', 44, 14, 2, 1], ['crystal_blue', 42, 40, 2, 1], ['crystal_purple', 26, 8, 2, 1],
+      ['stalagmite_big', 14, 14, 1, 1], ['stalagmite_big', 40, 24, 1, 1], ['stalagmite_small', 22, 44, 1, 1], ['boulders', 34, 46, 2, 1],
+    ],
+    props: [['bones', 24, 30], ['bones', 33, 22], ['bones', 20, 18], ['bones', 36, 34], ['glowshrooms', 12, 30], ['glowshrooms', 45, 30]],
+    torches: [[17, 38]],
+    lights: [[11, 23, 44], [45, 15, 44], [43, 41, 44], [27, 9, 44], [28, 27, 70]],
+    start: { x: 18, y: 41 },
+    exits: [], arrive: {},
+    spawn: [{ type: 'golem_crystal', spot: [22, 22] }, { type: 'spider_queen', spot: [35, 30] }],
+  },
 };
+// 1F is the old cave moved down SHIFT_1F rows inside a map half again as big (mine.js); shift
+// everything placed on it to match, then dress the new chambers to the north and east
+{
+  const c = AREAS.cave, s = SHIFT_1F;
+  c.objects.forEach((o) => { o[2] += s; });
+  c.props.forEach((o) => { o[2] += s; });
+  c.tracks.forEach((t) => { t[1] += s; t[3] += s; });
+  c.torches.forEach((t) => { t[1] += s; });
+  c.lights.forEach((l) => { l[1] += s; });
+  c.start.y += s;
+  c.arrive.fields.y += s;
+  c.objects.push(['crystal_blue', 20, 6, 2, 1], ['crystal_purple', 55, 9, 2, 1], ['node_gold', 26, 10, 2, 1], ['node_iron', 49, 7, 2, 1],
+    ['stalagmite_big', 17, 9, 1, 1], ['boulders', 59, 14, 2, 1], ['crystal_blue', 64, 33, 2, 1], ['node_crystal', 57, 35, 2, 1],
+    ['stalagmite_small', 62, 37, 1, 1], ['barrel', 60, 24, 1, 1], ['crate', 61, 24, 1, 1]);
+  c.props.push(['glowshrooms', 24, 11], ['glowshrooms', 53, 12], ['bones', 58, 30], ['pickaxe', 66, 27]);
+  c.torches.push([62, 23], [24, 4]);
+  c.lights.push([21, 7, 44], [56, 10, 44], [67, 34, 44], [58, 36, 34]);
+}
 /* ---------- stitched maps: neighbouring areas laid side by side in one scene, so you walk (and
    see) straight across instead of warping. Each part keeps its own layout, offset by (ox, oy) tiles;
    the edges they share ('open') lose their border trees and the exits between them. ---------- */
@@ -773,12 +875,17 @@ function stitch(title, size, parts) {
   for (const k of ['fields', 'city', 'avenues', 'woods', 'docks']) AREAS[k] = world;
 }
 const A = AREAS[AREA] || AREAS.fields;
+if (SOLO) A.doors = (A.doors || []).filter((d) => !/area=(arena|stands)/.test(d.href)); // no PvP in solo: the colosseum gates stay shut
+if (SOLO) document.body.classList.add('solo');
+// a floor of the Mine: its map is generated (mine.js); 1F builds on the old cave map
+const MINE = FLOORS[AREA] ? floorMap(AREA, A.map ? (await (await fetch(A.map)).json()).rows : null) : null;
+if (MINE) A.size = [MINE.rows[0].length, MINE.rows.length];
 const [MAP_W, MAP_H] = A.size || (AREA === 'workshop' ? [14, 10] : [48, 36]);
 const CLUB = AREA === 'clubhouse' && PLOT_Q;
 const DAY = A.sky === 'day'; // blue sky, clouds and real mountains instead of the neon backdrop
 const TOWN = !!A.town;
 const INDOOR = !!A.indoor; // a room: plank floor, walls, warm lamps, no sky     // city areas use the Phaser town look: timber cottages, cobbles, no neon
-const UNDER = !!A.map;      // underground: no sky, dark fog, torches and a lantern
+const UNDER = !!MINE;       // underground: no sky, dark fog, torches and a lantern
 const COLO = A.colosseum;   // the landmark ring in the overworld, if this map has one
 const ARENA = !!A.arena;    // PvP: player hits do damage here
 const STANDS = !!A.stands;  // the spectators' side of the same pit: no damage either way
@@ -786,7 +893,13 @@ const PIT = ARENA || STANDS;
 const [ARENA_X, ARENA_Z] = ARENA_CENTER, ARENA_R = ARENA_RADIUS; // pit centre and radius, in tiles
 const ARENA_PADS = [0, Math.PI / 2, Math.PI, -Math.PI / 2 + 0.6].map((a) => [ARENA_X + Math.cos(a) * 10.5, ARENA_Z + Math.sin(a) * 10.5]);
 const ARENA_COLS = [1, 3, 5, 7].map((k) => [ARENA_X + Math.cos(k * Math.PI / 4) * 6.5, ARENA_Z + Math.sin(k * Math.PI / 4) * 6.5]);
-const CAVE = UNDER ? (await (await fetch(A.map)).json()).rows : null;
+const CAVE = MINE ? MINE.rows : null;
+/* Ladders between the Mine's floors, Pokémon style: the way down is a framed hole in the floor,
+   the way up a ladder into an opening in the ceiling. You climb from the tile beside it (y + 1),
+   which is also where you arrive when you come the other way. */
+const LADDERS = !MINE ? [] : [['down', MINE.down, BELOW[AREA]], ['up', MINE.up, ABOVE[AREA]]]
+  .filter(([, at, to]) => at && to).map(([dir, at, to]) => ({ dir, x: at.x, y: at.y, to, floor: FLOORS[to] }));
+LADDERS.forEach((l) => { A.arrive[l.to] = { x: l.x, y: l.y + 1 }; });
 const { paths: PATHS, ponds: PONDS, tall: TALL, start: START, bushes: BUSHES, stumps: STUMPS, flowers: FLOWERS,
   trees: TREES, fences: FENCES = [], spawn: SPAWN_LIST } = A;
 const PLANKS = A.planks || [];
@@ -800,6 +913,8 @@ for (let i = TREES.length - 1; i >= 0; i--) {
 }
 
 /* ---------- monsters (2D stats converted to tiles: speed and aggro / 16) ---------- */
+// how far from its centre a monster can be hit (giants are wide)
+const reachOf = (m, small, big) => m.cfg.size || (m.cfg.big ? big : small);
 const MONSTERS = {
   slime:  { name: 'Slime',      dmg: 6,  aggro: 4.4 },
   shroom: { name: 'Shroom',     dmg: 8,  aggro: 3.8 },
@@ -809,14 +924,29 @@ const MONSTERS = {
   // The arena's house fighter: a person, not a creature. Carries a sword and a fire staff,
   // closes to swing and throws a fireball from range. Only ever spawned in the pit.
   gladiator: { name: 'Gladiator', dmg: 8, aggro: 11, respawn: 25000, human: true, cast: [2.2, 9.5] },
+  // The two giants of the Hollow (B2). `size` is their reach in tiles, `tag` how high the name sits.
+  // The golem plods, then winds up a ground slam you can see coming and step out of; the queen
+  // circles, crouches, and lunges.
+  golem_crystal: { name: 'Grak, the Crystal Golem', dmg: 20, aggro: 11,
+    big: true, giant: true, size: 1.6, tag: 3.9, respawn: 120000, slam: { range: 3.4, tell: 1.1, dmg: 34, cd: 4.5 } },
+  spider_queen: { name: 'The Spider Queen', dmg: 16, aggro: 12,
+    big: true, giant: true, size: 1.6, tag: 2.6, respawn: 120000, lunge: { near: 3, far: 9, tell: 0.6, speed: 12, time: 0.45, cd: 3.5 } },
 };
 // HP, speed, XP, gold and drops come from economy.js, the same table the server checks hits and pays out from.
 for (const [k, m] of Object.entries(MONSTERS)) Object.assign(m, MONSTER_LOOT[k]);
 const LOOT = {
   slime_gel: { name: 'Slime Gel', color: '#6aff8a' }, spore_cap: { name: 'Spore Cap', color: '#ff4a6a' }, bat_fang: { name: 'Bat Fang', color: '#f4f0ff' },
   goblin_ear: { name: 'Goblin Ear', color: '#8ad43a' }, royal_jelly: { name: 'Royal Jelly', color: '#c06aff' },
-  laurel: { name: 'Laurel Wreath', color: '#e0d060' },
+  laurel: { name: 'Laurel Wreath', color: '#e0d060', emoji: '\u{1F33F}' },
+  golem_core: { name: 'Golem Core', color: '#7ae0ff', emoji: '\u{1F48E}' }, queen_silk: { name: 'Queen\'s Silk', color: '#ff6a6a', emoji: '\u{1F578}\u{FE0F}' },
 };
+// A deeper floor: the same monsters hit harder and take more to bring down. Rewards stay as the
+// server pays them (economy.js MONSTER_LOOT), so the browser never shows more than it gets.
+if (A.tough) for (const k of new Set(A.spawn)) {
+  const m = MONSTERS[k];
+  if (m) MONSTERS[k] = { ...m, hp: Math.round(m.hp * A.tough), dmg: Math.round(m.dmg * A.tough) };
+}
+
 const FIELD_KEY = 'taproot_field';
 
 /* ---------- tiny helpers ---------- */
@@ -911,6 +1041,7 @@ const addObject = (key, tx, ty, w, h, name, ry) => { block(tx, ty, w, h); placed
 
 for (let y = 0; y < MAP_H; y++) for (let x = 0; x < MAP_W; x++) if (isWaterCell(x, y)) blocked[y][x] = true;
 if (CAVE) CAVE.forEach((row, y) => [...row].forEach((ch, x) => { if (ch !== '.') blocked[y][x] = true; }));
+LADDERS.forEach((l) => { blocked[l.y][l.x] = true; });
 PLANKS.forEach(([x1, , x2, y2, kind]) => {
   if (kind !== 'quay') return;
   for (let x = x1; x <= x2; x++) if (!PLANKS.some(([a, b, c, d, k]) => k === 'dock' && x >= a && x <= c && y2 >= b && y2 <= d)) blocked[y2][x] = true;
@@ -1104,11 +1235,14 @@ const groundChunks = []; // { canvas, glow, x, y } in texture pixels
 
 /* ---------- renderer, scene, lights ---------- */
 const canvas = document.getElementById('scene');
+// Phones (touch screens) get a lighter frame: fewer pixels, no glow pass, cheaper shadows and
+// sparser grass. Desktop is untouched. ?phone=0 / ?phone=1 forces either for testing.
+const PHONE = new URLSearchParams(location.search).has('phone') ? new URLSearchParams(location.search).get('phone') !== '0' : matchMedia('(pointer: coarse)').matches;
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setPixelRatio(Math.min(devicePixelRatio, PHONE ? 1.25 : 2));
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.type = PHONE ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
 
 const scene = new THREE.Scene();
 scene.background = INDOOR ? new THREE.Color('#1c130c') : UNDER ? new THREE.Color('#07040e') : (() => {
@@ -1128,7 +1262,7 @@ const sun = new THREE.DirectionalLight('#fff2dc', UNDER ? 0.35 : INDOOR ? 0.9 : 
 const lantern = new THREE.PointLight('#ffc890', 14, 10, 1.4);
 if (UNDER) scene.add(lantern);
 sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.mapSize.set(PHONE ? 1024 : 2048, PHONE ? 1024 : 2048);
 Object.assign(sun.shadow.camera, { left: -24, right: 24, top: 24, bottom: -24, near: 1, far: 90 });
 sun.shadow.bias = -0.0005;
 sun.shadow.normalBias = 0.04;
@@ -1795,6 +1929,7 @@ PLANKS.forEach(([x1, y1, x2, y2, kind]) => {
 
 // mine: rock walls along every floor edge, mine-cart rails, decor, wall torches and coloured lights
 const flicker = [];
+const ceilings = [];
 if (CAVE) {
   const cell = (x, y) => (CAVE[y] || '')[x] || '#';
   at(0, 0);
@@ -1829,6 +1964,48 @@ if (CAVE) {
     const l = new THREE.PointLight(r >= 60 ? '#c8d8ff' : r >= 44 ? '#7ab8ff' : '#5affc8', r >= 60 ? 5 : 6, (r / 16) * 1.7, 1.5);
     l.position.set(tx + 0.5, 1.2, ty + 0.5);
     scene.add(l);
+  });
+  const TIMBER = '#7a4a28', RAIL = '#a06e46';
+
+  const ladder = (h, y0, rungs) => { // two rails and rungs, centred on the origin, facing +z
+    for (const sx of [-0.28, 0.28]) put('toon', 'box', RAIL, sx, y0 + h / 2, 0, 0.08, h, 0.08);
+    for (let i = 0; i < rungs; i++) put('toon', 'box', RAIL, 0, y0 + 0.25 + (i * (h - 0.4)) / Math.max(1, rungs - 1), 0, 0.56, 0.06, 0.07);
+  };
+  LADDERS.forEach((l) => {
+    const cx = l.x + 0.5, cz = l.y + 0.5;
+    if (l.dir === 'down') {
+      // a dark square shaft in the floor, a timber collar round it, and the top of the ladder showing
+      at(cx, cz);
+      put('flat', 'box', '#000000', 0, 0.015, 0, 1.3, 0.02, 1.3);
+      for (const [x, z, w, d] of [[0, -0.72, 1.6, 0.16], [0, 0.72, 1.6, 0.16], [-0.72, 0, 0.16, 1.28], [0.72, 0, 0.16, 1.28]])
+        put('toon', 'box', TIMBER, x, 0.09, z, w, 0.18, d);
+      for (const [x, z] of [[-0.72, -0.72], [0.72, -0.72], [-0.72, 0.72], [0.72, 0.72]]) put('toon', 'box', '#5a3a22', x, 0.16, z, 0.22, 0.32, 0.22);
+      at(cx, cz - 0.25);
+      ladder(0.9, -0.3, 3);
+    } else {
+      // a ladder all the way up into a framed square opening, with daylight-ish glow from the floor above
+      const H = 4.6;
+      at(cx, cz);
+      ladder(H + 0.6, 0, 11);
+      const group = buildGroup(() => {
+        at(cx, cz);
+        for (const [x, z, w, d] of [[0, -1.05, 2.5, 0.6], [0, 1.05, 2.5, 0.6], [-1.05, 0, 0.6, 1.5], [1.05, 0, 0.6, 1.5]])
+          put('flat', 'box', '#3a3050', x, H + 0.25, z, w, 0.5, d); // the rock round the hole
+        for (const [x, z, w, d] of [[0, -0.7, 1.6, 0.14], [0, 0.7, 1.6, 0.14], [-0.7, 0, 0.14, 1.26], [0.7, 0, 0.14, 1.26]])
+          put('toon', 'box', TIMBER, x, H - 0.05, z, w, 0.2, d); // timber frame under the lip
+        for (const [x, z] of [[-0.7, -0.7], [0.7, -0.7], [-0.7, 0.7], [0.7, 0.7]]) put('toon', 'box', '#5a3a22', x, H / 2, z, 0.14, H, 0.14);
+        for (const [x, z, w, d] of [[0, -0.66, 1.3, 0.06], [0, 0.66, 1.3, 0.06], [-0.66, 0, 0.06, 1.3], [0.66, 0, 0.06, 1.3]])
+          put('flat', 'box', '#2e2642', x, H + 1.0, z, w, 1.5, d); // the shaft walls above
+        put('glow', 'box', '#fff2c8', 0, H + 1.7, 0, 1.3, 0.04, 1.3); // the lit floor above
+      });
+      scene.add(group); // its own group: kept out of the camera's line-of-sight test, so it never pulls the camera in
+      group.userData.at = [cx, cz];
+      ceilings.push(group); // and hidden while the camera is up above the ceiling, looking down through it
+      const sun = new THREE.SpotLight('#ffe6b0', 18, 9, 0.5, 0.6, 1.2);
+      sun.position.set(cx, 6.2, cz);
+      sun.target.position.set(cx, 0, cz);
+      scene.add(sun, sun.target);
+    }
   });
 }
 
@@ -2229,6 +2406,11 @@ let action = null;
 function currentAction() {
   const fa = farmAction();
   if (fa) return fa;
+  for (const l of LADDERS) if (Math.hypot(P.x - (l.x + 0.5), P.z - (l.y + 0.5)) < 1.7) {
+    const verb = l.dir === 'down' ? 'Climb down' : 'Climb up';
+    return { text: `${l.dir === 'down' ? '\u25BC' : '\u25B2'} Press F to ${verb.toLowerCase()} \u00B7 to ${l.floor.code} ${l.floor.name}`, btn: `${l.dir === 'down' ? '\u25BC' : '\u25B2'} ${verb}`,
+      run: () => goTo(`/game/world3d/?area=${l.to}&from=${AREA}`) };
+  }
   if (BOARD_AT && Math.hypot(P.x - BOARD_AT.x, P.z - BOARD_AT.z) < 2) return { text: 'Press F to set sail', btn: '⛵ Set sail', run: setSail };
   for (const s of shopSpots) if (Math.hypot(P.x - s.x, P.z - s.z) < 2.4) return { text: `Press F to shop at ${s.name}`, btn: '\u{1F6D2} Shop', run: () => openShop(s.name) };
   if (craftAt && Math.hypot(P.x - craftAt.x, P.z - craftAt.z) < 2.3) return { text: 'Press F to use the crafting table', btn: '\u{1F528} Craft', run: openCraft };
@@ -2236,6 +2418,7 @@ function currentAction() {
 }
 function setSail() {
   if (!BOARD_AT || leaving || Math.hypot(P.x - BOARD_AT.x, P.z - BOARD_AT.z) > 2) return;
+  if (SOLO) { toast("Sailing isn't in solo yet"); return; }
   leaving = true;
   $('fade').style.opacity = 1;
   setTimeout(() => { location.href = '/game/sea3d/?from=docks'; }, 450);
@@ -2436,7 +2619,7 @@ function grassMesh(spots, height, width, baseCol, tipCol) {
   for (let cy = 0; cy < MAP_H; cy++) for (let cx = 0; cx < MAP_W; cx++) {
     const type = tallType(cx, cy);
     if (!type || blocked[cy][cx] || touchesPath(cx, cy, 0.25)) continue;
-    for (let i = 0; i < 24; i++) (type === 'd' ? dry : green).push([cx + hash(cx * 31 + i, cy, 311), cy + hash(cx, cy * 31 + i, 312)]);
+    for (let i = 0; i < (PHONE ? 10 : 24); i++) (type === 'd' ? dry : green).push([cx + hash(cx * 31 + i, cy, 311), cy + hash(cx, cy * 31 + i, 312)]);
   }
   if (green.length) grassMesh(green, 0.65, 0.06, '#2a8a22', '#d8ff4a');
   if (dry.length) grassMesh(dry, 0.6, 0.06, '#9a7a2a', '#ffe08a');
@@ -2533,6 +2716,66 @@ function makeMonster(type) {
       part(new THREE.CylinderGeometry(0.2, 0.22, 0.12, 12), gold, body, 0, 0.68, 0);
       for (let i = 0; i < 5; i++) { const a = (i / 5) * Math.PI * 2; part(new THREE.ConeGeometry(0.05, 0.14, 4), gold, body, Math.cos(a) * 0.17, 0.79, Math.sin(a) * 0.17); }
       g.scale.setScalar(2.1);
+      P.sy = 2.1;
+    }
+  } else if (type === 'golem_crystal') {
+    // Grak: a hunched slab of purple stone, about three tiles tall, with blue crystal growing out
+    // of his shoulders and back. The arms hang from pivots so the slam can raise them overhead.
+    const stone = mk('#8a80a0', { emissive: '#1a1428' }), dark = mk('#625a78', { emissive: '#120e1c' }), glow = mk('#7ae0ff', { emissive: '#2a8ab0' });
+    const BOX = new THREE.BoxGeometry(1, 1, 1), SPIKE = new THREE.ConeGeometry(1, 1, 5);
+    for (const s of [-1, 1]) part(BOX, dark, body, s * 0.45, 0.45, 0, 0.5, 0.9, 0.55);
+    part(BOX, stone, body, 0, 1.55, 0, 1.6, 1.4, 1.0);
+    part(BOX, stone, body, 0, 2.35, 0.1, 1.2, 0.5, 0.8);
+    const head = part(BOX, dark, body, 0, 2.6, 0.45, 0.62, 0.5, 0.55);
+    for (const s of [-1, 1]) part(SPH, glow, head, s * 0.22, 0.05, 0.5, 0.12, 0.1, 0.06);
+    [[-0.7, 2.6, -0.1, 0.22, 0.8, 0.3], [0.7, 2.7, -0.1, 0.2, 0.9, -0.3], [-0.3, 2.5, -0.45, 0.18, 0.7, 0.5], [0.25, 2.3, -0.5, 0.16, 0.6, -0.5],
+      [0, 2.75, -0.2, 0.2, 0.75, 0]].forEach(([x, y, z, r, h, rz]) => { part(SPIKE, glow, body, x, y, z, r, h, r).rotation.set(-0.4, 0, rz); });
+    P.arms = [-1, 1].map((s) => {
+      const piv = new THREE.Group();
+      piv.position.set(s * 1.0, 2.1, 0);
+      body.add(piv);
+      part(BOX, stone, piv, s * 0.15, -0.6, 0, 0.5, 1.3, 0.55);
+      part(BOX, dark, piv, s * 0.15, -1.45, 0.05, 0.7, 0.6, 0.7); // the fist
+      part(SPIKE, glow, piv, s * 0.25, 0.05, 0, 0.14, 0.45, 0.14).rotation.z = -s * 0.5;
+      return piv;
+    });
+    // the slam's warning: a ring on the floor that fills in before the fists come down
+    P.ring = new THREE.Mesh(new THREE.RingGeometry(0.86, 1, 48), new THREE.MeshBasicMaterial({ color: '#ff4a4a', transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false }));
+    P.ring.rotation.x = -Math.PI / 2;
+    P.disc = new THREE.Mesh(new THREE.CircleGeometry(1, 48), new THREE.MeshBasicMaterial({ color: '#ff4a4a', transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false }));
+    P.disc.rotation.x = -Math.PI / 2;
+    scene.add(P.ring, P.disc);
+  } else if (type === 'spider_queen') {
+    // the Queen: a big striped abdomen, a small head with a cluster of red eyes and a gold crown,
+    // and eight legs in two joints each, swung from the body so she scuttles
+    const shell = mk('#3a2a4a'), dark = mk('#24182e'), red = mk('#c8383a', { emissive: '#4a0a0a' });
+    const eye = mk('#ff4a4a', { emissive: '#ff2020' }), gold = mk('#ffcf3a', { emissive: '#8a5a00' });
+    const LEG = new THREE.CylinderGeometry(0.07, 0.05, 1, 6);
+    part(SPH, shell, body, 0, 1.0, -0.75, 1.1, 0.8, 1.25);
+    part(SPH, red, body, 0, 1.05, -0.75, 1.12, 0.12, 1.27);
+    part(SPH, red, body, 0, 1.6, -0.9, 0.3, 0.12, 0.45);
+    part(SPH, dark, body, 0, 0.85, 0.55, 0.55, 0.45, 0.6);
+    const head = new THREE.Group();
+    head.position.set(0, 0.9, 1.1);
+    body.add(head);
+    part(SPH, dark, head, 0, 0, 0, 0.38);
+    [[-0.13, 0.12], [0.13, 0.12], [-0.22, 0], [0.22, 0], [0, 0.2], [0, -0.04]].forEach(([x, y], i) => part(SPH, eye, head, x, y, 0.32, i < 2 ? 0.08 : 0.055));
+    for (const s of [-1, 1]) part(new THREE.ConeGeometry(0.06, 0.3, 5), dark, head, s * 0.1, -0.28, 0.25).rotation.x = Math.PI - 0.5;
+    for (let i = 0; i < 5; i++) part(new THREE.ConeGeometry(0.05, 0.18, 4), gold, head, (i - 2) * 0.1, 0.38, -0.05);
+    P.legs = [];
+    for (const s of [-1, 1]) for (let i = 0; i < 4; i++) {
+      const hip = new THREE.Group();
+      hip.position.set(s * 0.45, 0.95, 0.75 - i * 0.38);
+      hip.rotation.y = s * (Math.PI / 2) + (i - 1.5) * -0.45 * s;
+      body.add(hip);
+      const up = part(LEG, dark, hip, 0, 0.45, 0.55, 1, 1.25, 1);
+      up.rotation.x = 1.1;
+      const knee = new THREE.Group();
+      knee.position.set(0, 0.9, 1.05);
+      hip.add(knee);
+      const low = part(LEG, dark, knee, 0, -0.85, 0.35, 1, 1.9, 1);
+      low.rotation.x = -0.4;
+      P.legs.push({ hip, s, i, base: hip.rotation.y });
     }
   } else if (type === 'shroom') {
     part(new THREE.CylinderGeometry(0.15, 0.19, 0.4, 10), mk('#fff0d8'), body, 0, 0.2, 0);
@@ -2705,7 +2948,8 @@ function spawnMonster(entry, ei, at) {
   if (at) return addMonster(type, entry, ei, at.sid, at.x, at.z, at.hp, at.face);
   const tall = TALL.filter(([x1, y1]) => x1 >= bx1 && y1 >= by1 && x1 < bx2 && y1 < by2);
   let tx = START.x, ty = START.y;
-  for (let tries = 0; tries < 300; tries++) {
+  if (entry.spot) [tx, ty] = entry.spot; // a giant has its own spot
+  else for (let tries = 0; tries < 300; tries++) {
     if (tall.length && Math.random() < 0.7) {
       const r = tall[Math.floor(Math.random() * tall.length)];
       tx = r[0] + Math.floor(Math.random() * (r[2] - r[0] + 1));
@@ -2735,7 +2979,7 @@ function addMonster(type, entry, ei, sid, x, z, hp, face) {
 function monsterFree(m, x, z) {
   if (x < 0.5 || z < 0.6 || x > MAP_W - 0.5 || z > MAP_H - 0.25) return false;
   if (m.cfg.fly) return true;
-  const r = m.cfg.big ? 0.56 : 0.31;
+  const r = m.cfg.giant ? m.cfg.size * 0.6 : m.cfg.big ? 0.56 : 0.31;
   return [[-r, 0], [r, 0], [-r, -0.25], [r, -0.25]].every(([ox, oz]) => !blocked[Math.floor(z + oz)][Math.floor(x + ox)]);
 }
 
@@ -2777,7 +3021,7 @@ const equippedIds = () => Object.values((charData || DEFAULT_CHAR).equipment || 
 function iconOf(id) {
   if (CONSUMABLES[id]) return CONSUMABLES[id].emoji;
   if (FARM_ITEMS[id]) return FARM_ITEMS[id].emoji;
-  if (LOOT[id]) return `<img src="/game/world/assets/loot/${id}.png" alt="">`;
+  if (LOOT[id]) return LOOT[id].emoji || `<img src="/game/world/assets/loot/${id}.png" alt="">`;
   const it = ITEM(id);
   return it ? `<img src="/game/assets/items/${id}.png" alt="">` : '❓';
 }
@@ -2954,7 +3198,7 @@ function swing(hand = 'R') {
   setTimeout(() => {
     const reach = lock ? Math.min(1.1, Math.max(0.75, Math.hypot(lock.x - P.x, lock.z - P.z) - 0.4)) : 0.75;
     const hx = P.x + Math.sin(dir) * reach, hz = P.z + Math.cos(dir) * reach;
-    for (const m of monsters) if (!m.dead && Math.hypot(m.x - hx, m.z - hz) < (m.cfg.big ? 1.25 : 0.95)) hitMonster(m, statNow('atk'), 'swing', hand, att);
+    for (const m of monsters) if (!m.dead && Math.hypot(m.x - hx, m.z - hz) < reachOf(m, 0.95, 1.25) + (m.cfg.giant ? 0.4 : 0)) hitMonster(m, statNow('atk'), 'swing', hand, att);
     if (ARENA) for (const g of ghosts.values()) if (!g.hid && Math.hypot(g.x - hx, g.z - hz) < 0.95 && Math.abs(g.y - P.y) < 1.2) hitPlayer(g, statNow('atk'), hand);
     if (ARENA) smashCrate(hx, hz);
   }, 110);
@@ -2971,10 +3215,10 @@ function hitMonster(m, power = statNow('atk'), kind = 'swing', hand = 'R', att =
   if (m.sid) Ledger.act({ t: 'hit', id: m.sid, k: kind, hand, a: att.id, at: att.at, dmg,
     px: +P.x.toFixed(2), pz: +P.z.toFixed(2), mx: +m.x.toFixed(2), mz: +m.z.toFixed(2), pt: clientMs() });
   m.flash = 0.09;
-  const dx = m.x - P.x, dz = m.z - P.z, d = Math.hypot(dx, dz) || 1, push = m.cfg.big ? 4.4 : 8.75;
+  const dx = m.x - P.x, dz = m.z - P.z, d = Math.hypot(dx, dz) || 1, push = m.cfg.giant ? 0 : m.cfg.big ? 4.4 : 8.75;
   m.kb = 0.16; m.kbx = dx / d * push; m.kbz = dz / d * push;
   if (!mobHost() && mp.live) mp.channel.send({ type: 'broadcast', event: 'mobhit', payload: { id: m.sid, dmg, kbx: +m.kbx.toFixed(2), kbz: +m.kbz.toFixed(2) } });
-  floatText(m.x, m.cfg.big ? 2.2 : 1.3, m.z, String(dmg), '#ffffff');
+  floatText(m.x, m.cfg.tag || (m.cfg.big ? 2.2 : 1.3), m.z, String(dmg), '#ffffff');
   if (m.hp <= 0) killMonster(m);
 }
 // Magic balls from wands and staffs: fly straight ahead from the tip, hit the first monster
@@ -3029,7 +3273,7 @@ function assistTarget(ox, oz, dx, dz, range, cone = 0.4) {
     const score = off * 4 + d * 0.05; // mostly how close to your aim, a little how near
     if (score < bestScore) { bestScore = score; best = { x: t.x, y, z: t.z, kind }; }
   };
-  for (const m of monsters) if (!m.dead) consider(m, m.cfg.fly ? 1.1 : 0.6, 'monster');
+  for (const m of monsters) if (!m.dead) consider(m, m.cfg.giant ? 1.3 : m.cfg.fly ? 1.1 : 0.6, 'monster');
   if (ARENA) for (const g of ghosts.values()) if (!g.dead && !g.hid) consider(g, (g.y || 0) + 1.0, 'player');
   return best;
 }
@@ -3093,7 +3337,7 @@ function aimPoint() {
     for (const m of monsters) {
       if (m.dead) continue;
       const my = m.cfg.fly ? 1.1 : 0.5;
-      if (Math.hypot(m.x - x, m.z - z) < (m.cfg.big ? 1.3 : 0.75) && Math.abs(my - y) < 1.2) return 'monster';
+      if (Math.hypot(m.x - x, m.z - z) < reachOf(m, 0.75, 1.3) && Math.abs(my - y) < (m.cfg.giant ? 2.5 : 1.2)) return 'monster';
     }
     if (ARENA) for (const g of ghosts.values()) {
       if (!g.dead && !g.hid && Math.hypot(g.x - x, g.z - z) < 0.7 && y > g.y && y < g.y + 1.8) return 'player';
@@ -3252,7 +3496,7 @@ function updateBoomerang(fb, dt) {
   const power = statNow('atk') * 1.1 + 4;
   for (const m of monsters) {
     if (m.dead || b.hit.has(m)) continue;
-    if (Math.hypot(m.x - fb.x, m.z - fb.z) < (m.cfg.big ? 1.3 : 0.8)) { b.hit.add(m); hitMonster(m, power, 'boom', fb.hand, fb.att); }
+    if (Math.hypot(m.x - fb.x, m.z - fb.z) < reachOf(m, 0.8, 1.3)) { b.hit.add(m); hitMonster(m, power, 'boom', fb.hand, fb.att); }
   }
   if (ARENA) for (const g of ghosts.values()) {
     if (g.dead || g.hid || b.hit.has(g)) continue;
@@ -3295,7 +3539,7 @@ function updateFireballs(dt, t) {
     for (const m of monsters) {
       if (m.dead) continue;
       const my = m.cfg.fly ? 1.1 : 0.5;
-      if (Math.hypot(m.x - fb.x, m.z - fb.z) < (m.cfg.big ? 1.3 : 0.75) && Math.abs(my - fb.y) < 1.2) { hit = m; break; }
+      if (Math.hypot(m.x - fb.x, m.z - fb.z) < reachOf(m, 0.75, 1.3) && Math.abs(my - fb.y) < (m.cfg.giant ? 2.5 : 1.2)) { hit = m; break; }
     }
     const cx = Math.floor(fb.x), cz = Math.floor(fb.z);
     const wall = cx < 0 || cz < 0 || cx >= MAP_W || cz >= MAP_H || (blocked[cz][cx] && waterAt(fb.x * T, fb.z * T) < 0)
@@ -3342,6 +3586,8 @@ function killMonster(m, quiet) {
   m.dying = 0;
   m.respawnAt = performance.now() + (m.cfg.respawn || 12000 + Math.random() * 6000);
   m.el.remove();
+  if (m.view.ring) scene.remove(m.view.ring, m.view.disc); // the golem's slam warning goes with him
+  m.slamAt = m.lungeAt = undefined;
   burst(m.x, 0.5, m.z, m.cfg.big ? '#c06aff' : '#eaff8a', 12);
   if (!quiet && mp.live) mp.channel.send({ type: 'broadcast', event: 'mobdie', payload: { id: m.sid } });
   // Group kills: everyone who did real damage (ASSIST_SHARE of its HP) gets the full kill and
@@ -3360,6 +3606,51 @@ function killMonster(m, quiet) {
   floatText(m.x, 1.8, m.z, `+${m.cfg.xp} XP`, '#ffe066');
   if (1 + Math.floor(field.xp / 100) > before) floatText(P.x, 2, P.z, 'LEVEL UP!', '#7ae0ff');
   updateHud();
+}
+/* The giants' moves. Both are telegraphed, so they can be read and dodged:
+   Grak stops, raises both fists while a red ring fills in round him, then slams; anyone still
+   inside the ring and on the ground takes a big hit. The Queen stops and crouches, then lunges
+   straight at where you stood; her body hurts on contact, so sidestep. */
+function golemMoves(mo, v, dt, dist, tt) {
+  const c = mo.cfg.slam, now = performance.now();
+  mo.cd = (mo.cd || 0) - dt;
+  if (mo.slamAt === undefined && !fainted && !smokedNow() && mo.cd <= 0 && dist < c.range * 0.9) { mo.slamAt = now + c.tell * 1000; mo.cd = c.cd; }
+  const wind = mo.slamAt === undefined ? 0 : clamp(1 - (mo.slamAt - now) / (c.tell * 1000), 0, 1);
+  v.ring.position.set(mo.x, 0.04, mo.z);
+  v.disc.position.set(mo.x, 0.035, mo.z);
+  v.ring.scale.setScalar(c.range);
+  v.disc.scale.setScalar(c.range * wind);
+  v.ring.material.opacity = wind ? 0.85 : 0;
+  v.disc.material.opacity = wind ? 0.25 + wind * 0.2 : 0;
+  const walk = Math.hypot(mo.vx || 0, mo.vz || 0) > 0.05 || dist < mo.cfg.aggro ? Math.sin(tt * 3) : 0;
+  v.body.rotation.z = walk * 0.04;
+  v.arms.forEach((a, i) => { a.rotation.x = wind ? -2.6 * wind : (i ? 1 : -1) * walk * 0.35; });
+  if (mo.slamAt !== undefined && now >= mo.slamAt) {
+    mo.slamAt = undefined;
+    shake = Math.max(shake, 0.35);
+    for (let i = 0; i < 10; i++) { const a = (i / 10) * Math.PI * 2; burst(mo.x + Math.cos(a) * c.range * 0.8, 0.3, mo.z + Math.sin(a) * c.range * 0.8, i % 2 ? '#7ae0ff' : '#8a80a0', 4); }
+    const px = P.x - mo.x, pz = P.z - mo.z, d = Math.hypot(px, pz) || 1;
+    if (!fainted && inv <= 0 && d < c.range && P.y < 0.5) hurtPlayer({ cfg: { dmg: c.dmg } }, px, pz, d);
+  }
+}
+function queenMoves(mo, v, dt, dx, dz, dist, tt) {
+  const c = mo.cfg.lunge, now = performance.now();
+  mo.cd = (mo.cd || 0) - dt;
+  if (mo.lungeAt === undefined && !(mo.dash > 0) && !fainted && !smokedNow() && mo.cd <= 0 && dist > c.near && dist < c.far) {
+    mo.lungeAt = now + c.tell * 1000;
+    mo.cd = c.cd;
+    mo.face = Math.atan2(dx, dz);
+  }
+  const crouch = mo.lungeAt === undefined ? 0 : clamp(1 - (mo.lungeAt - now) / (c.tell * 1000), 0, 1);
+  if (mo.lungeAt !== undefined && now >= mo.lungeAt) { // go: straight at where you were when she crouched
+    mo.lungeAt = undefined;
+    mo.dash = c.time;
+    mo.dashX = Math.sin(mo.face) * c.speed;
+    mo.dashZ = Math.cos(mo.face) * c.speed;
+  }
+  const moving = mo.dash > 0 || dist < mo.cfg.aggro;
+  v.body.position.y = -crouch * 0.35 + (moving ? Math.abs(Math.sin(tt * 9)) * 0.06 : 0);
+  v.legs.forEach((l) => { l.hip.rotation.y = l.base + (moving ? Math.sin(tt * (mo.dash > 0 ? 22 : 11) + l.i * 1.6 + (l.s > 0 ? Math.PI : 0)) * 0.3 : 0); });
 }
 function hurtPlayer(m, dx, dz, dist) {
   const dmg = Math.max(1, Math.round(m.cfg.dmg * 50 / (50 + stats.def)));
@@ -3415,7 +3706,32 @@ function collect(d) {
 /* ---------- HUD ---------- */
 const $ = (id) => document.getElementById(id);
 $('areaTitle').textContent = A.title;
-$('miniLabel').textContent = A.title.replace('Taproot ', 'The ');
+$('miniLabel').textContent = MINE ? `${FLOORS[AREA].code} \u00B7 ${FLOORS[AREA].name}` : A.title.replace('Taproot ', 'The ');
+if (MINE) {
+  const f = FLOORS[AREA], deepest = !BELOW[AREA];
+  $('floorBadge').innerHTML = `${f.code}<small>${deepest ? 'DEEPEST' : f.depth ? 'UNDERGROUND' : 'THE MINE'}</small>`;
+  $('floorBadge').hidden = false;
+}
+// one bar per giant on this floor; they stay up (greyed) while a giant is down, so you know it comes back
+const bossBars = new Map();
+function updateBossBars() {
+  const giants = monsters.filter((m) => m.cfg.giant);
+  $('bosses').hidden = !giants.length;
+  for (const m of giants) {
+    let row = bossBars.get(m.type);
+    if (!row) {
+      row = document.createElement('div');
+      row.className = `boss ${m.type}`;
+      row.innerHTML = `<b>${m.cfg.name} <em></em></b><div class="bar"><i></i></div>`;
+      $('bosses').appendChild(row);
+      bossBars.set(m.type, row);
+    }
+    const hpNow = m.dead ? 0 : Math.max(0, Math.round(m.hp));
+    row.classList.toggle('down', !!m.dead);
+    row.querySelector('em').textContent = m.dead ? 'Defeated' : `${hpNow} / ${m.cfg.hp}`;
+    row.querySelector('i').style.width = `${(hpNow / m.cfg.hp) * 100}%`;
+  }
+}
 document.title = A.title + ' 3D';
 function updateHud() {
   const lvl = 1 + Math.floor(field.xp / 100);
@@ -3488,7 +3804,7 @@ function renderBag() {
     ? items.map(([id, n]) => CONSUMABLES[id]
       ? `<div class="bag-item use" data-use="${id}" title="Click to use"><span class="emo">${CONSUMABLES[id].emoji}</span><span>${CONSUMABLES[id].name}</span><b>x${n}</b></div>`
       : FARM_ITEMS[id] ? `<div class="bag-item"><span class="emo">${FARM_ITEMS[id].emoji}</span><span>${FARM_ITEMS[id].name}</span><b>x${n}</b></div>`
-      : `<div class="bag-item"><img src="/game/world/assets/loot/${id}.png" alt=""><span>${LOOT[id].name}</span><b>x${n}</b></div>`).join('')
+      : `<div class="bag-item">${LOOT[id].emoji ? `<span class="emo">${LOOT[id].emoji}</span>` : `<img src="/game/world/assets/loot/${id}.png" alt="">`}<span>${LOOT[id].name}</span><b>x${n}</b></div>`).join('')
     : '<p class="bag-empty">Your bag is empty. Defeat monsters to collect their drops.</p>';
 }
 
@@ -3526,6 +3842,16 @@ function drawMinimap(now) {
     mctx.fillStyle = m.cfg.big ? '#c06aff' : '#ff9a2a';
     mctx.beginPath(); mctx.arc(m.x * MINI, m.z * MINI, m.cfg.big ? 3 : 2, 0, Math.PI * 2); mctx.fill();
   }
+  for (const l of LADDERS) { // an orange tile with an arrow, kept upright as the map turns
+    mctx.save();
+    mctx.translate((l.x + 0.5) * MINI, (l.y + 0.5) * MINI);
+    mctx.rotate(-camYaw);
+    mctx.fillStyle = '#ffb02e'; mctx.fillRect(-5, -5, 10, 10);
+    mctx.fillStyle = '#3a1a00'; mctx.beginPath();
+    if (l.dir === 'up') { mctx.moveTo(0, -3.5); mctx.lineTo(3.5, 2.5); mctx.lineTo(-3.5, 2.5); } else { mctx.moveTo(0, 3.5); mctx.lineTo(3.5, -2.5); mctx.lineTo(-3.5, -2.5); }
+    mctx.fill();
+    mctx.restore();
+  }
   mctx.fillStyle = '#5ab4ff'; mctx.strokeStyle = '#ffffff'; mctx.lineWidth = 1;
   for (const g of ghosts.values()) { mctx.beginPath(); mctx.arc(g.x * MINI, g.z * MINI, 3, 0, Math.PI * 2); mctx.fill(); mctx.stroke(); }
   mctx.translate(P.x * MINI, P.z * MINI);
@@ -3541,7 +3867,7 @@ function drawMinimap(now) {
    tile coordinates. Each client sends its position about 8 times a second while moving (and a
    ping every 3 s); others ease toward it, so their heroes walk and turn smoothly. Players in the
    mine or the workshop only see each other there (the 'room' field). */
-const MP_ROOM = UNDER ? 'cave' : CLUB ? `clubhouse-${PLOT_Q}` : PIT ? 'arena' : INDOOR ? AREA : 'world';
+const MP_ROOM = UNDER ? AREA : CLUB ? `clubhouse-${PLOT_Q}` : PIT ? 'arena' : INDOOR ? AREA : 'world';
 const mp = { id: Math.random().toString(36).slice(2, 10), born: Date.now(), live: false, last: 0, sent: null, atk: 0, atkL: 0, mobSent: 0, wake: 0 };
 mp.name = (charData && charData.name && charData.name.trim()) || 'Wanderer';
 const ghosts = new Map();
@@ -3604,7 +3930,7 @@ function onState(d) {
   if (d.atk && d.atk !== g.atkSeen) { g.atkSeen = d.atk; g.atk = 0; }
   if (d.atkL && d.atkL !== g.atkLSeen) { g.atkLSeen = d.atkL; g.atkL = 0; }
 }
-if (window.supabase && !new URLSearchParams(location.search).has('nomp')) (async () => {
+if (window.supabase && !SOLO && !new URLSearchParams(location.search).has('nomp')) (async () => {
   const RT = await Ledger.realtime(); // the accounts' Supabase project, once the server has its public key
   const sb = window.supabase.createClient(RT.url, RT.key);
   // local dev / test runs get their own channel, so they never show up for players on the live site
@@ -3805,7 +4131,7 @@ const hazardNow = () => (HAZ.pinned !== null ? HAZ.pinned : Date.now() + HAZ.off
 // Browser clocks drift, and a 2.5 s telegraph does not survive a five-second disagreement.
 // One HEAD request at load gives a shared reference: every client's schedule is then read
 // off the same wall clock. If it fails we keep the local clock, which is usually NTP-close.
-if (window.supabase && !new URLSearchParams(location.search).has('nomp')) {
+if (window.supabase && !SOLO && !new URLSearchParams(location.search).has('nomp')) {
   (async () => {
     try {
       const t0 = Date.now();
@@ -4151,7 +4477,7 @@ function goTo(href) {
   if (leaving) return;
   leaving = true;
   $('fade').style.opacity = 1;
-  setTimeout(() => { location.href = href; }, 350);
+  setTimeout(() => { location.href = withSolo(href); }, 350);
 }
 function hitPlayer(g, power, hand, magic, slow) {
   if (!ARENA || !mp.live || g.dead || g.hid || fainted) return;
@@ -4930,10 +5256,27 @@ addEventListener('keydown', (e) => {
 });
 addEventListener('keyup', (e) => { keys[e.code] = false; if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') shiftCancel = false; });
 addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
-let drag = null, joy = null;
+let drag = null, joy = null, pinch = null;
+const touches = new Map(); // touch pointers on the canvas, for two-finger pinch zoom
+const span = () => { const [a, b] = [...touches.values()]; return Math.hypot(a.x - b.x, a.y - b.y) || 1; };
+const joyRing = $('joyRing'), joyKnob = joyRing.firstElementChild;
+const endJoy = () => { joy = null; joyRing.hidden = true; };
 canvas.addEventListener('pointerdown', (e) => {
-  canvas.setPointerCapture(e.pointerId);
-  if (e.pointerType === 'touch' && e.clientX < innerWidth / 2 && !joy) { joy = { id: e.pointerId, sx: e.clientX, sy: e.clientY, fx: 0, fy: 0 }; return; }
+  try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+  if (e.pointerType === 'touch') {
+    touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (touches.size === 2) { // second finger: pinch, so neither steering nor looking
+      endJoy(); drag = null; canvas.classList.remove('drag');
+      pinch = { span: span(), dist: camDistT };
+      return;
+    }
+    if (pinch) return;
+  }
+  if (e.pointerType === 'touch' && e.clientX < innerWidth / 2 && !joy) {
+    joy = { id: e.pointerId, sx: e.clientX, sy: e.clientY, fx: 0, fy: 0 };
+    joyRing.hidden = false; joyRing.style.left = e.clientX + 'px'; joyRing.style.top = e.clientY + 'px'; joyKnob.style.transform = '';
+    return;
+  }
   drag = { id: e.pointerId, x: e.clientX, y: e.clientY };
   canvas.classList.add('drag');
 });
@@ -4946,9 +5289,13 @@ document.addEventListener('mousemove', (e) => {
   fpPitch = clamp(fpPitch - e.movementY * 0.0025, -1.3, 1.3);
 });
 canvas.addEventListener('pointermove', (e) => {
+  if (touches.has(e.pointerId)) touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pinch) { if (touches.size >= 2) camDistT = clamp(pinch.dist * pinch.span / span(), 3, 18); return; }
   if (joy && e.pointerId === joy.id) {
     const dx = e.clientX - joy.sx, dy = e.clientY - joy.sy, d = Math.max(30, Math.hypot(dx, dy));
     joy.fx = dx / d; joy.fy = -dy / d;
+    const k = Math.min(50, Math.hypot(dx, dy)) / (Math.hypot(dx, dy) || 1);
+    joyKnob.style.transform = `translate(${dx * k}px, ${dy * k}px)`;
   } else if (drag && e.pointerId === drag.id) {
     camYaw -= (e.clientX - drag.x) * 0.006;
     camPitchT = Math.max(0.05, Math.min(1.35, camPitchT + (e.clientY - drag.y) * 0.004));
@@ -4958,7 +5305,9 @@ canvas.addEventListener('pointermove', (e) => {
   }
 });
 const endPointer = (e) => {
-  if (joy && e.pointerId === joy.id) joy = null;
+  touches.delete(e.pointerId);
+  if (pinch && touches.size < 2) pinch = null;
+  if (joy && e.pointerId === joy.id) endJoy();
   if (drag && e.pointerId === drag.id) { drag = null; canvas.classList.remove('drag'); }
 };
 canvas.addEventListener('pointerup', endPointer);
@@ -4994,7 +5343,15 @@ $('viewBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); cycleV
 $('aimBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); setAutoAim(!autoAim); });
 $('aimBtn').classList.toggle('on', autoAim);
 $('bagBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); toggleBag(); });
+// Fold open (a near-square touch screen): pull the camera back a little to show more world
+let squareBoost = 0;
+const fitSquare = () => {
+  const a = innerWidth / innerHeight, want = matchMedia('(pointer: coarse)').matches && a > 0.8 && a < 1.25 ? 3 : 0;
+  camDistT = clamp(camDistT + want - squareBoost, 3, 18); squareBoost = want;
+};
+fitSquare();
 addEventListener('resize', () => {
+  fitSquare();
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
@@ -5088,7 +5445,7 @@ function update(dt, now) {
     if (mo.dead) {
       if (mo.dying !== undefined && mo.dying < 1) {
         mo.dying += dt / 0.22;
-        v.g.scale.y = (mo.cfg.big ? 2.1 : 1) * Math.max(0.01, 1 - mo.dying);
+        v.g.scale.y = (v.sy || 1) * Math.max(0.01, 1 - mo.dying);
         if (mo.dying >= 1) { scene.remove(v.g); mo.dying = 2; }
       }
       continue;
@@ -5108,6 +5465,8 @@ function update(dt, now) {
       vx = vz = 0;
     }
     else if (mo.kb > 0) { mo.kb -= dt; vx = mo.kbx; vz = mo.kbz; }
+    else if (mo.slamAt !== undefined || mo.lungeAt !== undefined) { vx = 0; vz = 0; } // winding up: rooted
+    else if (mo.dash > 0) { mo.dash -= dt; vx = mo.dashX; vz = mo.dashZ; }
     else if (prey && pd < mo.cfg.aggro) { vx = (prey.x - mo.x) / (pd || 1) * mo.cfg.speed; vz = (prey.z - mo.z) / (pd || 1) * mo.cfg.speed; }
     else {
       mo.t -= dt;
@@ -5145,13 +5504,15 @@ function update(dt, now) {
         mo.atk = 0;
       }
     }
+    else if (mo.type === 'golem_crystal') golemMoves(mo, v, dt, dist, tt);
+    else if (mo.type === 'spider_queen') queenMoves(mo, v, dt, dx, dz, dist, tt);
     else { v.body.position.y = Math.abs(Math.sin(tt * 7)) * 0.05; v.club.rotation.x = Math.sin(tt * 4) * 0.3; }
     if (mo.flash > 0) { mo.flash -= dt; v.mats.forEach((mt) => mt.emissive.set('#ffffff')); }
     else v.mats.forEach((mt, i) => mt.emissive.copy(v.base[i]));
-    if (!fainted && inv <= 0 && P.y < (mo.cfg.fly ? 1.6 : 0.45) && dist < (mo.cfg.big ? 1.0 : 0.7)) hurtPlayer(mo, dx, dz, dist);
+    if (!fainted && inv <= 0 && P.y < (mo.cfg.fly ? 1.6 : 0.45) && dist < (mo.cfg.giant ? mo.cfg.size * 0.75 : mo.cfg.big ? 1.0 : 0.7)) hurtPlayer(mo, dx, dz, dist);
 
     // name tag (only nearby)
-    const pos = dist < 13 ? toScreen(mo.x, (mo.cfg.big ? 2.4 : mo.cfg.fly ? 1.7 : mo.type === 'goblin' ? 1.55 : 1.05), mo.z) : null;
+    const pos = dist < 13 ? toScreen(mo.x, (mo.cfg.tag || (mo.cfg.big ? 2.4 : mo.cfg.fly ? 1.7 : mo.type === 'goblin' ? 1.55 : 1.05)), mo.z) : null;
     mo.el.hidden = !pos;
     if (pos) {
       mo.el.style.transform = `translate(${pos[0]}px, ${pos[1]}px) translate(-50%, -100%)`;
@@ -5377,6 +5738,8 @@ function update(dt, now) {
   const nt = sprintOn ? `ON ${Math.round(nitro * 100)}%` : nitro >= 1 ? 'Ready' : `${Math.round(nitro * 100)}%`;
   if ($('nitroText').textContent !== nt) $('nitroText').textContent = nt;
   drawMinimap(now);
+  for (const c of ceilings) c.visible = camera.position.y < 4.6 || Math.hypot(camera.position.x - c.userData.at[0], camera.position.z - c.userData.at[1]) > 2.6;
+  if (MINE) updateBossBars();
 
   // stitched maps: the area name follows you as you walk from one district into the next
   const region = (A.regions || []).find(({ box: [x1, z1, x2, z2] }) => P.x >= x1 && P.z >= z1 && P.x < x2 && P.z < z2);
@@ -5431,13 +5794,17 @@ Ledger.load();
 
 SPAWN_LIST.forEach((entry, i) => spawnMonster(entry, i));
 // debug hook for tests and screenshots: __world3d.tp(x, z) teleports, .P is the player state
-window.__world3d = { P, ghosts, arena, farms, updateIndoor, aimPoint, spectating: () => STANDS, tomatoes, throwTomato,
+window.__world3d = { P, ghosts, arena, ladders: LADDERS, action: () => action && action.text, runAction: () => action && action.run(),
+  // can you walk (4-way, over the collision grid) from one tile to another?
+  walkable: (x0, y0, x1, y1) => { const seen = new Set([`${x0},${y0}`]), q = [[x0, y0]]; while (q.length) { const [x, y] = q.pop(); if (x === x1 && y === y1) return true;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = x + dx, ny = y + dy, k = `${nx},${ny}`; if (!seen.has(k) && blocked[ny] && blocked[ny][nx] === false) { seen.add(k); q.push([nx, ny]); } } } return false; },
+  bossBars: () => [...document.querySelectorAll('#bosses .boss')].map((b) => b.textContent), floorBadge: () => !$('floorBadge').hidden && $('floorBadge').textContent, farms, updateIndoor, aimPoint, spectating: () => STANDS, tomatoes, throwTomato,
   arenaMod, buff: () => buffNow(), free,
   equip: (id, slot) => equip(id, slot), gearOf: (slot) => gear(slot), parrying: () => parrying(),
   view: viewName, autoAim: () => autoAim, setAutoAim: (on) => setAutoAim(on), camYaw: () => camYaw, setCamYaw: (v) => { camYaw = v; }, nitro: () => nitro, setNitro: (v) => { nitro = v; nitroLock = false; }, jump,
   killMonster, hitMonster, collect, shopAct, claimPlot, plant, harvest, owned: () => owned, // economy tests
   spawn: (type, x, z) => { spawnMonster(type); const m = monsters[monsters.length - 1]; m.x = x; m.z = z; m.t = 99; m.vx = m.vz = 0; return monsters.length - 1; },
-  foeCast: (i) => castFoeBall(monsters[i]), chilled, smoked: () => Math.max(0, (smokeUntil - performance.now()) / 1000), colosseum: () => COLO && { arena: [A.doors.find((d) => /area=arena/.test(d.href)).x + 0.5, A.doors.find((d) => /area=arena/.test(d.href)).y + 0.5], stands: [A.doors.find((d) => /area=stands/.test(d.href)).x + 0.5, A.doors.find((d) => /area=stands/.test(d.href)).y + 0.5] }, hazardNow, clockOffset: () => HAZ.offset, hazards: () => [...HAZ.views.values()], hazardClock: (ms) => { HAZ.pinned = ms === undefined || ms === null ? null : ms; }, slowed, setHp: (n) => { hp = n; updateHud(); }, drawnBlocks: (id) => ((plotViews.get(id) || {}).blockMeshes || []).reduce((n, m) => n + m.count, 0), getPitch: () => fpPitch, firstPerson: () => firstPerson, setPitch: (v) => { fpPitch = v; }, openShop, hiddenBlocks, doorAngle: (id, i, j, k) => { const v = plotViews.get(id); return (v && v.doorAng && v.doorAng.get(`${i},${j},${k}`)) || 0; }, shopSpots, aimBlock, mouse, camera, building: () => building, toScreen, groundAt, solidAt, setBlocks, plots: PLOTS, placed, decorCrops, myFarm: () => myFarm, farmTile: () => farmTile(), hp: () => hp, mp, monsters, drops, field: () => field, hero: () => hero, fireballs, tp: (x, z, yaw) => { P.x = x; P.z = z; P.vx = P.vz = 0; if (yaw !== undefined) camYaw = yaw; }, cam: (dist, pitch) => { camDistT = camDist = dist; camPitchT = camPitch = pitch; }, size: [MAP_W, MAP_H], info: () => { // one full frame's draw calls and triangles (all passes, shadows included)
+  foeCast: (i) => castFoeBall(monsters[i]), chilled, smoked: () => Math.max(0, (smokeUntil - performance.now()) / 1000), colosseum: () => COLO && { arena: [A.doors.find((d) => /area=arena/.test(d.href)).x + 0.5, A.doors.find((d) => /area=arena/.test(d.href)).y + 0.5], stands: [A.doors.find((d) => /area=stands/.test(d.href)).x + 0.5, A.doors.find((d) => /area=stands/.test(d.href)).y + 0.5] }, hazardNow, clockOffset: () => HAZ.offset, hazards: () => [...HAZ.views.values()], hazardClock: (ms) => { HAZ.pinned = ms === undefined || ms === null ? null : ms; }, slowed, setHp: (n) => { hp = n; updateHud(); }, drawnBlocks: (id) => ((plotViews.get(id) || {}).blockMeshes || []).reduce((n, m) => n + m.count, 0), getPitch: () => fpPitch, camDistT: () => camDistT, getYaw: () => camYaw, firstPerson: () => firstPerson, setPitch: (v) => { fpPitch = v; }, openShop, hiddenBlocks, doorAngle: (id, i, j, k) => { const v = plotViews.get(id); return (v && v.doorAng && v.doorAng.get(`${i},${j},${k}`)) || 0; }, shopSpots, aimBlock, mouse, camera, building: () => building, toScreen, groundAt, solidAt, setBlocks, plots: PLOTS, placed, decorCrops, myFarm: () => myFarm, farmTile: () => farmTile(), hp: () => hp, mp, monsters, drops, field: () => field, hero: () => hero, fireballs, tp: (x, z, yaw) => { P.x = x; P.z = z; P.vx = P.vz = 0; if (yaw !== undefined) camYaw = yaw; }, cam: (dist, pitch) => { camDistT = camDist = dist; camPitchT = camPitch = pitch; }, size: [MAP_W, MAP_H], info: () => { // one full frame's draw calls and triangles (all passes, shadows included)
   renderer.info.autoReset = false; renderer.info.reset(); composer.render();
   const r = { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles };
   renderer.info.autoReset = true; return r;
@@ -5447,7 +5814,7 @@ renderBag();
 (function frame() {
   const dt = Math.min(clock.getDelta(), 0.05);
   update(dt, performance.now());
-  composer.render();
+  if (PHONE) renderer.render(scene, camera); else composer.render(); // the glow pass costs a phone more than it shows
   requestAnimationFrame(frame);
 })();
 </script>

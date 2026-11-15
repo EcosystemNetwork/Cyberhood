@@ -15,6 +15,13 @@
   status = 302
   force = true
 
+# Solo mode: no account, no multiplayer, plays offline.
+[[redirects]]
+  from = "/solo"
+  to = "/game/world3d/?solo=1"
+  status = 302
+  force = true
+
 # Game API (login, signup, save) -> Netlify function wrapping api/game/[action].js
 [[redirects]]
   from = "/api/game/:action"
