@@ -18,6 +18,13 @@
     }
   };
   if (typeof Storage !== 'undefined') installSolo(Storage.prototype);
+  // installable + offline: the app manifest, and a service worker that saves the game on the phone
+  if (SOLO && typeof document !== 'undefined') {
+    const link = document.createElement('link');
+    link.rel = 'manifest'; link.href = '/game/solo.webmanifest';
+    document.head.appendChild(link);
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('/game/solo-sw.js', { scope: '/game/' }).catch(() => {});
+  }
   const api = { SOLO, soloKey, withSolo, installSolo };
   Object.assign(globalThis, api);
   if (typeof module !== 'undefined') module.exports = api;

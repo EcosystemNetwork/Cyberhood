@@ -77,7 +77,7 @@ function handleMockDb(method, params, raw, respond) {
 
 /* ---------- static files ---------- */
 const MIME = {
-  '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json',
+  '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.webmanifest': 'application/manifest+json',
   '.webp': 'image/webp', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml', '.ico': 'image/x-icon',
 };
 function serveStatic(req, res) {
