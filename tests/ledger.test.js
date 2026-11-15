@@ -45,6 +45,7 @@ function device() {
     CustomEvent: class { constructor(t) { this.type = t; } },
     setTimeout, clearTimeout, console, JSON, Promise, Object, Number, String, Array, Date,
     performance, // the ledger stamps each request with the browser clock
+    location: { hostname: 'localhost' }, // playing locally: the API is the dev server's /api/game/
     document: { body: null, visibilityState: 'visible', addEventListener: on },
   };
   ctx.fetch = (u, init) => (ctx.online ? fetch(BASE + u, init) : Promise.reject(new Error('offline')));

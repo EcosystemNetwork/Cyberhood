@@ -45,9 +45,6 @@
   "functions": {
     "api/p.js": {
       "includeFiles": "{p/index.html,supabase-config.js}"
-    },
-    "api/game/[action].js": {
-      "includeFiles": "{game/items.js,game/world3d/economy.js,game/world3d/shops.js,game/world3d/farm.js,game/world3d/blocks.js,game/world3d/package.json}"
     }
   }
 }
