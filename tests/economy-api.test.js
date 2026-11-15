@@ -87,8 +87,10 @@ test('a kill pays XP, then its drops pay out once when picked up', async () => {
     { t: 'pickup', kind: 'gold', m: 'bat', n: 50 });
   assert.equal(r.status, 200);
   assert.deepEqual(r.data.results.slice(4, 8), ['', '', 'nothing to pick up', 'nothing to pick up']);
-  assert.equal(r.data.results[11], 'bad amount');
-  assert.deepEqual(r.data.state.econ, { gold: 2, xp: 12, kills: 2, bag: { slime_gel: 1 }, loot: [], imported: false });
+  assert.equal(r.data.results[11], ''); // the amount the browser asks for doesn't matter...
+  const { gold, ...rest } = r.data.state.econ;
+  assert.ok(gold >= 2 && gold <= 4, `gold ${gold}`); // ...the server rolls slime 1-2 + bat 1-2
+  assert.deepEqual(rest, { xp: 12, kills: 2, bag: { slime_gel: 1 }, loot: [], imported: false, barrels: {} });
 });
 
 test('combat: only hits the server believes can kill', async () => {
@@ -217,14 +219,31 @@ test('two requests at once can\'t spend the same gold twice', async () => {
   assert.equal(s.data.econ.bag.health_potion, 2);
 });
 
-test('progress from before cloud saves can be brought in once, within limits', async () => {
+test('progress from before cloud saves can be brought in once, within one value budget', async () => {
+  const E = await import('../game/world3d/economy.js');
   const { key } = await account();
   const r = await act(key,
     { t: 'import', field: { gold: 1e9, xp: 300, kills: 'x', bag: { slime_gel: 1000, bogus: 5 } }, owned: ['cutlass', 'nope'], loot: ['wreck', 'harbor'] },
     { t: 'import', field: { gold: 100 } }, { t: 'chest', id: 'wreck' });
   assert.deepEqual(r.data.results, ['', 'already imported', 'already looted']);
-  assert.deepEqual(r.data.state.econ, { gold: 5000, xp: 300, kills: 0, bag: { slime_gel: 99 }, loot: ['wreck'], imported: true });
+  const left = E.IMPORT_CAPS.value - E.valueOf('cutlass') - 99 * E.valueOf('slime_gel');
+  assert.deepEqual(r.data.state.econ, { gold: left, xp: 300, kills: 0, bag: { slime_gel: 99 }, loot: ['wreck'], imported: true, barrels: {} });
   assert.deepEqual(r.data.state.owned, ['cutlass']);
+});
+
+test('an import can\'t hand out the whole armoury', async () => {
+  const E = await import('../game/world3d/economy.js');
+  const G = require('../game/items.js');
+  const { key } = await account();
+  const all = Object.keys(G.ITEMS);
+  const r = await act(key, { t: 'import', field: { gold: 1e9, bag: Object.fromEntries([...E.BAG_ITEMS].map((id) => [id, 99])) }, owned: all });
+  assert.ok(ok(r));
+  const { econ, owned } = r.data.state;
+  const worth = econ.gold + owned.reduce((n, id) => n + E.valueOf(id), 0)
+    + Object.entries(econ.bag).reduce((n, [id, k]) => n + E.valueOf(id) * k, 0);
+  assert.ok(worth <= E.IMPORT_CAPS.value, `imported ${worth} gold worth`);
+  assert.ok(owned.length < all.length);
+  assert.ok(owned.every((id) => E.valueOf(id) !== undefined), 'no gear that no shop sells');
 });
 
 test('bad requests', async () => {

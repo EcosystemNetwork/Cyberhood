@@ -2,7 +2,7 @@
 //   node --test tests/economy.test.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { applyAction, newEcon, MONSTER_LOOT, SEA_TREASURE, CASTERS } from '../game/world3d/economy.js';
+import { applyAction, newEcon, MONSTER_LOOT, SEA_TREASURE, CASTERS, BARREL_SLOTS, BARREL_GOLD, BARREL_REACH, BOAT_MAX_SPEED, SAIL_SLACK, SEA_R, SEA_ISLES, barrelSpot } from '../game/world3d/economy.js';
 import { CROPS, BUILDS, ALTAR } from '../game/world3d/farm.js';
 import { unpack } from '../game/world3d/blocks.js';
 import { SHOPS } from '../game/world3d/shops.js';
@@ -72,6 +72,23 @@ function slay(run, s, m) {
   return why;
 }
 
+test('group kills: real damage earns the full kill once it goes down, a tag or a fake does not', () => {
+  const { s, run } = player();
+  const hit = (id, n, dmg) => run({ t: 'hit', id, k: 'swing', hand: 'R', a: 'g' + n + id, at: (s.t = (s.t || T0) + 400), dmg }, 400);
+  run({ t: 'spawn', id: 'groupa', m: 'goblin' }); // 60 HP: 6 is the least that counts
+  hit('groupa', 1, 5);
+  assert.equal(run({ t: 'down', id: 'groupa' }), 'not enough damage');
+  assert.equal(s.econ.xp, 0);
+  hit('groupa', 2, 1);
+  assert.equal(run({ t: 'down', id: 'groupa' }), '');
+  assert.equal(s.econ.xp, MONSTER_LOOT.goblin.xp);
+  assert.equal(s.econ.pending.item.goblin_ear, 1);
+  assert.equal(run({ t: 'down', id: 'groupa' }), 'no such monster', 'paid once');
+  assert.equal(run({ t: 'down', id: 'nobody' }), 'no such monster');
+  run({ t: 'spawn', id: 'groupb', m: 'slime' });
+  assert.equal(run({ t: 'down', id: 'groupb' }), 'not enough damage', 'never hit it');
+});
+
 test('kills faster than monsters respawn are not paid, and the limit refills', () => {
   const { s, run } = player();
   for (let i = 0; i < 8; i++) assert.equal(slay(run, s, 'bat'), '');
@@ -116,11 +133,51 @@ test('the gladiator can be hit as hard as the arena buffs allow', () => {
   assert.equal(s.econ.foes.glad1.hp, 150 - Math.round(20 * 1.7 + 4));
 });
 
-test('barrels are rate limited', () => {
-  const { run } = player();
-  for (let i = 0; i < 4; i++) assert.equal(run({ t: 'barrel' }), '');
-  assert.equal(run({ t: 'barrel' }), 'too fast');
-  assert.equal(run({ t: 'barrel' }, 8000), '');
+test('gold drops are rolled on the server, whatever amount the browser asks for', () => {
+  for (const [r, want] of [[0, MONSTER_LOOT.goblin.gold[0]], [0.9999, MONSTER_LOOT.goblin.gold[1]]]) {
+    const { s, ctx } = player();
+    ctx.dev = true; ctx.rand = () => r;
+    assert.equal(applyAction(s, { t: 'kill', m: 'goblin' }, ctx), '');
+    assert.equal(applyAction(s, { t: 'pickup', kind: 'gold', m: 'goblin', n: 999 }, ctx), '');
+    assert.equal(s.econ.gold, want);
+    assert.equal(applyAction(s, { t: 'pickup', kind: 'gold', m: 'goblin', n: 5 }, ctx), 'nothing to pick up');
+  }
+});
+
+test('barrels: only where they float, once per respawn, and no faster than the boat sails', () => {
+  const { s, ctx } = player();
+  // a claim sent at game time `ms`, reaching the server `lag` ms later
+  const claim = (slot, ms, lag = 50) => { ctx.now = T0 + ms + lag; return applyAction(s, { t: 'barrel', slot, at: T0 + ms }, ctx); };
+  // every spot is open water inside the sea, clear of the islands
+  for (let slot = 0; slot < BARREL_SLOTS; slot++) for (let g = 0; g < 5; g++) {
+    const [x, z] = barrelSpot(slot, g);
+    assert.ok(Math.hypot(x, z) < SEA_R && Object.values(SEA_ISLES).every(([ix, iz, ir]) => Math.hypot(x - ix, z - iz) > ir + 3));
+  }
+  assert.deepEqual(barrelSpot(3, 2), barrelSpot(3, 2)); // the same on both sides
+  assert.notDeepEqual(barrelSpot(3, 0), barrelSpot(3, 1)); // and somewhere new once taken
+  assert.equal(applyAction(s, { t: 'barrel' }, ctx), 'bad barrel');
+  assert.equal(claim(BARREL_SLOTS, 0), 'bad barrel');
+  assert.equal(claim(0, 0), '');
+  assert.equal(s.econ.gold, BARREL_GOLD);
+  // the next one needs the time to sail there
+  const d = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+  let far = 1, best = 0;
+  for (let slot = 1; slot < BARREL_SLOTS; slot++) { const k = d(barrelSpot(0, 0), barrelSpot(slot, 0)); if (k > best) { best = k; far = slot; } }
+  const need = (best - 2 * BARREL_REACH) / (BOAT_MAX_SPEED * SAIL_SLACK) * 1000;
+  assert.equal(claim(far, need * 0.5), 'too far');
+  assert.equal(claim(far, need + 50), '');
+  assert.equal(s.econ.sea.gen[far], 1);
+  // taken: not again until it has had time to float back
+  assert.equal(claim(far, need + 1000), 'not back yet');
+  // and no claiming one from before the last
+  assert.equal(claim(5, need - 1000), 'out of order');
+});
+
+test('barrel claims can\'t run the game clock ahead', () => {
+  const { s, ctx } = player();
+  assert.equal(applyAction(s, { t: 'barrel', slot: 0, at: T0 }, ctx), '');
+  ctx.now += 10; // an hour of sailing, claimed 10 ms later
+  assert.equal(applyAction(s, { t: 'barrel', slot: 1, at: T0 + 3600e3 }, ctx), 'too fast');
 });
 
 test('clubhouse members', () => {

@@ -86,6 +86,8 @@ function handleMockDb(method, params, raw, respond) {
   respond(405, { error: 'method not allowed' });
 }
 
+const rateWindows = new Map(); // game_hit() key -> { hits, start }
+
 /* ---------- static files ---------- */
 const MIME = {
   '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json',
@@ -112,6 +114,20 @@ const collectBody = (req) => new Promise((resolve) => {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   const respond = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
+
+  // Mock of the game_hit() rate-limit function (supabase/migrations/20261114_auth_rate_limits.sql).
+  // Off by default, so local play and the test suites can make as many accounts as they like;
+  // MOCK_RATE_LIMITS=1 turns the real counting on.
+  if (url.pathname === '/rest/v1/rpc/game_hit') {
+    let a = {};
+    try { a = JSON.parse((await collectBody(req)) || '{}'); } catch (e) {}
+    if (process.env.MOCK_RATE_LIMITS !== '1') return respond(200, true);
+    const now = Date.now(), cost = Math.max(0, a.cost ?? 1), w = rateWindows.get(a.k);
+    if (!w || now - w.start > a.window_s * 1000) rateWindows.set(a.k, { hits: cost, start: now });
+    else w.hits += cost;
+    const hits = rateWindows.get(a.k).hits;
+    return respond(200, cost > 0 ? hits <= a.max_hits : hits < a.max_hits);
+  }
 
   // Mock Supabase REST endpoint the handler talks to.
   if (url.pathname === '/rest/v1/game_players') {
