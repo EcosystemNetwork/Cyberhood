@@ -4135,7 +4135,7 @@ if (window.supabase && !SOLO && !new URLSearchParams(location.search).has('nomp'
   (async () => {
     try {
       const t0 = Date.now();
-      const r = await fetch('/api/game/config');
+      const r = await fetch(Ledger.api + 'config'); // its Date header: a clock every player shares
       const d = Date.parse(r.headers.get('date') || '');
       if (Number.isFinite(d)) HAZ.offset = d + (Date.now() - t0) / 2 - Date.now(); // half the round trip
     } catch (e) {}
@@ -4572,7 +4572,7 @@ if (STANDS) {
    Growth Altar, Clubhouse, Scarecrow (R rotates, F places, X picks one back up for a refund).
    Plots are kept on the server with their owner's account (one plot per player, one owner per
    plot), every change goes through the server's rules, and everyone loads all claimed plots from
-   /api/game/farms, so farms show while their owners are offline. Live changes still travel over
+   the game API's farms action, so farms show while their owners are offline. Live changes still travel over
    the multiplayer channel ('farm'). ?farmfast=1 turns minutes into seconds (local testing). */
 const FAST = new URLSearchParams(location.search).has('farmfast') ? 60 : 1;
 const MIN = 60000 / FAST;
