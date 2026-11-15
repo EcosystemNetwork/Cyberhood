@@ -1,0 +1,7 @@
+{
+  "appId": "love.taproot.solo",
+  "appName": "Taproot",
+  "webDir": "www",
+  "server": { "androidScheme": "https" },
+  "android": { "backgroundColor": "#7a1a8a" }
+}
