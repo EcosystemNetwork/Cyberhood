@@ -382,6 +382,7 @@ import { ARENA_CENTER, ARENA_RADIUS, standY, standBlocked, tomatoArc, TOMATO_GRA
   HAZARDS, TELL_MS, eventsNear, BUFFS, buffAt } from './arena.js';
 import * as arenaMod from './arena.js';
 import { FLOORS, floorMap, BELOW, ABOVE, SHIFT_1F } from './mine.js';
+import { makePortal, makeSprout } from './portal.js';
 for (const id of BLOCK_IDS) FARM_ITEMS['block_' + id] = { name: BLOCKS[id].name, emoji: BLOCKS[id].emoji, info: 'Building block · place it on your plot in build mode (G)' };
 
 const AREA = new URLSearchParams(location.search).get('area');
@@ -658,6 +659,7 @@ const AREAS = {
           'Plots out here are up for grabs. Somebody has to farm them!'],
       ],
       exits: [{ edge: 's', range: [22, 26], href: '/game/world3d/?area=city&from=avenues', name: 'Taproot City' }],
+      portal: { x: 24.5, y: 24.5, href: 'https://sendy.gg/#world', name: 'Sendy' }, // the middle of the big plot
       // back from a clubhouse: just outside that plot's gate
       arrive: { city: { x: 23.5, y: 44 }, ...Object.fromEntries(farmPlots.map(([x1, y1, x2, y2, , id, side]) => [`plot${id}`, { x: Math.floor((x1 + x2) / 2), y: side === 's' ? y2 + 1 : y1 - 2 }])) },
       spawn: [],
@@ -777,6 +779,7 @@ function stitch(title, size, parts) {
     S.planks.push(...(a.planks || []).map(rect));
     Object.entries(a.decor || {}).forEach(([key, count]) => S.decorList.push({ key, count, box }));
     if (a.sailing) Object.assign(S, { sailing: true, fish: a.fish, harbour: [ox, oy] });
+    if (a.portal) S.portal = { ...a.portal, x: a.portal.x + ox, y: a.portal.y + oy };
     S.paths.push(...a.paths.map(rect));
     S.ponds.push(...a.ponds.map((p) => ({ ...p, cx: p.cx + ox, cy: p.cy + oy })));
     for (const k of ['tall', 'plots', 'fenceRects']) S[k].push(...(a[k] || []).map(rect));
@@ -2383,6 +2386,15 @@ if (A.sailing) {
   // your own sloop, moored at the end of the west pier: walk up and press F to set sail
   boats.push({ g: buildGroup(() => BUILD.sloop(0, 3, 2)), x: 20.5 + HX, y: 0, z: 33.6 + HZ, ph: 0.7, mine: true });
 }
+// a portal out to sendy.gg (the Avenues' big plot), with its little sprout standing beside it
+const PORTAL = A.portal ? { ...A.portal, ring: makePortal(), sprout: makeSprout() } : null;
+if (PORTAL) {
+  PORTAL.ring.position.set(PORTAL.x, 0, PORTAL.y);
+  PORTAL.sprout.position.set(PORTAL.x + 1.7, 0, PORTAL.y + 0.3);
+  PORTAL.sprout.rotation.y = -0.35; // turned a little toward you as you walk up from the gate
+  scene.add(PORTAL.ring, PORTAL.sprout);
+  gates.push({ x: PORTAL.x, z: PORTAL.y, y: 3.2, name: `${PORTAL.name} portal`, hint: 'Press F to try it' });
+}
 const BOARD_AT = A.sailing ? { x: 20.5 + HX, z: 31.4 + HZ } : null;
 // shop counters (buildings named in shops.js) and the crafting table: stand in front and press F
 const shopSpots = placed.filter((o) => o.name && SHOPS[o.name]).map((o) => {
@@ -2392,6 +2404,7 @@ const shopSpots = placed.filter((o) => o.name && SHOPS[o.name]).map((o) => {
 const craftAt = placed.filter((o) => o.key === 'craft_table').map((o) => ({ x: o.tx + o.w / 2, z: o.ty + o.h + 0.6 }))[0];
 let action = null;
 function currentAction() {
+  if (PORTAL && Math.hypot(P.x - PORTAL.x, P.z - PORTAL.y) < 2) return { text: `Press F to go through the portal to ${PORTAL.name}`, btn: '\u{1F300} Portal', run: () => { location.href = PORTAL.href; } };
   const fa = farmAction();
   if (fa) return fa;
   for (const l of LADDERS) if (Math.hypot(P.x - (l.x + 0.5), P.z - (l.y + 0.5)) < 1.7) {
@@ -2820,7 +2833,7 @@ function floatText(x, y, z, msg, color) {
 gates.forEach((g) => {
   g.el = document.createElement('div');
   g.el.className = 'tag gate';
-  g.el.innerHTML = `${g.name}<small>Walk through to travel</small>`;
+  g.el.innerHTML = `${g.name}<small>${g.hint || "Walk through to travel"}</small>`;
   labelsEl.appendChild(g.el);
 });
 signs.forEach((s) => {
@@ -5655,6 +5668,7 @@ renderBag();
 (function frame() {
   const dt = Math.min(clock.getDelta(), 0.05);
   update(dt, performance.now());
+  if (PORTAL) { PORTAL.ring.tick(performance.now()); PORTAL.sprout.tick(performance.now()); }
   if (PHONE) renderer.render(scene, camera); else composer.render(); // the glow pass costs a phone more than it shows
   requestAnimationFrame(frame);
 })();
