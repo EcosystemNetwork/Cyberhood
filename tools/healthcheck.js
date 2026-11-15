@@ -1,9 +1,11 @@
 #!/usr/bin/env node
-// Checks a deployed game: is the new API live, has the database update been run, are the keys
-// set? Prints what's missing and how to fix it. Read-only unless you pass --signup.
+// Checks a deployed game: is the site up with the new game files, is the game API (the Supabase
+// Edge Function `game`) deployed and set up, has the database update been run? Prints what's
+// missing and how to fix it. Read-only unless you pass --signup.
 //
-//   node tools/healthcheck.js                     (the domain in CNAME)
+//   node tools/healthcheck.js                     the site in CNAME, the API on Supabase
 //   node tools/healthcheck.js https://example.com
+//   node tools/healthcheck.js --api http://localhost:8137/api/game    (a local dev server)
 //   node tools/healthcheck.js --signup            also make a throwaway account and play a little
 //
 // Exit code 0 when everything passes, 1 otherwise.
@@ -18,6 +20,9 @@ if (!base) {
 }
 if (!base) { console.error('Usage: node tools/healthcheck.js https://your-site'); process.exit(2); }
 base = base.replace(/\/+$/, '');
+const apiArg = args.indexOf('--api');
+const API = (apiArg >= 0 && args[apiArg + 1] ? args[apiArg + 1] : 'https://rxplfcuhsdvqposhpzyp.supabase.co/functions/v1/game').replace(/\/+$/, '') + '/';
+const DEPLOY = 'deploy it: supabase functions deploy game --no-verify-jwt (from the repo root, after supabase link)';
 
 const results = [];
 const check = (ok, name, fix) => { results.push({ ok, name, fix }); console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${ok || !fix ? '' : `\n      -> ${fix}`}`); return ok; };
@@ -25,7 +30,7 @@ const warn = (name, fix) => console.log(`WARN  ${name}\n      -> ${fix}`);
 
 async function get(p, init) {
   try {
-    const r = await fetch(base + p, { ...init, signal: AbortSignal.timeout(15000) });
+    const r = await fetch(/^https?:/.test(p) ? p : base + p, { ...init, signal: AbortSignal.timeout(15000) });
     let body = null;
     try { body = await r.json(); } catch (e) {}
     return { status: r.status, body };
@@ -33,7 +38,7 @@ async function get(p, init) {
 }
 
 (async () => {
-  console.log(`Checking ${base}\n`);
+  console.log(`Checking ${base} (game API: ${API})\n`);
 
   const page = await get('/game/');
   check(page.status === 200, 'the game page loads', page.status ? `got HTTP ${page.status}` : `can't reach the site (${page.err})`);
@@ -41,37 +46,43 @@ async function get(p, init) {
   const ledger = await get('/game/lib/ledger.js');
   const economy = await get('/game/world3d/economy.js');
   check(ledger.status === 200 && economy.status === 200, 'the new game files are deployed (ledger.js, economy.js)',
-    'deploy the branch with the server economy (PR #4)');
+    'merge and publish the site with the server economy (taproot26/taproot26 PR #4)');
 
-  const cfg = await get('/api/game/config');
-  const newApi = check(cfg.status === 200, 'the new game API is live', cfg.status === 405
-    ? 'the site still runs the old API: merge PR #4 and redeploy'
-    : cfg.status === 500 ? 'the API says it is not set up: set SUPABASE_SERVICE_KEY in Netlify' : `got HTTP ${cfg.status}`);
+  const cfg = await get(API + 'config', { headers: { Origin: base } });
+  const msg = cfg.body && (cfg.body.message || cfg.body.msg || '');
+  const newApi = check(cfg.status === 200 && cfg.body && 'realtime' in cfg.body, 'the game API (Edge Function) is deployed',
+    cfg.status === 404 ? `the function isn't there yet: ${DEPLOY}`
+      : cfg.status === 401 && /authorization|jwt/i.test(msg) ? `it was deployed with JWT checks on, which blocks the game's own sign-in: ${DEPLOY}`
+        : cfg.status === 500 ? 'it says it is not set up: check SUPABASE_SERVICE_ROLE_KEY in the function\'s secrets'
+          : cfg.status ? `got HTTP ${cfg.status}${msg ? ' (' + msg + ')' : ''}` : `can't reach it (${cfg.err})`);
   if (newApi) {
-    if (cfg.body && cfg.body.realtime) check(true, `multiplayer uses the accounts' Supabase project (${cfg.body.realtime.url})`);
-    else warn('multiplayer still uses the old Supabase project', "set SUPABASE_ANON_KEY in Netlify (the accounts project's public anon key) and redeploy");
+    const crossOrigin = new URL(API).origin !== new URL(base).origin; // the live site: the page and the API are on different domains
+    const pre = !crossOrigin ? null : await fetch(API + 'act', { method: 'OPTIONS', headers: { Origin: base, 'Access-Control-Request-Method': 'POST', 'Access-Control-Request-Headers': 'authorization, content-type' }, signal: AbortSignal.timeout(15000) }).catch(() => null);
+    if (crossOrigin) check(!!pre && pre.ok && !!pre.headers.get('access-control-allow-origin'), `the game page (${base}) may call it (CORS)`, 'the function must answer OPTIONS with Access-Control-Allow-* headers (supabase/functions/game/api.js)');
+    if (cfg.body.realtime) check(true, `multiplayer uses the accounts' Supabase project (${cfg.body.realtime.url})`);
+    else warn('multiplayer still uses the old Supabase project', 'SUPABASE_ANON_KEY is missing from the function\'s environment (Supabase normally provides it)');
   }
 
-  const farms = await get('/api/game/farms');
+  const farms = await get(API + 'farms');
   if (newApi) {
     check(farms.status === 200, 'the database update has been run', farms.status === 503
       ? 'run supabase/migrations/20261114_server_economy.sql in the Supabase SQL editor (and any newer files in supabase/migrations)'
-      : farms.status === 500 ? 'the API failed: check the function logs in Netlify, and that SUPABASE_SERVICE_KEY is right'
+      : farms.status === 500 ? 'the API failed: check the function\'s logs in the Supabase dashboard'
         : `got HTTP ${farms.status}`);
     if (farms.status === 200) console.log(`      ${farms.body.farms.length} claimed plot(s)`);
   }
 
-  const me = await get('/api/game/me');
-  check(me.status === 401, 'signed-out requests are refused', `expected 401, got ${me.status}`);
+  const me = newApi ? await get(API + 'me') : { status: 401 };
+  if (newApi) check(me.status === 401, 'signed-out requests are refused', `expected 401, got ${me.status}`);
 
   if (SIGNUP && newApi && farms.status === 200) {
     const username = 'hc_' + Date.now().toString(36);
-    const post = (a, body, key) => get('/api/game/' + a, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(key ? { Authorization: 'Bearer ' + key } : {}) }, body: JSON.stringify(body) });
+    const post = (a, body, key) => get(API + a, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(key ? { Authorization: 'Bearer ' + key } : {}) }, body: JSON.stringify(body) });
     const su = await post('signup', { username, password: 'healthcheck-' + Math.random().toString(36).slice(2) });
     if (check(su.status === 200, `sign-up works (made ${username})`, su.body && su.body.error)) {
       const key = su.body.key;
       check(Array.isArray(su.body.inventory) && su.body.inventory.length === 0, 'a new account owns no gear (dev perks are off)',
-        'GAME_DEV is set on the live site: remove it from the Netlify environment');
+        'GAME_DEV is set on the live site: the function must not run with dev settings (GAME_DEV)');
       const sv = await post('save', { character: { name: 'Health', cls: 'knight', skin: 1, hs: 'short', hc: 0 } }, key);
       check(sv.status === 200 && sv.body.inventory.includes('iron_sword'), 'the first character gets its class kit', sv.body && sv.body.error);
       const act = await post('act', { actions: [{ t: 'chest', id: 'wreck' }, { t: 'kill', m: 'slime' }] }, key);

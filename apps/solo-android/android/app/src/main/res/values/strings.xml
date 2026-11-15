@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Taproot</string>
+    <string name="title_activity_main">Taproot</string>
+    <string name="package_name">love.taproot.solo</string>
+    <string name="custom_url_scheme">love.taproot.solo</string>
+</resources>

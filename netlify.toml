@@ -3,15 +3,22 @@
   command = ""
   functions = "netlify/functions"
 
-# The game API loads the economy rules (an ES module shared with the game) at runtime, which
-# the bundler can't see on its own: ship them with the function.
+# The game API's code lives in supabase/functions/game (the live game runs it as a Supabase Edge
+# Function); this node adapter loads it at runtime, which the bundler can't see on its own.
 [functions]
-  included_files = ["game/items.js", "game/world3d/economy.js", "game/world3d/shops.js", "game/world3d/farm.js", "game/world3d/blocks.js", "game/world3d/package.json"]
+  included_files = ["supabase/functions/game/**"]
 
 # The site is just the game.
 [[redirects]]
   from = "/"
   to = "/game/"
+  status = 302
+  force = true
+
+# Solo mode: no account, no multiplayer, plays offline.
+[[redirects]]
+  from = "/solo"
+  to = "/game/world3d/?solo=1"
   status = 302
   force = true
 

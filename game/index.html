@@ -488,7 +488,7 @@
   async function api(action, body) {
     const key = getKey();
     const get = action === 'me';
-    const res = await fetch('/api/game/' + action, {
+    const res = await fetch(Ledger.api + action, {
       method: get ? 'GET' : 'POST',
       headers: { 'Content-Type': 'application/json', ...(key ? { Authorization: 'Bearer ' + key } : {}) },
       body: get ? undefined : JSON.stringify(body || {}),

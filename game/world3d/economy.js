@@ -19,12 +19,16 @@ import { BLOCKS, unpack, pack, canPlace } from './blocks.js';
 // then a gold drop and an item drop to pick up. (Damage and the rest of how it fights are in
 // /game/world3d MONSTERS.)
 export const MONSTER_LOOT = {
-  slime:     { hp: 30, speed: 1.5,  xp: 5,  gold: [1, 2],   drop: 'slime_gel' },
-  shroom:    { hp: 45, speed: 1.1,  xp: 8,  gold: [1, 3],   drop: 'spore_cap' },
-  bat:       { hp: 24, speed: 2.75,  xp: 7,  gold: [1, 2],   drop: 'bat_fang' },
-  goblin:    { hp: 60, speed: 2,  xp: 15, gold: [3, 5],   drop: 'goblin_ear' },
-  king:      { hp: 200, speed: 1, xp: 60, gold: [15, 25], drop: 'royal_jelly' },
-  gladiator: { hp: 150, speed: 2.1, xp: 45, gold: [10, 18], drop: 'laurel' },
+  slime:     { hp: 30,  speed: 1.5,  xp: 5,  gold: [1, 2],   drop: 'slime_gel' },
+  shroom:    { hp: 45,  speed: 1.1,  xp: 8,  gold: [1, 3],   drop: 'spore_cap' },
+  bat:       { hp: 24,  speed: 2.75, xp: 7,  gold: [1, 2],   drop: 'bat_fang' },
+  goblin:    { hp: 60,  speed: 2,    xp: 15, gold: [3, 5],   drop: 'goblin_ear' },
+  king:      { hp: 200, speed: 1,    xp: 60, gold: [15, 25], drop: 'royal_jelly' },
+  gladiator: { hp: 150, speed: 2.1,  xp: 45, gold: [10, 18], drop: 'laurel' },
+  // the two giants of the Mine's deepest floor (B2, The Hollow). The queen lunges (12 tiles a
+  // second for 0.45 s): `dash` is how far that carries her past her walking speed.
+  golem_crystal: { hp: 1000, speed: 0.9, xp: 400, gold: [120, 160], drop: 'golem_core' },
+  spider_queen:  { hp: 800,  speed: 2.0, dash: 5.4, xp: 350, gold: [100, 140], drop: 'queen_silk' },
 };
 
 /* ---- combat ----
@@ -64,10 +68,10 @@ export function reachOf(kind, item) {
   return (c.range || 0) + SHOT_EXTRA; // shot, boom
 }
 // Could something at `from` ([x, z, ms]) be at (x, z) at `ms`, moving at most `speed`?
-function couldReach(from, x, z, ms, speed) {
+function couldReach(from, x, z, ms, speed, dash = 0) {
   if (!from) return true;
   const secs = Math.abs(ms - from[2]) / 1000;
-  return Math.hypot(x - from[0], z - from[1]) <= secs * speed * MOVE_SLACK + JITTER + KNOCKBACK;
+  return Math.hypot(x - from[0], z - from[1]) <= secs * speed * MOVE_SLACK + JITTER + KNOCKBACK + dash;
 }
 export const SWING_CD = 0.36;   // seconds between swings of one hand
 export const MIRROR_CD = 0.5;   // a mirror shield's reflected shot
@@ -140,12 +144,14 @@ export function barrelSpot(slot, gen) {
 export const PLOT_SOIL = { 1: [24, 24], 2: [8, 8], 3: [8, 8] };
 
 /* How fast rewards can come in, as token buckets: [burst, seconds per refill]. Monsters
-   respawn 12-18 s after a kill (King Slime 45 s, the Gladiator 25 s) and no area has more
+   respawn 12-18 s after a kill (King Slime 45 s, the Gladiator 25 s, the giants 120 s) and no area has more
    than five of one kind, so a real player can't beat these; a script can't go faster. */
 export const LIMITS = {
   kill: [8, 2.4],
   'kill:king': [2, 40],
   'kill:gladiator': [2, 22],
+  'kill:golem_crystal': [2, 110], // the giants come back after 120 s
+  'kill:spider_queen': [2, 110],
   warp: [2, 20],
   barrel: [4, 8],
 };
@@ -350,7 +356,7 @@ export function applyAction(s, a, ctx) {
       if (!ctx.dev) { // local testing teleports around freely
         if (!clockOk(e, pt, now, ctx.sent)) return 'too fast';
         if (!couldReach(e.pos, px, pz, pt, PLAYER_SPEED)) return 'moved too fast';
-        if (!couldReach(foe.pos, mx, mz, pt, MONSTER_LOOT[foe.m].speed)) return 'monster moved too fast';
+        if (!couldReach(foe.pos, mx, mz, pt, MONSTER_LOOT[foe.m].speed, MONSTER_LOOT[foe.m].dash)) return 'monster moved too fast';
         if (Math.hypot(mx - px, mz - pz) > reachOf(a.k, item)) return 'out of reach';
       }
       if (!e.pos || pt >= e.pos[2]) e.pos = [px, pz, pt];

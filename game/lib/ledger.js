@@ -27,6 +27,16 @@
     key: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF6dmRxaWdhcXdiZWFramllYXBzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0OTE0NjEsImV4cCI6MjA5OTA2NzQ2MX0.QXBpcGKsot8A8w6rq76F6lvGjCVJN0NytDmfmE8C-Dw',
   };
 
+  /* Where the game API lives: the Supabase Edge Function `game` on the live site, the dev server
+     (game-dev-server.js) when playing locally. window.TAPROOT_API, or a taproot_api entry in
+     localStorage, points it anywhere else (a self-hosted server, a staging project). */
+  const API = (() => {
+    try { if (window.TAPROOT_API) return String(window.TAPROOT_API); } catch (e) {}
+    try { const v = window.localStorage.getItem('taproot_api'); if (v) return v; } catch (e) {}
+    const local = /^(localhost|127\.0\.0\.1|\[::1\]|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+)$/.test(location.hostname);
+    return local ? '/api/game/' : 'https://rxplfcuhsdvqposhpzyp.supabase.co/functions/v1/game/';
+  })();
+
   const proto = Storage.prototype;
   const raw = { get: proto.getItem, set: proto.setItem, remove: proto.removeItem };
   const ls = (() => { try { return window.localStorage; } catch (e) { return null; } })();
@@ -76,7 +86,7 @@
     if (!key) return { status: 0, data: {} };
     const isGet = body === undefined;
     const payload = isGet ? undefined : JSON.stringify(body);
-    const res = await fetch('/api/game/' + action, {
+    const res = await fetch(API + action, {
       method: isGet ? 'GET' : 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key },
       body: payload,
@@ -179,6 +189,7 @@
 
   const Ledger = {
     init(o) { Object.assign(opts, o || {}); return Ledger; },
+    api: API, // the game API's base address (ends with /)
     // Queue an action for the server: { t: 'kill', m: 'slime' }, { t: 'buy', shop, id, n }, ...
     act(a) {
       if (!a || !sessionKey()) return;
@@ -213,7 +224,7 @@
     // Where multiplayer connects: the accounts' Supabase project once it has a public key set.
     async realtime() {
       try {
-        const r = await fetch('/api/game/config');
+        const r = await fetch(API + 'config');
         const d = await r.json();
         if (d && d.realtime && d.realtime.url && d.realtime.key) return d.realtime;
       } catch (e) {}
@@ -222,7 +233,7 @@
     // Every claimed plot (for showing farms whose owners are offline), in this browser's clock.
     async farms() {
       try {
-        const r = await fetch('/api/game/farms');
+        const r = await fetch(API + 'farms');
         if (!r.ok) return [];
         const d = await r.json();
         const off = d.now ? d.now - Date.now() : offset;
