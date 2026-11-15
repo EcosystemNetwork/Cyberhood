@@ -27,6 +27,11 @@
   .title { font: 400 19px/1.1 'Lilita One', system-ui, sans-serif; color: #fff; text-shadow: 0 2px 0 rgba(0, 0, 0, 0.5); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .hp { position: relative; margin-top: 6px; height: 18px; border-radius: 10px; background: #1a0624; border: 2px solid #12031a; overflow: hidden; }
   #hpFill { height: 100%; width: 100%; background: linear-gradient(#e2ff7a, #8ad400); box-shadow: 0 0 10px rgba(200, 255, 46, 0.7); transition: width 0.2s; }
+  .hp.mp { height: 14px; margin-top: 4px; }
+  .hp.mp.empty { animation: mpFlash 0.45s; }
+  @keyframes mpFlash { 0%, 100% { box-shadow: none; } 40% { box-shadow: 0 0 0 2px #ff5a5a, 0 0 14px #ff5a5a; } }
+  #manaFill { height: 100%; width: 100%; background: linear-gradient(#9ad8ff, #3a8ae0); box-shadow: 0 0 10px rgba(90, 180, 255, 0.7); transition: width 0.2s; }
+  #manaText { position: absolute; inset: 0; z-index: 1; display: grid; place-items: center; font: 400 11px/1 'Lilita One', sans-serif; color: #fff; text-shadow: 0 1px 2px #000; }
   #hpText { position: absolute; inset: 0; display: grid; place-items: center; font: 400 12px/1 'Lilita One', sans-serif; text-shadow: 0 1px 2px #000; }
   .links { margin-top: 6px; font: 800 12px/1.2 'Nunito', sans-serif; color: #e7c9f2; }
   .links a { color: #fff; text-decoration: none; border-bottom: 1px dashed rgba(255, 255, 255, 0.5); }
@@ -351,6 +356,7 @@ if (!window.SOLO) {
   <div class="tl-body">
     <div class="title" id="areaTitle">Taproot Fields</div>
     <div class="hp"><div id="hpFill"></div><span id="hpText"></span></div>
+    <div class="hp mp"><div id="manaFill"></div><span id="manaText">MP 100 / 100</span></div>
     <div class="links"><a href="/game/">Back</a></div>
   </div>
 </div>
@@ -449,6 +455,7 @@ import { ARENA_CENTER, ARENA_RADIUS, standY, standBlocked, tomatoArc, TOMATO_GRA
 import * as arenaMod from './arena.js';
 import { FLOORS, floorMap, BELOW, ABOVE, SHIFT_1F } from './mine.js';
 import { makePortal, makeSprout } from './portal.js';
+import { makeSafeCamp } from './safe.js';
 for (const id of BLOCK_IDS) FARM_ITEMS['block_' + id] = { name: BLOCKS[id].name, emoji: BLOCKS[id].emoji, info: 'Building block · place it on your plot in build mode (G)' };
 
 const AREA = new URLSearchParams(location.search).get('area');
@@ -772,6 +779,7 @@ const AREAS = {
     start: { x: 22, y: 31 },
     exits: [{ edge: 's', range: [20, 24], href: '/game/world3d/?from=cave', name: 'Taproot Fields' }],
     arrive: { fields: { x: 22, y: 31 } },
+    safe: { x: 18.5, y: 29.8, r: 2.2 }, // a camp in the entrance room: monsters can't come in
     spawn: ['bat', 'bat', 'bat', 'bat', 'bat', 'slime', 'slime', 'shroom', 'shroom', 'shroom', 'goblin', 'goblin'],
   },
 
@@ -819,6 +827,7 @@ const AREAS = {
   c.lights.forEach((l) => { l[1] += s; });
   c.start.y += s;
   c.arrive.fields.y += s;
+  c.safe.y += s;
   c.objects.push(['crystal_blue', 20, 6, 2, 1], ['crystal_purple', 55, 9, 2, 1], ['node_gold', 26, 10, 2, 1], ['node_iron', 49, 7, 2, 1],
     ['stalagmite_big', 17, 9, 1, 1], ['boulders', 59, 14, 2, 1], ['crystal_blue', 64, 33, 2, 1], ['node_crystal', 57, 35, 2, 1],
     ['stalagmite_small', 62, 37, 1, 1], ['barrel', 60, 24, 1, 1], ['crate', 61, 24, 1, 1]);
@@ -2503,6 +2512,10 @@ if (PORTAL) {
   scene.add(PORTAL.ring, PORTAL.sprout);
   gates.push({ x: PORTAL.x, z: PORTAL.y, y: 3.2, name: `${PORTAL.name} portal`, hint: 'Press F to try it' });
 }
+const SAFE = A.safe ? { ...A.safe, camp: makeSafeCamp(A.safe.r) } : null;
+if (SAFE) { SAFE.camp.position.set(SAFE.x, 0, SAFE.y); scene.add(SAFE.camp); }
+// inside the camp ring (pad > 0 keeps things a little further out)
+const inSafe = (x, z, pad = 0) => !!SAFE && Math.hypot(x - SAFE.x, z - SAFE.y) < SAFE.r + pad;
 const BOARD_AT = A.sailing ? { x: 20.5 + HX, z: 31.4 + HZ } : null;
 // shop counters (buildings named in shops.js) and the crafting table: stand in front and press F
 const shopSpots = placed.filter((o) => o.name && SHOPS[o.name]).map((o) => {
@@ -3084,6 +3097,7 @@ function spawnMonster(entry) {
 }
 function monsterFree(m, x, z) {
   if (x < 0.5 || z < 0.6 || x > MAP_W - 0.5 || z > MAP_H - 0.25) return false;
+  if (inSafe(x, z, 0.35)) return false; // no monster sets foot (or wing) inside the safe camp
   if (m.cfg.fly) return true;
   const r = m.cfg.giant ? m.cfg.size * 0.6 : m.cfg.big ? 0.56 : 0.31;
   return [[-r, 0], [r, 0], [-r, -0.25], [r, -0.25]].every(([ox, oz]) => !blocked[Math.floor(z + oz)][Math.floor(x + ox)]);
@@ -3280,6 +3294,24 @@ function jump() {
 }
 
 // hand 'R' (J, K or ') or 'L' (;): each hand has its own weapon, swing and cooldown (dual wield)
+/* Mana: staffs and wands spend it, everything else is free. It refills on its own like nitro
+   (empty to full in 8 s, twice as fast in the safe camp). */
+const MANA_MAX = 100;
+const MANA_COST = { apprentice_wand: 10, oak_staff: 12, fire_wand: 15, ice_wand: 15, inferno_staff: 20, thunder_staff: 25 };
+let mana = MANA_MAX, manaShown = -1, manaWarned = 0, regen = 0;
+const manaCost = (hand, caster) => (caster.boomerang ? 0 : MANA_COST[gear(hand === 'L' ? 'lhand' : 'rhand')] ?? 12);
+function drawMana() {
+  const v = Math.floor(mana);
+  if (v === manaShown) return;
+  manaShown = v;
+  $('manaFill').style.width = `${(mana / MANA_MAX) * 100}%`;
+  $('manaText').textContent = `MP ${v} / ${MANA_MAX}`;
+}
+function outOfMana() {
+  const bar = $('manaFill').parentElement;
+  bar.classList.remove('empty'); void bar.offsetWidth; bar.classList.add('empty'); // flash the bar
+  if (performance.now() - manaWarned > 1200) { manaWarned = performance.now(); floatText(P.x, 2, P.z, 'Out of mana', '#9ad8ff'); }
+}
 function swing(hand = 'R') {
   if (STANDS) { throwTomato(); return; } // a spectator has no fight to swing at
   if (gear(hand === 'L' ? 'lhand' : 'rhand') === 'mirror_shield') { if (!fainted && !modal) parry(); return; }
@@ -3288,7 +3320,13 @@ function swing(hand = 'R') {
   if (fainted || modal || (L ? attackCdL : attackCd) > 0) return;
   if (L) { attackCdL = caster ? caster.cd : 0.36; P.atkL = 0; mp.atkL = Math.round(performance.now()); }
   else { attackCd = caster ? caster.cd : 0.36; P.atk = 0; mp.atk = Math.round(performance.now()); } // stamp the swing so other players see it once
-  if (caster) { setTimeout(() => castBall(hand), 120); return; } // wands and staffs shoot instead
+  if (caster) { // wands and staffs shoot instead, if there's the mana for it
+    const cost = manaCost(hand, caster.cast || caster);
+    if (mana < cost) { outOfMana(); return; }
+    mana -= cost; drawMana();
+    setTimeout(() => castBall(hand), 120);
+    return;
+  }
   // auto-aim: a swing turns onto anything within reach in front of you
   const lock = assistTarget(P.x, P.z, Math.sin(P.heading), Math.cos(P.heading), 2.2, 0.8);
   const dir = lock ? Math.atan2(lock.x - P.x, lock.z - P.z) : P.heading;
@@ -3735,6 +3773,7 @@ function queenMoves(mo, v, dt, dx, dz, dist, tt) {
   v.legs.forEach((l) => { l.hip.rotation.y = l.base + (moving ? Math.sin(tt * (mo.dash > 0 ? 22 : 11) + l.i * 1.6 + (l.s > 0 ? Math.PI : 0)) * 0.3 : 0); });
 }
 function hurtPlayer(m, dx, dz, dist) {
+  if (inSafe(P.x, P.z)) return; // nothing reaches you in the safe camp
   const dmg = Math.max(1, Math.round(m.cfg.dmg * 50 / (50 + stats.def)));
   hp = Math.max(0, hp - dmg);
   inv = 0.9;
@@ -4195,7 +4234,7 @@ function useItem(id) {
 }
 
 function hazardHurt(power, weapon) {
-  if (fainted || performance.now() < safeUntil) return;
+  if (fainted || performance.now() < safeUntil || inSafe(P.x, P.z)) return;
   const dmg = Math.max(1, Math.round(power * 50 / (50 + statNow('def'))));
   hp = Math.max(0, hp - dmg);
   hero.hurt();
@@ -4427,7 +4466,7 @@ function updateFoeBalls(dt) {
     if (b.trailT > 0.03) { b.trailT = 0; burst(b.x, b.y, b.z, '#ff5a2a', 1); }
     const cx = Math.floor(b.x), cz = Math.floor(b.z);
     const wall = cx < 0 || cz < 0 || cx >= MAP_W || cz >= MAP_H || blocked[cz][cx]
-      || circles.some(([x, z, r]) => Math.hypot(b.x - x, b.z - z) < r);
+      || circles.some(([x, z, r]) => Math.hypot(b.x - x, b.z - z) < r) || inSafe(b.x, b.z); // spells fizzle on the camp's ring
     const onMe = !fainted && Math.hypot(P.x - b.x, P.z - b.z) < 0.75 && P.y < 1.8;
     if (onMe && parrying()) { // the mirror shield sends it straight back at whoever threw it
       floatText(P.x, 2, P.z, 'Reflected!', '#cfefff');
@@ -5393,6 +5432,12 @@ function update(dt, now) {
   const boosting = moving && (sprintOn || ((keys.ShiftLeft || keys.ShiftRight) && !shiftCancel)) && !nitroLock && nitro > 0;
   if (boosting) { if (gear('feet') !== 'windrunner_boots') nitro -= dt * 0.12; if (nitro <= 0) { nitro = 0; nitroLock = true; } } // windrunner boots never tire
   else { nitro = Math.min(1, nitro + dt * 0.3); if (nitroLock && nitro > 0.25) nitroLock = false; }
+  const camping = inSafe(P.x, P.z);
+  mana = Math.min(MANA_MAX, mana + dt * (MANA_MAX / 8) * (camping ? 2 : 1)); drawMana();
+  if (camping && !fainted && hp < stats.hp) { // resting by the fire: about 6% of your health a second
+    regen += dt * stats.hp * 0.06;
+    if (regen >= 1) { hp = Math.min(stats.hp, hp + Math.floor(regen)); regen -= Math.floor(regen); updateHud(); }
+  }
   // Smoothing is frame-rate independent: damp(k, dt) is the fraction of the way to close
   // this frame for a time constant 1/k, where a bare `dt * k` would snap at low frame rates
   // and crawl at high ones. That difference is most of what reads as jerk.
@@ -5468,7 +5513,7 @@ function update(dt, now) {
     if (mo.kb > 0) { mo.kb -= dt; vx = mo.kbx; vz = mo.kbz; }
     else if (mo.slamAt !== undefined || mo.lungeAt !== undefined) { vx = 0; vz = 0; } // winding up: rooted
     else if (mo.dash > 0) { mo.dash -= dt; vx = mo.dashX; vz = mo.dashZ; }
-    else if (!fainted && !smokedNow() && dist < mo.cfg.aggro) { vx = dx / dist * mo.cfg.speed; vz = dz / dist * mo.cfg.speed; }
+    else if (!fainted && !smokedNow() && !inSafe(P.x, P.z) && dist < mo.cfg.aggro) { vx = dx / dist * mo.cfg.speed; vz = dz / dist * mo.cfg.speed; }
     else {
       mo.t -= dt;
       if (mo.t <= 0) {
@@ -5769,7 +5814,7 @@ window.__world3d = { P, ghosts, arena, ladders: LADDERS, action: () => action &&
   equip: (id, slot) => equip(id, slot), gearOf: (slot) => gear(slot), parrying: () => parrying(),
   view: viewName, autoAim: () => autoAim, setAutoAim: (on) => setAutoAim(on), camYaw: () => camYaw, setCamYaw: (v) => { camYaw = v; }, nitro: () => nitro, setNitro: (v) => { nitro = v; nitroLock = false; }, jump,
   spawn: (type, x, z) => { spawnMonster(type); const m = monsters[monsters.length - 1]; m.x = x; m.z = z; m.t = 99; m.vx = m.vz = 0; return monsters.length - 1; },
-  foeCast: (i) => castFoeBall(monsters[i]), chilled, smoked: () => Math.max(0, (smokeUntil - performance.now()) / 1000), colosseum: () => COLO && { arena: [A.doors.find((d) => /area=arena/.test(d.href)).x + 0.5, A.doors.find((d) => /area=arena/.test(d.href)).y + 0.5], stands: [A.doors.find((d) => /area=stands/.test(d.href)).x + 0.5, A.doors.find((d) => /area=stands/.test(d.href)).y + 0.5] }, hazardNow, clockOffset: () => HAZ.offset, hazards: () => [...HAZ.views.values()], hazardClock: (ms) => { HAZ.pinned = ms === undefined || ms === null ? null : ms; }, slowed, setHp: (n) => { hp = n; updateHud(); }, drawnBlocks: (id) => ((plotViews.get(id) || {}).blockMeshes || []).reduce((n, m) => n + m.count, 0), getPitch: () => fpPitch, camDistT: () => camDistT, getYaw: () => camYaw, firstPerson: () => firstPerson, setPitch: (v) => { fpPitch = v; }, openShop, hiddenBlocks, doorAngle: (id, i, j, k) => { const v = plotViews.get(id); return (v && v.doorAng && v.doorAng.get(`${i},${j},${k}`)) || 0; }, shopSpots, aimBlock, mouse, camera, building: () => building, toScreen, groundAt, solidAt, setBlocks, plots: PLOTS, placed, decorCrops, myFarm: () => myFarm, farmTile: () => farmTile(), hp: () => hp, mp, monsters, drops, field: () => field, hero: () => hero, fireballs, tp: (x, z, yaw) => { P.x = x; P.z = z; P.vx = P.vz = 0; if (yaw !== undefined) camYaw = yaw; }, cam: (dist, pitch) => { camDistT = camDist = dist; camPitchT = camPitch = pitch; }, size: [MAP_W, MAP_H], info: () => { // one full frame's draw calls and triangles (all passes, shadows included)
+  foeCast: (i) => castFoeBall(monsters[i]), chilled, smoked: () => Math.max(0, (smokeUntil - performance.now()) / 1000), colosseum: () => COLO && { arena: [A.doors.find((d) => /area=arena/.test(d.href)).x + 0.5, A.doors.find((d) => /area=arena/.test(d.href)).y + 0.5], stands: [A.doors.find((d) => /area=stands/.test(d.href)).x + 0.5, A.doors.find((d) => /area=stands/.test(d.href)).y + 0.5] }, hazardNow, clockOffset: () => HAZ.offset, hazards: () => [...HAZ.views.values()], hazardClock: (ms) => { HAZ.pinned = ms === undefined || ms === null ? null : ms; }, slowed, setHp: (n) => { hp = n; updateHud(); }, drawnBlocks: (id) => ((plotViews.get(id) || {}).blockMeshes || []).reduce((n, m) => n + m.count, 0), getPitch: () => fpPitch, mana: () => mana, inSafe: () => inSafe(P.x, P.z), safe: () => SAFE && { x: SAFE.x, y: SAFE.y, r: SAFE.r }, camDistT: () => camDistT, getYaw: () => camYaw, firstPerson: () => firstPerson, setPitch: (v) => { fpPitch = v; }, openShop, hiddenBlocks, doorAngle: (id, i, j, k) => { const v = plotViews.get(id); return (v && v.doorAng && v.doorAng.get(`${i},${j},${k}`)) || 0; }, shopSpots, aimBlock, mouse, camera, building: () => building, toScreen, groundAt, solidAt, setBlocks, plots: PLOTS, placed, decorCrops, myFarm: () => myFarm, farmTile: () => farmTile(), hp: () => hp, mp, monsters, drops, field: () => field, hero: () => hero, fireballs, tp: (x, z, yaw) => { P.x = x; P.z = z; P.vx = P.vz = 0; if (yaw !== undefined) camYaw = yaw; }, cam: (dist, pitch) => { camDistT = camDist = dist; camPitchT = camPitch = pitch; }, size: [MAP_W, MAP_H], info: () => { // one full frame's draw calls and triangles (all passes, shadows included)
   renderer.info.autoReset = false; renderer.info.reset(); composer.render();
   const r = { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles };
   renderer.info.autoReset = true; return r;
@@ -5780,6 +5825,7 @@ renderBag();
   const dt = Math.min(clock.getDelta(), 0.05);
   update(dt, performance.now());
   if (PORTAL) { PORTAL.ring.tick(performance.now()); PORTAL.sprout.tick(performance.now()); }
+  if (SAFE) SAFE.camp.tick(performance.now());
   if (PHONE) renderer.render(scene, camera); else composer.render(); // the glow pass costs a phone more than it shows
   if (!frame.shown) { frame.shown = true; LOAD.done(); if (!cachedGround) setTimeout(saveGround, 1500); } // the first frame is drawn: lift the loading screen
   requestAnimationFrame(frame);
