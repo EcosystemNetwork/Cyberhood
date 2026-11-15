@@ -14,8 +14,16 @@ const DEV = process.env.GAME_DEV === '1';
 
 const STYLES = ['short', 'long', 'bald'];
 const ALL_ITEMS = Object.keys(G.ITEMS);
-const MAX_ATTEMPTS = 5;
-const LOCK_MS = 5 * 60 * 1000;
+/* Rate limits, counted in the database (game_hit(), supabase/migrations/20261114_auth_rate_limits.sql)
+   as [max, window seconds]. Per IP, and per IP + username for wrong passwords, so a stranger can't
+   lock someone out of their own account; the per-username cap only slows a guesser spread over
+   many IPs, and is far above what an owner who forgot their password would hit. */
+const RATE = {
+  signup: [5, 3600],          // new accounts per IP
+  login: [30, 600],           // log-in attempts per IP
+  loginFail: [5, 900],        // wrong passwords per IP + username
+  loginFailUser: [50, 3600],  // wrong passwords per username, from anywhere
+};
 const SESSION_MS = 30 * 24 * 60 * 60 * 1000;
 const DUMMY_HASH = '00'.repeat(16) + ':' + '00'.repeat(64);
 const MAX_ACTIONS = 60; // per request
@@ -62,6 +70,32 @@ async function db(query, init = {}) {
   try { data = text ? JSON.parse(text) : null; } catch (e) { data = text; }
   return { status: res.status, data };
 }
+// The caller's IP. Netlify and Vercel set these themselves; x-forwarded-for's last entry is the one
+// the nearest proxy added (the first can be anything the client sent).
+function clientIp(req) {
+  const h = req.headers || {};
+  const xff = String(h['x-forwarded-for'] || '').split(',').map((x) => x.trim()).filter(Boolean);
+  return String(h['x-nf-client-connection-ip'] || h['x-real-ip'] || xff[xff.length - 1] || 'unknown').slice(0, 64);
+}
+/* Counts `cost` hits against a limit and says whether the caller is still within it (cost 0 only
+   checks). Until the migration is run the function doesn't exist; then it lets everything through
+   and says so in the log, rather than lock everyone out. */
+let warnedNoLimits = false;
+async function within(name, key, cost = 1) {
+  const [max, windowS] = RATE[name];
+  try {
+    const res = await fetch(BASE_URL + '/rest/v1/rpc/game_hit', {
+      method: 'POST',
+      headers: { apikey: SERVICE_KEY, Authorization: 'Bearer ' + SERVICE_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ k: name + ':' + sha256(key), max_hits: max, window_s: windowS, cost }),
+    });
+    if (res.ok) return (await res.json()) !== false;
+    if (!warnedNoLimits) { warnedNoLimits = true; console.warn('rate limits are off: game_hit() answered ' + res.status + ' (run supabase/migrations)'); }
+  } catch (e) { console.error('rate limit check failed', e); }
+  return true;
+}
+const TOO_MANY = { error: 'Too many attempts. Try again in a few minutes' };
+
 // PostgREST answers 400 for a column it doesn't know: the migration hasn't been run.
 const notMigrated = (r) => r.status === 400 && /econ|farm/.test(JSON.stringify(r.data || ''));
 class NotMigrated extends Error {}
@@ -146,6 +180,7 @@ async function act(user, actions, opts) {
       now: Date.now(), dev: DEV, isGear: (id) => has(G.ITEMS, id),
       owner: (user.character && user.character.name) || user.username,
       minute: DEV && opts.fast ? 1000 : 60000,
+      rand: () => crypto.randomInt(0, 2 ** 32) / 2 ** 32, // gold drops are rolled here, not in the browser
       ...fighter(user, s.owned),
     };
     let character = user.character;
@@ -214,6 +249,7 @@ module.exports = async (req, res) => {
     if (action === 'signup') {
       if (!/^[a-z0-9_]{3,20}$/.test(username)) return send(400, { error: 'Username must be 3-20 letters, numbers or underscores' });
       if (password.length < 8 || password.length > 128) return send(400, { error: 'Password must be 8-128 characters' });
+      if (!(await within('signup', clientIp(req)))) return send(429, { error: 'Too many new accounts from here. Try again later' });
       const s = newSession();
       const E = await ECON();
       const inventory = DEV ? ALL_ITEMS : [];
@@ -232,26 +268,22 @@ module.exports = async (req, res) => {
 
     if (action === 'login') {
       const valid = /^[a-z0-9_]{3,20}$/.test(username) && password.length <= 128;
+      const ip = clientIp(req), ipUser = ip + '|' + username;
+      if (!(await within('login', ip))) return send(429, TOO_MANY);
+      if (!(await within('loginFail', ipUser, 0)) || !(await within('loginFailUser', username, 0))) return send(429, TOO_MANY);
       const r = valid
-        ? await db(`?username=eq.${username}&select=${ROW},password_hash,failed_attempts,locked_until`)
+        ? await db(`?username=eq.${username}&select=${ROW},password_hash`)
         : { data: null };
       if (notMigrated(r)) throw new NotMigrated();
       const user = r.data && r.data[0];
-      if (user && user.locked_until && new Date(user.locked_until) > new Date()) {
-        return send(429, { error: 'Too many attempts. Try again in a few minutes' });
-      }
       const ok = valid && (await checkPassword(password, user ? user.password_hash : DUMMY_HASH));
       if (!user || !ok) {
-        if (user) {
-          const n = user.failed_attempts + 1;
-          await patch(user.id, n >= MAX_ATTEMPTS
-            ? { failed_attempts: 0, locked_until: new Date(Date.now() + LOCK_MS).toISOString() }
-            : { failed_attempts: n });
-        }
+        await within('loginFail', ipUser);
+        await within('loginFailUser', username);
         return send(401, { error: 'Wrong username or password' });
       }
       const s = newSession();
-      await patch(user.id, { ...s.fields, failed_attempts: 0, locked_until: null });
+      await patch(user.id, s.fields);
       return send(200, { key: s.key, username: user.username, character: user.character, inventory: ownedItems(user), state: await stateOf(user) });
     }
 

@@ -49,6 +49,12 @@ export const ARENA_BUFF = 1.7;  // the biggest arena buff (Focus); only gladiato
 export const CD_SLACK = 0.85;   // frame timing: an attack may come this fraction of a cooldown early
 export const CLOCK_SLACK_MS = 3000;
 export const MAX_FOES = 40;
+/* Group kills, the way modern open-world MMOs tag monsters: everyone who did real damage to a
+   monster gets the full kill (XP and their own drops) when it goes down, whoever finished it.
+   The server can't see other players' hits, so it takes the player's word that the monster died,
+   but only for one they've hit for at least this share of its HP, and the kill-rate limits
+   below still apply: helping out can never pay faster than killing alone. */
+export const ASSIST_SHARE = 0.1;
 // Most targets one attack of each kind can hit.
 export const MAX_TARGETS = { swing: 3, shot: 1, aoe: 8, chain: 2, boom: 6, mirror: 1 };
 // How hard each kind of hit is, from the player's attack and magic (the game's own formulas).
@@ -65,6 +71,43 @@ export const maxHit = (kind, stats, foe) => Math.round(POWER[kind](stats) * (foe
 // Sea chests (one per island, once per player) and floating barrels.
 export const SEA_TREASURE = { wreck: 40, lonely: 25, gull: 25, doubloon: 30 };
 export const BARREL_GOLD = 3;
+
+/* ---- the sea, as the server sees it ----
+   Islands (centre and radius; /game/sea3d/world.js builds them from these) and where every
+   floating barrel bobs. A barrel's spot comes from its slot and how many times it has been
+   taken, the same way in the browser and on the server, so a claim can be checked: the slot
+   must have floated back since it was last taken, and the boat must have had time to sail
+   there from the last barrel at full sail. */
+export const SEA_R = 420; // the sea ends here
+export const SEA_ISLES = {
+  harbor: [0, -40, 24], fort: [170, -150, 28], skull: [-180, -120, 18], arch: [-90, 110, 12],
+  wreck: [120, 130, 14], village: [-250, 60, 26], lonely: [55, 45, 8], gull: [-70, -210, 9],
+  verde: [270, 70, 32], doubloon: [230, -290, 8], beacon: [40, -240, 12],
+};
+export const BARREL_SLOTS = 26;
+export const BARREL_RESPAWN_MS = 25000;
+export const BARREL_REACH = 3;      // the boat picks up a barrel this close
+export const BOAT_MAX_SPEED = 19.6; // full sail (14) with a gust (x1.4); the joystick tops out at 14
+export const SAIL_SLACK = 1.15;     // waves, frame timing and latency
+// A small seeded generator, so both sides roll the same numbers.
+function rng(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+// Where barrel `slot` floats after being taken `gen` times: open water, clear of every island.
+export function barrelSpot(slot, gen) {
+  const r = rng(Math.imul(slot + 1, 0x9e3779b1) ^ Math.imul(gen + 1, 0x85ebca77));
+  for (let i = 0; i < 300; i++) {
+    const a = r() * Math.PI * 2, d = 30 + r() * (SEA_R - 60), x = Math.cos(a) * d, z = Math.sin(a) * d;
+    if (!Object.values(SEA_ISLES).some(([ix, iz, ir]) => Math.hypot(x - ix, z - iz) < ir + 16)) return [x, z];
+  }
+  return [0, 60];
+}
 
 // Soil size (tiles) of each player plot in the Avenues, by plot id.
 export const PLOT_SOIL = { 1: [24, 24], 2: [8, 8], 3: [8, 8] };
@@ -83,9 +126,19 @@ export const BAG_MAX = 99999;
 export const MAX_MEMBERS = 20;
 export const HARVEST_SLACK_MS = 5000; // client and server clocks / latency
 
-// A first upload of progress saved in the browser before cloud saves existed is accepted
-// once per account, within these limits.
-export const IMPORT_CAPS = { gold: 5000, xp: 20000, kills: 5000, bag: 99 };
+/* A first upload of progress saved in the browser before cloud saves existed is accepted
+   once per account, within these limits. Gold, bag items and gear all come out of one budget
+   (`value`, in gold): gear at its shop price, bag items at what they sell for (or cost), then
+   gold with whatever is left. Gear no shop sells can't be imported, and neither can anything
+   that would go over the budget, so the most any account can get from an import is the same
+   as earning 5000 gold. */
+export const IMPORT_CAPS = { value: 5000, xp: 20000, kills: 5000, bag: 99 };
+// What an item is worth in gold: its lowest shop price, else what a shop pays for it.
+export const valueOf = (id) => {
+  let best;
+  for (const s of Object.values(SHOPS)) for (const [x, p] of s.stock) if (x === id && (best === undefined || p < best)) best = p;
+  return best !== undefined ? best : SELL[id];
+};
 
 // What a shop charges for an item, or undefined if it doesn't stock it.
 export const shopPrice = (shop, id) => {
@@ -101,7 +154,8 @@ export const BAG_ITEMS = new Set([
 ]);
 
 export function newEcon() {
-  return { gold: 0, xp: 0, kills: 0, bag: {}, loot: [], pending: { gold: {}, item: {} }, rl: {}, imported: false, foes: {}, hands: {}, clock: null };
+  return { gold: 0, xp: 0, kills: 0, bag: {}, loot: [], pending: { gold: {}, item: {} }, rl: {}, imported: false, foes: {}, hands: {}, clock: null,
+    sea: { gen: {}, back: {}, last: null } };
 }
 // Fills in anything missing from a saved economy (older rows, new fields).
 export function normEcon(e) {
@@ -115,7 +169,15 @@ export function normEcon(e) {
     rl: { ...(e.rl || {}) },
     foes: { ...(e.foes || {}) },
     hands: { ...(e.hands || {}) },
+    sea: { gen: { ...((e.sea && e.sea.gen) || {}) }, back: { ...((e.sea && e.sea.back) || {}) }, last: (e.sea && e.sea.last) || null },
   };
+}
+
+// The client's game clock may not run ahead of the server's (no speeding up the game).
+// Combat and barrels share it. Returns false if `at` is ahead.
+function clockOk(e, at, now) {
+  if (!e.clock || at < e.clock[0] || now - e.clock[1] > 120000) e.clock = [at, now];
+  return at - e.clock[0] <= now - e.clock[1] + CLOCK_SLACK_MS;
 }
 
 export function newFarm(plot, owner, now) {
@@ -190,7 +252,7 @@ export function applyAction(s, a, ctx) {
       if (typeof a.id !== 'string' || !/^[a-z0-9]{4,16}$/.test(a.id) || e.foes[a.id]) return 'bad id';
       const ids = Object.keys(e.foes);
       if (ids.length >= MAX_FOES) delete e.foes[ids[0]]; // the oldest
-      e.foes[a.id] = { m: a.m, hp: m.hp };
+      e.foes[a.id] = { m: a.m, hp: m.hp, dealt: 0 };
       return '';
     }
     case 'hit': { // { id, k: kind, hand: 'R' | 'L', a: attack id, at: client ms, dmg }
@@ -201,9 +263,7 @@ export function applyAction(s, a, ctx) {
       if (!handAllows(a.k, item, other)) return 'wrong weapon';
       const at = Number(a.at), att = typeof a.a === 'string' ? a.a.slice(0, 16) : '';
       if (!Number.isFinite(at) || !att) return 'bad hit';
-      // the client's clock may not run ahead of the server's (no speeding up the game)
-      if (!e.clock || at < e.clock[0] || now - e.clock[1] > 120000) e.clock = [at, now];
-      if (at - e.clock[0] > now - e.clock[1] + CLOCK_SLACK_MS) return 'too fast';
+      if (!clockOk(e, at, now)) return 'too fast';
       // one attack per cooldown per hand, and only so many targets per attack
       const h = e.hands[a.hand] || { a: '', at: -Infinity, n: {} };
       if (h.a !== att) {
@@ -216,7 +276,15 @@ export function applyAction(s, a, ctx) {
       cur.n[a.k] = (cur.n[a.k] || 0) + 1;
       const dmg = Math.min(Math.max(1, Math.floor(Number(a.dmg)) || 1), maxHit(a.k, ctx.stats || { atk: 10, mag: 2 }, foe.m));
       foe.hp -= dmg;
+      foe.dealt = (foe.dealt || 0) + dmg;
       if (foe.hp > 0) return '';
+      delete e.foes[a.id];
+      return credit(e, foe.m, now);
+    }
+    case 'down': { // { id }: a monster this player helped fight was finished off by someone else
+      const foe = e.foes[a.id];
+      if (!foe) return 'no such monster';
+      if ((foe.dealt || 0) < Math.ceil(MONSTER_LOOT[foe.m].hp * ASSIST_SHARE)) return 'not enough damage';
       delete e.foes[a.id];
       return credit(e, foe.m, now);
     }
@@ -225,12 +293,13 @@ export function applyAction(s, a, ctx) {
       if (!MONSTER_LOOT[a.m]) return 'unknown monster';
       return credit(e, a.m, now);
     }
-    case 'pickup': { // a drop walked over: { kind: 'gold', m, n } or { kind: 'item', id }
-      if (a.kind === 'gold') {
-        const m = MONSTER_LOOT[a.m], n = int(a.n);
+    case 'pickup': { // a drop walked over: { kind: 'gold', m } or { kind: 'item', id }
+      if (a.kind === 'gold') { // the server rolls the amount; whatever the browser showed is only a guess
+        const m = MONSTER_LOOT[a.m];
         if (!m || !(e.pending.gold[a.m] > 0)) return 'nothing to pick up';
-        if (!(n >= m.gold[0] && n <= m.gold[1])) return 'bad amount';
-        e.pending.gold[a.m] -= 1; e.gold += n;
+        const roll = ctx.rand || Math.random;
+        e.pending.gold[a.m] -= 1;
+        e.gold += m.gold[0] + Math.min(m.gold[1] - m.gold[0], Math.floor(roll() * (m.gold[1] - m.gold[0] + 1)));
         return '';
       }
       if (a.kind === 'item') {
@@ -285,8 +354,22 @@ export function applyAction(s, a, ctx) {
       e.loot.push(a.id); e.gold += g;
       return '';
     }
-    case 'barrel': {
+    case 'barrel': { // { slot, at: client ms }: sailed through barrel `slot` where barrelSpot() put it
+      const slot = int(a.slot), at = Number(a.at), sea = e.sea;
+      if (!(slot >= 0 && slot < BARREL_SLOTS) || !Number.isFinite(at)) return 'bad barrel';
+      if (!clockOk(e, at, now)) return 'too fast';
+      if (at < (sea.back[slot] || -Infinity)) return 'not back yet';
+      const [x, z] = barrelSpot(slot, sea.gen[slot] || 0);
+      if (sea.last) { // could the boat have got here from the last barrel?
+        const secs = (at - sea.last[2]) / 1000;
+        if (secs < 0) return 'out of order';
+        const dist = Math.hypot(x - sea.last[0], z - sea.last[1]) - 2 * BARREL_REACH;
+        if (dist > secs * BOAT_MAX_SPEED * SAIL_SLACK) return 'too far';
+      }
       if (!take(e, 'barrel', now)) return 'too fast';
+      sea.gen[slot] = (sea.gen[slot] || 0) + 1;
+      sea.back[slot] = at + BARREL_RESPAWN_MS;
+      sea.last = [x, z, at];
       e.gold += BARREL_GOLD;
       return '';
     }
@@ -390,13 +473,25 @@ export function applyAction(s, a, ctx) {
       if (e.imported) return 'already imported';
       const f = a.field && typeof a.field === 'object' ? a.field : {};
       const cap = (v, max) => { const n = Math.floor(Number(v)); return Number.isFinite(n) && n > 0 ? Math.min(n, max) : 0; };
-      e.gold += cap(f.gold, IMPORT_CAPS.gold);
+      let budget = IMPORT_CAPS.value;
       e.xp += cap(f.xp, IMPORT_CAPS.xp);
       e.kills += cap(f.kills, IMPORT_CAPS.kills);
-      if (f.bag && typeof f.bag === 'object') {
-        for (const [id, n] of Object.entries(f.bag)) if (BAG_ITEMS.has(id)) add(e.bag, id, cap(n, IMPORT_CAPS.bag));
+      // gear first (it's what players miss most), each at its shop price
+      if (Array.isArray(a.owned)) for (const id of [...new Set(a.owned)].slice(0, 200)) {
+        const v = typeof id === 'string' && ctx.isGear(id) && !s.owned.includes(id) ? valueOf(id) : undefined;
+        if (v === undefined || v > budget) continue;
+        budget -= v; s.owned.push(id);
       }
-      if (Array.isArray(a.owned)) for (const id of a.owned) if (ctx.isGear(id) && !s.owned.includes(id)) s.owned.push(id);
+      // then the bag, as many of each as the budget allows
+      if (f.bag && typeof f.bag === 'object') {
+        for (const [id, n] of Object.entries(f.bag).slice(0, 200)) {
+          const v = BAG_ITEMS.has(id) ? valueOf(id) : undefined;
+          if (v === undefined) continue;
+          const k = Math.min(cap(n, IMPORT_CAPS.bag), v > 0 ? Math.floor(budget / v) : IMPORT_CAPS.bag);
+          if (k > 0) { add(e.bag, id, k); budget -= k * v; }
+        }
+      }
+      e.gold += cap(f.gold, budget); // then gold, with what's left
       if (Array.isArray(a.loot)) for (const id of a.loot) if (SEA_TREASURE[id] && !e.loot.includes(id)) e.loot.push(id);
       e.imported = true;
       return '';
@@ -406,4 +501,5 @@ export function applyAction(s, a, ctx) {
 }
 
 // What the browser gets to see of the economy (not the rate limits or pending drops).
-export const publicEcon = (e) => ({ gold: e.gold, xp: e.xp, kills: e.kills, bag: e.bag, loot: e.loot, imported: e.imported });
+// barrels: how many times each barrel slot has been taken, so the browser floats them where the server expects.
+export const publicEcon = (e) => ({ gold: e.gold, xp: e.xp, kills: e.kills, bag: e.bag, loot: e.loot, imported: e.imported, barrels: (e.sea && e.sea.gen) || {} });

@@ -105,6 +105,20 @@ try {
   await send('Page.navigate', { url: B + '/game/sea3d/' }); await sleep(8000);
   assert.equal(await ev(`document.getElementById('goldText').textContent`), String(srv.econ.gold));
 
+  // a barrel sailed through pays; one on the far side of the sea a moment later (a teleport) doesn't
+  const S = 'window.__sea3d';
+  const sail = (slot) => ev(`(() => { const s = ${S}, b = s.barrels[${slot}]; s.B.x = b.x; s.B.z = b.z; s.B.speed = 0; return 1; })()`);
+  const far = await ev(`(() => { const s = ${S}, b0 = s.barrels[0]; let far = 1, best = 0;
+    s.barrels.forEach((b, i) => { const d = Math.hypot(b.x - b0.x, b.z - b0.z); if (i && d > best) { best = d; far = i; } }); return far; })()`);
+  await sail(0); await sleep(400);
+  await sail(far); await sleep(400);
+  await ev('Ledger.flush()'); await sleep(500);
+  const sea = (await state(u.key)).econ;
+  assert.equal(sea.gold, srv.econ.gold + 3, 'the server pays only the barrel the boat could reach');
+  assert.deepEqual(sea.barrels, { 0: 1 });
+  assert.equal(await ev(`${S}.field().gold`), sea.gold, 'and the browser is corrected');
+  assert.equal(await ev(`${S}.barrelGen[${far}] || 0`), 0, 'the refused barrel floats back where the server expects it');
+
   assert.deepEqual(errs, [], 'no page errors');
   console.log('economy e2e: all checks passed');
   done(0);

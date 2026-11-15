@@ -331,7 +331,7 @@ import { loadGlbHero, makeGlbHero } from '/game/lib/glbhero.js';
 import { SHOPS, SELL, RECIPES, CONSUMABLES } from './shops.js';
 import { CROPS, BUILDS, ALTAR, FARM_ITEMS } from './farm.js';
 import { BLOCKS, BLOCK_IDS, MAX_H, unpack, pack, standHeight, blockedAt, raycast, canPlace } from './blocks.js';
-import { MONSTER_LOOT } from './economy.js';
+import { MONSTER_LOOT, ASSIST_SHARE } from './economy.js';
 import { ARENA_CENTER, ARENA_RADIUS, standY, standBlocked, tomatoArc, TOMATO_GRAVITY, TOMATO_COOLDOWN_MS,
   HAZARDS, TELL_MS, eventsNear, BUFFS, buffAt } from './arena.js';
 import * as arenaMod from './arena.js';
@@ -2697,9 +2697,12 @@ function free(x, z) {
 
 /* ---------- monsters & combat ---------- */
 const monsters = [], drops = [], sparks = [];
-// entry: a monster type, or { type, box } on stitched maps so each district keeps its own monsters
-function spawnMonster(entry) {
+// entry: a monster type, or { type, box } on stitched maps so each district keeps its own monsters.
+// ei: its index in SPAWN_LIST (the monster host keeps every entry filled). at: a monster copied
+// from the host's snapshot ({ sid, x, z, hp, face }) instead of a fresh one in a random spot.
+function spawnMonster(entry, ei, at) {
   const type = entry.type || entry, [bx1, by1, bx2, by2] = entry.box || [0, 0, MAP_W, MAP_H], cfg = MONSTERS[type];
+  if (at) return addMonster(type, entry, ei, at.sid, at.x, at.z, at.hp, at.face);
   const tall = TALL.filter(([x1, y1]) => x1 >= bx1 && y1 >= by1 && x1 < bx2 && y1 < by2);
   let tx = START.x, ty = START.y;
   for (let tries = 0; tries < 300; tries++) {
@@ -2711,16 +2714,23 @@ function spawnMonster(entry) {
       tx = bx1 + 2 + Math.floor(Math.random() * (bx2 - bx1 - 4));
       ty = by1 + 3 + Math.floor(Math.random() * (by2 - by1 - 6));
     }
-    if (blocked[ty][tx] || Math.hypot(tx - P.x, ty - P.z) < 8) continue;
+    if (blocked[ty][tx] || [P, ...ghosts.values()].some((p) => Math.hypot(tx - p.x, ty - p.z) < 8)) continue;
     break;
   }
-  const view = makeMonster(type), el = document.createElement('div');
+  const sid = Math.random().toString(36).slice(2, 12).padEnd(6, '0'); // the server's name for it
+  return addMonster(type, entry, ei, sid, tx + 0.5, ty + 0.75, cfg.hp, 0);
+}
+const registered = new Set(); // monster ids this player's server session already knows
+function addMonster(type, entry, ei, sid, x, z, hp, face) {
+  const cfg = MONSTERS[type], view = makeMonster(type), el = document.createElement('div');
   el.className = 'tag';
   el.innerHTML = `${cfg.name}<div class="thp"><i></i></div>`;
   labelsEl.appendChild(el);
-  const sid = Math.random().toString(36).slice(2, 12).padEnd(6, '0'); // the server's name for it
-  Ledger.act({ t: 'spawn', id: sid, m: type });
-  monsters.push({ sid, type, entry, cfg, view, el, bar: el.querySelector('i'), x: tx + 0.5, z: ty + 0.75, hp: cfg.hp, vx: 0, vz: 0, t: 0, kb: 0, kbx: 0, kbz: 0, flash: 0, face: 0, seed: Math.random() * 10 });
+  if (!registered.has(sid)) { registered.add(sid); Ledger.act({ t: 'spawn', id: sid, m: type }); }
+  // mine: damage this player dealt; the server pays a kill only to whoever dealt all of it
+  const m = { sid, type, entry, ei, cfg, view, el, bar: el.querySelector('i'), x, z, tx: x, tz: z, hp, mine: 0, vx: 0, vz: 0, t: 0, kb: 0, kbx: 0, kbz: 0, flash: 0, face, tface: face, seed: Math.random() * 10 };
+  monsters.push(m);
+  return m;
 }
 function monsterFree(m, x, z) {
   if (x < 0.5 || z < 0.6 || x > MAP_W - 0.5 || z > MAP_H - 0.25) return false;
@@ -2956,10 +2966,12 @@ const newAttack = () => ({ id: Math.random().toString(36).slice(2, 10), at: clie
 function hitMonster(m, power = statNow('atk'), kind = 'swing', hand = 'R', att = newAttack()) {
   const dmg = Math.max(1, Math.round(power + Math.random() * 4));
   m.hp -= dmg;
+  m.mine += dmg;
   if (m.sid) Ledger.act({ t: 'hit', id: m.sid, k: kind, hand, a: att.id, at: att.at, dmg });
   m.flash = 0.09;
   const dx = m.x - P.x, dz = m.z - P.z, d = Math.hypot(dx, dz) || 1, push = m.cfg.big ? 4.4 : 8.75;
   m.kb = 0.16; m.kbx = dx / d * push; m.kbz = dz / d * push;
+  if (!mobHost() && mp.live) mp.channel.send({ type: 'broadcast', event: 'mobhit', payload: { id: m.sid, dmg, kbx: +m.kbx.toFixed(2), kbz: +m.kbz.toFixed(2) } });
   floatText(m.x, m.cfg.big ? 2.2 : 1.3, m.z, String(dmg), '#ffffff');
   if (m.hp <= 0) killMonster(m);
 }
@@ -3322,11 +3334,20 @@ function burst(x, y, z, color, n = 10) {
     sparks.push({ mesh, v: [Math.cos(a) * 2.5, 2 + Math.random() * 1.5, Math.sin(a) * 2.5], age: 0, life: 0.5 });
   }
 }
-function killMonster(m) {
+function killMonster(m, quiet) {
+  if (m.dead) return;
   m.dead = true;
   m.dying = 0;
+  m.respawnAt = performance.now() + (m.cfg.respawn || 12000 + Math.random() * 6000);
   m.el.remove();
   burst(m.x, 0.5, m.z, m.cfg.big ? '#c06aff' : '#eaff8a', 12);
+  if (!quiet && mp.live) mp.channel.send({ type: 'broadcast', event: 'mobdie', payload: { id: m.sid } });
+  // Group kills: everyone who did real damage (ASSIST_SHARE of its HP) gets the full kill and
+  // their own drops, whoever landed the last hit. A kill made entirely with your own hits is
+  // already paid from those hits; 'down' covers the rest (and is turned away if already paid).
+  if (m.mine < Math.ceil(m.cfg.hp * ASSIST_SHARE)) return;
+  if (m.sid) Ledger.act({ t: 'down', id: m.sid });
+  if (m.mine < m.cfg.hp) floatText(m.x, 2.2, m.z, 'Group kill', '#7ae0ff');
   const [g0, g1] = m.cfg.gold, type = m.type; // the server counts the kill itself, from the hits
   spawnDrop({ kind: 'gold', m: type, amount: g0 + Math.floor(Math.random() * (g1 - g0 + 1)) }, m.x, m.z);
   spawnDrop({ kind: 'item', id: m.cfg.drop, amount: 1 }, m.x, m.z);
@@ -3337,7 +3358,6 @@ function killMonster(m) {
   floatText(m.x, 1.8, m.z, `+${m.cfg.xp} XP`, '#ffe066');
   if (1 + Math.floor(field.xp / 100) > before) floatText(P.x, 2, P.z, 'LEVEL UP!', '#7ae0ff');
   updateHud();
-  setTimeout(() => { const i = monsters.indexOf(m); if (i >= 0) monsters.splice(i, 1); spawnMonster(m.entry); }, m.cfg.respawn || 12000 + Math.random() * 6000);
 }
 function hurtPlayer(m, dx, dz, dist) {
   const dmg = Math.max(1, Math.round(m.cfg.dmg * 50 / (50 + stats.def)));
@@ -3519,7 +3539,7 @@ function drawMinimap(now) {
    ping every 3 s); others ease toward it, so their heroes walk and turn smoothly. Players in the
    mine or the workshop only see each other there (the 'room' field). */
 const MP_ROOM = UNDER ? 'cave' : CLUB ? `clubhouse-${PLOT_Q}` : PIT ? 'arena' : INDOOR ? AREA : 'world';
-const mp = { id: Math.random().toString(36).slice(2, 10), live: false, last: 0, sent: null, atk: 0, atkL: 0 };
+const mp = { id: Math.random().toString(36).slice(2, 10), born: Date.now(), live: false, last: 0, sent: null, atk: 0, atkL: 0, mobSent: 0, wake: 0 };
 mp.name = (charData && charData.name && charData.name.trim()) || 'Wanderer';
 const ghosts = new Map();
 let chatOpen = false;
@@ -3545,7 +3565,7 @@ function chatLine(name, msg, sys) {
   setTimeout(() => el.remove(), 30000);
 }
 function myState() {
-  return { id: mp.id, name: mp.name, char: charData, room: MP_ROOM, x: +P.x.toFixed(2), z: +P.z.toFixed(2), y: +P.y.toFixed(2), h: +P.heading.toFixed(2), atk: mp.atk, atkL: mp.atkL, hp, mhp: stats.hp, air: P.y > groundAt(P.x, P.z, P.y) + 0.02, hid: smokedNow() };
+  return { id: mp.id, name: mp.name, char: charData, room: MP_ROOM, born: mp.born, map: A.title, x: +P.x.toFixed(2), z: +P.z.toFixed(2), y: +P.y.toFixed(2), h: +P.heading.toFixed(2), atk: mp.atk, atkL: mp.atkL, hp, mhp: stats.hp, air: P.y > groundAt(P.x, P.z, P.y) + 0.02, hid: smokedNow() };
 }
 function addGhost(d) {
   if (d.id === mp.id || d.room !== MP_ROOM) return null;
@@ -3575,6 +3595,8 @@ function onState(d) {
   const g = addGhost(d);
   if (!g) { if (ghosts.has(d.id)) removeGhost(d.id); return; } // they walked into another room
   Object.assign(g, { tx: d.x, tz: d.z, ty: d.y || 0, th: d.h || 0, air: !!d.air, hid: !!d.hid, seen: performance.now() });
+  if (d.born) g.born = d.born;
+  g.map = d.map; // rooms can span maps (the pit and the stands): monsters are only shared on the same one
   if (d.hp !== undefined) { g.hp = d.hp; g.mhp = d.mhp; }
   if (d.atk && d.atk !== g.atkSeen) { g.atkSeen = d.atk; g.atk = 0; }
   if (d.atkL && d.atkL !== g.atkLSeen) { g.atkLSeen = d.atkL; g.atkL = 0; }
@@ -3610,6 +3632,12 @@ if (window.supabase && !new URLSearchParams(location.search).has('nomp')) (async
     .on('broadcast', { event: 'tomato' }, ({ payload }) => {
       if (!PIT || payload.id === mp.id) return; // the channel is global, the pit is not
       spawnTomato({ x: payload.fx, y: payload.fy, z: payload.fz }, { x: payload.tx, y: payload.ty, z: payload.tz });
+    })
+    .on('broadcast', { event: 'mobs' }, ({ payload }) => onMobs(payload))
+    .on('broadcast', { event: 'mobhit' }, ({ payload }) => onMobHit(payload))
+    .on('broadcast', { event: 'mobdie' }, ({ payload }) => {
+      const m = monsters.find((q) => q.sid === payload.id);
+      if (m) killMonster(m, true);
     })
     .on('broadcast', { event: 'hit' }, ({ payload }) => onHit(payload))
     .on('broadcast', { event: 'ouch' }, ({ payload }) => onOuch(payload))
@@ -3658,6 +3686,64 @@ $('chatIn').addEventListener('keydown', (e) => {
 $('chatSend').addEventListener('click', () => { sendChat(); closeChat(); });
 $('chatBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); chatOpen ? closeChat() : openChat(); });
 canvas.addEventListener('pointerdown', () => { if (chatOpen) closeChat(); });
+
+/* Shared monsters: everyone in a room fights the same ones. The player who has been in the game
+   longest (and is actually sending) is the monster host: it runs their AI, respawns them and
+   sends a snapshot about 4 times a second. Everyone else eases their copies toward it and sends
+   their hits to the host. A tab that comes back from the background listens for a moment first,
+   so it picks up the current monsters instead of pushing its stale ones on everyone. */
+const senior = (a, b) => a.born < b.born || (a.born === b.born && a.id < b.id); // a has been here longer than b
+function mobHost() {
+  const now = performance.now();
+  if (now < mp.wake) return false;
+  for (const g of ghosts.values()) if (g.born && g.map === A.title && senior(g, mp) && now - (g.mobAt || 0) < 3000) return false;
+  return true;
+}
+addEventListener('visibilitychange', () => { if (!document.hidden) mp.wake = performance.now() + 1500; });
+function sendMobs(now) {
+  if (!mp.live || now - mp.mobSent < 250 || ![...ghosts.values()].some((g) => g.map === A.title)) return; // nobody to tell
+  mp.mobSent = now;
+  const list = monsters.filter((m) => !m.dead).map((m) => [m.sid, m.type, m.ei ?? -1, +m.x.toFixed(2), +m.z.toFixed(2), Math.round(m.hp), +m.face.toFixed(2)]);
+  mp.channel.send({ type: 'broadcast', event: 'mobs', payload: { id: mp.id, born: mp.born, map: A.title, list } });
+}
+function onMobs(d) {
+  const g = ghosts.get(d.id);
+  if (!g || d.map !== A.title) return;
+  g.mobAt = performance.now(); if (d.born) g.born = d.born;
+  if (mobHost()) return; // a junior player's snapshot: our own monsters are the real ones
+  const alive = new Set();
+  for (const [sid, type, ei, x, z, hp, face] of d.list) {
+    if (!MONSTERS[type]) continue;
+    alive.add(sid);
+    const m = monsters.find((q) => q.sid === sid);
+    if (!m) { spawnMonster(SPAWN_LIST[ei] || type, ei >= 0 ? ei : undefined, { sid, x, z, hp, face }); continue; }
+    if (m.dead) continue; // we already saw it fall; the host will hear about it
+    m.tx = x; m.tz = z; m.tface = face;
+    m.hp = Math.min(m.hp, hp); // the host's HP, unless our own hit is still on its way
+  }
+  for (const m of [...monsters]) if (!m.dead && !alive.has(m.sid)) dropMonster(m); // gone on the host
+}
+function dropMonster(m) {
+  scene.remove(m.view.g);
+  m.el.remove();
+  monsters.splice(monsters.indexOf(m), 1);
+}
+function onMobHit(d) {
+  if (!mobHost()) return;
+  const m = monsters.find((q) => q.sid === d.id);
+  if (!m || m.dead) return;
+  m.hp -= Math.max(0, Number(d.dmg) || 0);
+  m.flash = 0.09;
+  m.kb = 0.16; m.kbx = Number(d.kbx) || 0; m.kbz = Number(d.kbz) || 0;
+  if (m.hp <= 0) killMonster(m);
+}
+// The host keeps each spawn entry filled: a fallen monster comes back once its respawn time is up.
+function updateMobs(now) {
+  for (const m of [...monsters]) if (m.dead && m.dying === 2 && now > m.respawnAt) monsters.splice(monsters.indexOf(m), 1);
+  if (!mobHost()) return;
+  SPAWN_LIST.forEach((entry, i) => { if (!monsters.some((m) => m.ei === i)) spawnMonster(entry, i); });
+  sendMobs(now);
+}
 
 function updateMultiplayer(dt, now) {
   if (mp.live) {
@@ -4992,6 +5078,8 @@ function update(dt, now) {
   updateFarm(dt, now);
 
   // monsters
+  const host = mobHost();
+  updateMobs(now);
   for (const mo of monsters) {
     const v = mo.view;
     if (mo.dead) {
@@ -5003,9 +5091,21 @@ function update(dt, now) {
       continue;
     }
     const dx = P.x - mo.x, dz = P.z - mo.z, dist = Math.hypot(dx, dz) || 1;
+    // the host's monsters go after whoever is closest; ghosts stand in for the other players
+    let prey = !fainted && !smokedNow() ? P : null, pd = prey ? dist : Infinity;
+    if (host) for (const g of ghosts.values()) {
+      if (g.dead || g.hid || g.map !== A.title) continue;
+      const d = Math.hypot(g.x - mo.x, g.z - mo.z);
+      if (d < pd) { pd = d; prey = g; }
+    }
     let vx, vz;
-    if (mo.kb > 0) { mo.kb -= dt; vx = mo.kbx; vz = mo.kbz; }
-    else if (!fainted && !smokedNow() && dist < mo.cfg.aggro) { vx = dx / dist * mo.cfg.speed; vz = dz / dist * mo.cfg.speed; }
+    if (!host) { // someone else runs this monster: ease toward their copy of it
+      mo.x = damp(mo.x, mo.tx, 8, dt); mo.z = damp(mo.z, mo.tz, 8, dt);
+      mo.face += wrapAngle(mo.tface - mo.face) * Math.min(1, dt * 10);
+      vx = vz = 0;
+    }
+    else if (mo.kb > 0) { mo.kb -= dt; vx = mo.kbx; vz = mo.kbz; }
+    else if (prey && pd < mo.cfg.aggro) { vx = (prey.x - mo.x) / (pd || 1) * mo.cfg.speed; vz = (prey.z - mo.z) / (pd || 1) * mo.cfg.speed; }
     else {
       mo.t -= dt;
       if (mo.t <= 0) {
@@ -5017,9 +5117,9 @@ function update(dt, now) {
       vx = mo.vx; vz = mo.vz;
     }
     if (mo.chill > performance.now()) { vx *= mo.chillMul; vz *= mo.chillMul; }
-    if (monsterFree(mo, mo.x + vx * dt, mo.z)) mo.x += vx * dt; else mo.t = 0;
-    if (monsterFree(mo, mo.x, mo.z + vz * dt)) mo.z += vz * dt; else mo.t = 0;
-    if (Math.hypot(vx, vz) > 0.05 && mo.kb <= 0) mo.face += wrapAngle(Math.atan2(vx, vz) - mo.face) * Math.min(1, dt * 8);
+    if (host && monsterFree(mo, mo.x + vx * dt, mo.z)) mo.x += vx * dt; else mo.t = 0;
+    if (host && monsterFree(mo, mo.x, mo.z + vz * dt)) mo.z += vz * dt; else mo.t = 0;
+    if (host && Math.hypot(vx, vz) > 0.05 && mo.kb <= 0) mo.face += wrapAngle(Math.atan2(vx, vz) - mo.face) * Math.min(1, dt * 8);
     const tt = t * 1 + mo.seed;
     v.g.position.set(mo.x, 0, mo.z);
     v.g.rotation.y = mo.face;
@@ -5033,11 +5133,11 @@ function update(dt, now) {
       if (mo.atkL >= 0) { mo.atkL += dt / 0.38; if (mo.atkL >= 1) mo.atkL = -1; }
       mo.cd = (mo.cd || 0) - dt;
       const [near, far] = mo.cfg.cast;
-      if (!fainted && !smokedNow() && mo.cd <= 0 && dist > near && dist < far) { // staff: open fire from range
+      if (host && prey === P && mo.cd <= 0 && dist > near && dist < far) { // staff: open fire from range
         mo.cd = 3.4 + Math.random() * 1.8;
         mo.atkL = 0;
         setTimeout(() => { if (!mo.dead && !fainted) castFoeBall(mo); }, 140);
-      } else if (!fainted && mo.cd <= 0 && dist <= near) { // sword: a swing you can see coming
+      } else if (!fainted && mo.cd <= 0 && dist <= near) { // (each player sees it swing at them) // sword: a swing you can see coming
         mo.cd = 1.1 + Math.random() * 0.5;
         mo.atk = 0;
       }
@@ -5312,7 +5412,7 @@ const REFUSED = {
   'not ripe': 'That crop isn\'t ripe yet.',
   'too fast': 'Easy there: that reward was too fast to count.',
 };
-const QUIET = new Set(['hit', 'spawn', 'area', 'pickup']); // combat bookkeeping: the server's state answer is enough
+const QUIET = new Set(['hit', 'spawn', 'area', 'pickup', 'down']); // combat bookkeeping: the server's state answer is enough
 Ledger.on('rejected', (all) => {
   const bad = all.filter(([a]) => !QUIET.has(a.t));
   if (!bad.length) return;
@@ -5326,7 +5426,7 @@ const loadFarms = () => Ledger.farms().then((list) => {
 if (PLOTS.length || CLUB) { loadFarms(); setInterval(loadFarms, 60000); }
 Ledger.load();
 
-SPAWN_LIST.forEach((type) => spawnMonster(type));
+SPAWN_LIST.forEach((entry, i) => spawnMonster(entry, i));
 // debug hook for tests and screenshots: __world3d.tp(x, z) teleports, .P is the player state
 window.__world3d = { P, ghosts, arena, farms, updateIndoor, aimPoint, spectating: () => STANDS, tomatoes, throwTomato,
   arenaMod, buff: () => buffNow(), free,
