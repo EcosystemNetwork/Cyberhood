@@ -3,6 +3,11 @@
   command = ""
   functions = "netlify/functions"
 
+# The game API loads the economy rules (an ES module shared with the game) at runtime, which
+# the bundler can't see on its own: ship them with the function.
+[functions]
+  included_files = ["game/items.js", "game/world3d/economy.js", "game/world3d/shops.js", "game/world3d/farm.js", "game/world3d/blocks.js", "game/world3d/package.json"]
+
 # The site is just the game.
 [[redirects]]
   from = "/"
