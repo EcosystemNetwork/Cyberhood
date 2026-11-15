@@ -1,7 +1,8 @@
 node_modules
 .claude
 .git
-supabase
+supabase/*
+!supabase/functions
 tools
 tests
 *.command
