@@ -24,6 +24,17 @@
     link.rel = 'manifest'; link.href = '/game/solo.webmanifest';
     document.head.appendChild(link);
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('/game/solo-sw.js', { scope: '/game/' }).catch(() => {});
+    // our own Install button: Chrome's menu entry is easy to miss. It shows only once Chrome
+    // says the game can be installed, and goes away once it is.
+    addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      const b = document.createElement('button');
+      b.textContent = '\u{1F4F2} Install';
+      b.style.cssText = 'position:fixed;z-index:30;left:50%;top:12px;transform:translateX(-50%);padding:8px 18px;border-radius:999px;border:3px solid #2a0a3a;' +
+        "font:16px 'Lilita One',system-ui,sans-serif;color:#1e3000;background:linear-gradient(#e6ff7a,#a8e000);box-shadow:0 3px 0 #5a7a00;";
+      b.onclick = async () => { b.remove(); e.prompt(); };
+      document.body.appendChild(b);
+    }, { once: true });
   }
   const api = { SOLO, soloKey, withSolo, installSolo };
   Object.assign(globalThis, api);
