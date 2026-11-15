@@ -126,6 +126,16 @@ async function stateOf(user) {
   };
 }
 
+// The player's real attack stats and weapons, from the saved character and only gear they own.
+function fighter(user, owned) {
+  const c = user.character;
+  if (!c || !has(G.BASE, c.cls)) return { stats: { atk: 10, mag: 2 }, hands: {} };
+  const eq = {};
+  for (const [slot, id] of Object.entries(G.migrateEquipment({ ...(c.equipment || {}) }))) if (id && owned.includes(id)) eq[slot] = id;
+  const st = G.computeStats(c.cls, eq);
+  return { stats: { atk: st.atk, mag: st.mag }, hands: { R: eq.rhand || null, L: eq.lhand || null } };
+}
+
 /* Runs a batch of actions against the account, then saves it in one compare-and-swap write on
    econ_rev, so two requests at once can't both spend the same gold. Retries on a clash. */
 async function act(user, actions, opts) {
@@ -136,12 +146,28 @@ async function act(user, actions, opts) {
       now: Date.now(), dev: DEV, isGear: (id) => has(G.ITEMS, id),
       owner: (user.character && user.character.name) || user.username,
       minute: DEV && opts.fast ? 1000 : 60000,
+      ...fighter(user, s.owned),
     };
-    const results = actions.map((a) => (a && a.t === 'claim' && opts.plotTaken === a.plot ? 'plot taken' : E.applyAction(s, a, ctx)));
+    let character = user.character;
+    const results = actions.map((a) => {
+      if (a && a.t === 'claim' && opts.plotTaken === a.plot) return 'plot taken';
+      if (a && a.t === 'equip') { // gear changed in the world: in the queue, so later hits use it
+        if (!character) return 'no character';
+        const c = cleanCharacter({ ...character, equipment: a.eq }, s.owned);
+        if (!c) return 'bad gear';
+        character = c;
+        Object.assign(ctx, fighter({ character }, s.owned));
+        return '';
+      }
+      return E.applyAction(s, a, ctx);
+    });
     const rev = user.econ_rev || 0;
     const r = await db(`?id=eq.${user.id}&econ_rev=eq.${rev}`, {
       method: 'PATCH',
-      body: JSON.stringify({ econ: s.econ, econ_rev: rev + 1, inventory: s.owned, farm: s.farm, farm_plot: s.farm ? s.farm.id : null }),
+      body: JSON.stringify({
+        econ: s.econ, econ_rev: rev + 1, inventory: s.owned, farm: s.farm, farm_plot: s.farm ? s.farm.id : null,
+        ...(character !== user.character ? { character } : {}),
+      }),
     });
     if (notMigrated(r)) throw new NotMigrated();
     if (r.status === 409 && /farm_plot/.test(JSON.stringify(r.data))) { // someone else holds that plot
@@ -152,7 +178,7 @@ async function act(user, actions, opts) {
     }
     if (r.status >= 300) throw new Error('act write failed: ' + r.status);
     const saved = r.data && r.data[0];
-    if (saved) return { results, state: await stateOf(saved) };
+    if (saved) return { results, state: await stateOf(saved), ...(character !== user.character ? { character } : {}) };
     // econ_rev moved on (another request saved first): reload and run the batch again
     const fresh = await db(`?id=eq.${user.id}&select=${ROW}`);
     user = fresh.data && fresh.data[0];

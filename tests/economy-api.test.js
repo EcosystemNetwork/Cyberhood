@@ -45,6 +45,15 @@ async function account() {
 const act = async (key, ...actions) => api('act', key, { actions });
 const CHESTS = ['wreck', 'lonely', 'gull', 'doubloon'].map((id) => ({ t: 'chest', id })); // 120 gold
 const KNIGHT = { name: 'Hero', cls: 'knight', skin: 1, hs: 'short', hc: 0 };
+// A fair fight with bare hands (no character: ATK 10, so a swing does at most 14), one swing
+// every 400 ms of game time: spawn the monster, then hit it until the server says it's dead.
+let T = Date.now();
+const rid = () => Math.random().toString(36).slice(2, 10);
+function fight(m, swings, dmg = 14) {
+  const id = 'f' + rid();
+  return [{ t: 'spawn', id, m }, ...Array.from({ length: swings }, () => ({ t: 'hit', id, k: 'swing', hand: 'R', a: rid(), at: (T += 400), dmg }))];
+}
+const ok = (r) => r.data.results.every((x) => x === '');
 
 test('a new account owns nothing and starts at zero', async () => {
   const { data } = await account();
@@ -69,24 +78,64 @@ test('the first character comes with its class kit, and unowned gear is taken of
 test('a kill pays XP, then its drops pay out once when picked up', async () => {
   const { key } = await account();
   const r = await act(key,
-    { t: 'kill', m: 'slime' },
+    ...fight('slime', 3),
     { t: 'pickup', kind: 'gold', m: 'slime', n: 2 },
     { t: 'pickup', kind: 'item', id: 'slime_gel' },
     { t: 'pickup', kind: 'item', id: 'slime_gel' },
     { t: 'pickup', kind: 'gold', m: 'goblin', n: 5 },
-    { t: 'kill', m: 'bat' },
+    ...fight('bat', 2),
     { t: 'pickup', kind: 'gold', m: 'bat', n: 50 });
   assert.equal(r.status, 200);
-  assert.deepEqual(r.data.results, ['', '', '', 'nothing to pick up', 'nothing to pick up', '', 'bad amount']);
+  assert.deepEqual(r.data.results.slice(4, 8), ['', '', 'nothing to pick up', 'nothing to pick up']);
+  assert.equal(r.data.results[11], 'bad amount');
   assert.deepEqual(r.data.state.econ, { gold: 2, xp: 12, kills: 2, bag: { slime_gel: 1 }, loot: [], imported: false });
 });
 
-test('kills faster than monsters can respawn are not paid', async () => {
+test('combat: only hits the server believes can kill', async () => {
   const { key } = await account();
-  const r = await act(key, ...Array.from({ length: 10 }, () => ({ t: 'kill', m: 'slime' })), { t: 'kill', m: 'king' }, { t: 'kill', m: 'king' }, { t: 'kill', m: 'king' });
-  assert.equal(r.data.results.filter((x) => x === '').length, 8 + 2);
-  assert.equal(r.data.results[9], 'too fast');
-  assert.equal(r.data.results[12], 'too fast');
+  const id = 'goblin1';
+  let r = await act(key,
+    { t: 'kill', m: 'slime' },                                                         // kills aren't taken on trust
+    { t: 'hit', id: 'nobody', k: 'swing', hand: 'R', a: rid(), at: (T += 400), dmg: 5 }, // no such monster
+    { t: 'spawn', id, m: 'goblin' },
+    { t: 'spawn', id, m: 'goblin' },                                                   // already there
+    { t: 'hit', id, k: 'shot', hand: 'R', a: rid(), at: (T += 400), dmg: 5 },          // no wand in hand
+    { t: 'hit', id, k: 'swing', hand: 'R', a: rid(), at: (T += 400), dmg: 9999 },       // capped at 14
+    { t: 'hit', id, k: 'swing', hand: 'R', a: rid(), at: T + 50, dmg: 14 },             // faster than a swing
+    { t: 'hit', id, k: 'swing', hand: 'R', a: rid(), at: (T += 400), dmg: 14 });
+  assert.deepEqual(r.data.results, ['kills come from hits', 'no such monster', '', 'bad id', 'wrong weapon', '', 'too fast', '']);
+  assert.equal(r.data.state.econ.kills, 0); // 28 of the goblin's 60 HP
+  r = await act(key, ...[1, 2, 3].map(() => ({ t: 'hit', id, k: 'swing', hand: 'R', a: rid(), at: (T += 400), dmg: 14 })));
+  assert.ok(ok(r));
+  assert.equal(r.data.state.econ.kills, 1);
+  assert.equal(r.data.state.econ.xp, 15);
+  r = await act(key, { t: 'hit', id, k: 'swing', hand: 'R', a: rid(), at: (T += 400), dmg: 14 });
+  assert.deepEqual(r.data.results, ['no such monster']); // dead is dead
+});
+
+test('a game clock that runs fast is caught', async () => {
+  const { key } = await account();
+  const acts = [{ t: 'spawn', id: 'kingslime', m: 'king' }];
+  let at = Date.now();
+  for (let i = 0; i < 30; i++) acts.push({ t: 'hit', id: 'kingslime', k: 'swing', hand: 'R', a: rid(), at: (at += 400), dmg: 14 });
+  const r = await act(key, ...acts); // 12 s of swings sent in a moment
+  assert.ok(r.data.results.includes('too fast'));
+  assert.equal(r.data.state.econ.kills, 0);
+});
+
+test('equipping in the world changes what the next hits may do', async () => {
+  const { key } = await account();
+  await api('save', key, { character: { ...KNIGHT, cls: 'mage', equipment: {} } }); // the mage kit: oak staff
+  const r = await act(key, { t: 'spawn', id: 'slime01', m: 'slime' },
+    { t: 'hit', id: 'slime01', k: 'swing', hand: 'R', a: rid(), at: (T += 700), dmg: 3 },
+    { t: 'equip', eq: { rhand: 'oak_staff' } },
+    { t: 'hit', id: 'slime01', k: 'swing', hand: 'R', a: rid(), at: (T += 700), dmg: 3 },
+    { t: 'hit', id: 'slime01', k: 'shot', hand: 'R', a: rid(), at: (T += 700), dmg: 3 },
+    { t: 'equip', eq: { rhand: 'cutlass' } }); // not owned: taken off
+  assert.deepEqual(r.data.results, ['', '', '', 'wrong weapon', '', '']);
+  assert.equal(r.data.character.equipment.rhand, null);
+  const me = await api('me', key);
+  assert.equal(me.data.character.equipment.rhand, null);
 });
 
 test('gear is bought with real gold at the shop\'s price, once', async () => {
@@ -110,12 +159,13 @@ test('gear is bought with real gold at the shop\'s price, once', async () => {
 test('selling, crafting and using items', async () => {
   const { key } = await account();
   const r = await act(key, ...CHESTS,
-    { t: 'kill', m: 'slime' }, { t: 'pickup', kind: 'item', id: 'slime_gel' },
-    { t: 'kill', m: 'bat' }, { t: 'pickup', kind: 'item', id: 'bat_fang' },
+    ...fight('slime', 3), { t: 'pickup', kind: 'item', id: 'slime_gel' },
+    ...fight('bat', 2), { t: 'pickup', kind: 'item', id: 'bat_fang' },
     { t: 'craft', id: 'inferno_staff' }, { t: 'craft', id: 'inferno_staff' },
     { t: 'buy', shop: 'Potion Shop', id: 'health_potion', n: 3 },
     { t: 'use', id: 'health_potion' }, { t: 'sell', id: 'health_potion', n: 2 }, { t: 'sell', id: 'health_potion', n: 1 });
-  assert.deepEqual(r.data.results.slice(4), ['', '', '', '', '', 'already owned', '', '', '', 'not enough']);
+  assert.deepEqual(r.data.results.slice(13), ['', 'already owned', '', '', '', 'not enough']);
+  assert.ok(r.data.results.slice(0, 13).every((x) => x === ''));
   assert.deepEqual(r.data.state.owned, ['inferno_staff']);
   assert.equal(r.data.state.econ.gold, 120 - 10 - 45 + 12);
   assert.deepEqual(r.data.state.econ.bag, {});
@@ -182,7 +232,7 @@ test('bad requests', async () => {
   assert.equal((await act(null, { t: 'chest', id: 'wreck' })).status, 401);
   assert.equal((await api('act', key, { actions: [] })).status, 400);
   assert.equal((await api('act', key, { actions: Array(61).fill({ t: 'barrel' }) })).status, 400);
-  const r = await act(key, { t: 'teleport' }, null, { t: 'buy', shop: 'Nope', id: 'iron_sword' }, { t: 'kill', m: 'dragon' });
+  const r = await act(key, { t: 'teleport' }, null, { t: 'buy', shop: 'Nope', id: 'iron_sword' }, { t: 'spawn', id: 'dragon1', m: 'dragon' });
   assert.deepEqual(r.data.results, ['unknown action', 'bad action', 'not for sale', 'unknown monster']);
 });
 

@@ -15,15 +15,52 @@ import { SHOPS, SELL, RECIPES, CONSUMABLES } from './shops.js';
 import { CROPS, BUILDS, ALTAR } from './farm.js';
 import { BLOCKS, unpack, pack, canPlace } from './blocks.js';
 
-// What each monster pays out: XP on the kill, then a gold drop and an item drop to pick up.
+// Each monster's HP, and what it pays out: XP on the kill, then a gold drop and an item drop
+// to pick up. (Speed, damage and the rest of how it fights are in /game/world3d MONSTERS.)
 export const MONSTER_LOOT = {
-  slime:     { xp: 5,  gold: [1, 2],   drop: 'slime_gel' },
-  shroom:    { xp: 8,  gold: [1, 3],   drop: 'spore_cap' },
-  bat:       { xp: 7,  gold: [1, 2],   drop: 'bat_fang' },
-  goblin:    { xp: 15, gold: [3, 5],   drop: 'goblin_ear' },
-  king:      { xp: 60, gold: [15, 25], drop: 'royal_jelly' },
-  gladiator: { xp: 45, gold: [10, 18], drop: 'laurel' },
+  slime:     { hp: 30,  xp: 5,  gold: [1, 2],   drop: 'slime_gel' },
+  shroom:    { hp: 45,  xp: 8,  gold: [1, 3],   drop: 'spore_cap' },
+  bat:       { hp: 24,  xp: 7,  gold: [1, 2],   drop: 'bat_fang' },
+  goblin:    { hp: 60,  xp: 15, gold: [3, 5],   drop: 'goblin_ear' },
+  king:      { hp: 200, xp: 60, gold: [15, 25], drop: 'royal_jelly' },
+  gladiator: { hp: 150, xp: 45, gold: [10, 18], drop: 'laurel' },
 };
+
+/* ---- combat ----
+   The server can't see the fight, but it checks every hit: the monster must exist (the game
+   registers each one as it spawns) and still have HP, the attack must match a weapon the
+   player really has in that hand, attacks can't come faster than the weapon's cooldown, and
+   a hit can't do more damage than the player's real stats allow. Only the server's own HP
+   count makes a kill. So nobody can out-damage a perfect player with the same gear. */
+// Wands, staffs and the boomerang shoot instead of swinging (same numbers as /game/lib/hero3d.js).
+export const CASTERS = {
+  oak_staff:       { cd: 0.55 },
+  apprentice_wand: { cd: 0.4 },
+  fire_wand:       { cd: 0.45 },
+  inferno_staff:   { cd: 0.6, aoe: 1.8 },
+  ice_wand:        { cd: 0.5 },
+  thunder_staff:   { cd: 0.8, chain: 2 },
+  boomerang:       { cd: 1.1, boomerang: true },
+};
+export const SWING_CD = 0.36;   // seconds between swings of one hand
+export const MIRROR_CD = 0.5;   // a mirror shield's reflected shot
+export const HIT_RAND = 4;      // a hit does its power plus up to this much
+export const ARENA_BUFF = 1.7;  // the biggest arena buff (Focus); only gladiators fight there
+export const CD_SLACK = 0.85;   // frame timing: an attack may come this fraction of a cooldown early
+export const CLOCK_SLACK_MS = 3000;
+export const MAX_FOES = 40;
+// Most targets one attack of each kind can hit.
+export const MAX_TARGETS = { swing: 3, shot: 1, aoe: 8, chain: 2, boom: 6, mirror: 1 };
+// How hard each kind of hit is, from the player's attack and magic (the game's own formulas).
+export const POWER = {
+  swing: (s) => s.atk,
+  shot: (s) => s.atk * 0.6 + s.mag * 1.4,
+  mirror: (s) => s.atk * 0.6 + s.mag * 1.4,
+  aoe: (s) => s.atk * 0.5 + s.mag * 0.8,
+  chain: (s) => (s.atk * 0.6 + s.mag * 1.4) * 0.6,
+  boom: (s) => s.atk * 1.1 + 4,
+};
+export const maxHit = (kind, stats, foe) => Math.round(POWER[kind](stats) * (foe === 'gladiator' ? ARENA_BUFF : 1) + HIT_RAND);
 
 // Sea chests (one per island, once per player) and floating barrels.
 export const SEA_TREASURE = { wreck: 40, lonely: 25, gull: 25, doubloon: 30 };
@@ -64,7 +101,7 @@ export const BAG_ITEMS = new Set([
 ]);
 
 export function newEcon() {
-  return { gold: 0, xp: 0, kills: 0, bag: {}, loot: [], pending: { gold: {}, item: {} }, rl: {}, imported: false };
+  return { gold: 0, xp: 0, kills: 0, bag: {}, loot: [], pending: { gold: {}, item: {} }, rl: {}, imported: false, foes: {}, hands: {}, clock: null };
 }
 // Fills in anything missing from a saved economy (older rows, new fields).
 export function normEcon(e) {
@@ -76,6 +113,8 @@ export function normEcon(e) {
     loot: Array.isArray(e.loot) ? [...e.loot] : [],
     pending: { gold: { ...((e.pending && e.pending.gold) || {}) }, item: { ...((e.pending && e.pending.item) || {}) } },
     rl: { ...(e.rl || {}) },
+    foes: { ...(e.foes || {}) },
+    hands: { ...(e.hands || {}) },
   };
 }
 
@@ -95,6 +134,29 @@ function take(econ, key, now) {
   econ.rl[key] = [t - 1, now];
   return true;
 }
+
+// Pays out a kill (XP now, drops once picked up), within the respawn-rate limits.
+function credit(e, type, now) {
+  const m = MONSTER_LOOT[type];
+  if (!take(e, LIMITS['kill:' + type] ? 'kill:' + type : 'kill', now)) return 'too fast';
+  e.xp += m.xp; e.kills += 1;
+  e.pending.gold[type] = Math.min(MAX_PENDING, (e.pending.gold[type] || 0) + 1);
+  e.pending.item[m.drop] = Math.min(MAX_PENDING, (e.pending.item[m.drop] || 0) + 1);
+  return '';
+}
+
+// What attack kinds a hand allows, given the item in it (and the other hand, for the mirror).
+function handAllows(kind, item, other) {
+  const c = CASTERS[item];
+  if (kind === 'mirror') return item === 'mirror_shield' || other === 'mirror_shield';
+  if (kind === 'swing') return !c && item !== 'mirror_shield';
+  if (kind === 'shot') return !!c && !c.boomerang;
+  if (kind === 'aoe') return !!(c && c.aoe);
+  if (kind === 'chain') return !!(c && c.chain);
+  if (kind === 'boom') return !!(c && c.boomerang);
+  return false;
+}
+const cooldownOf = (kind, item) => (kind === 'swing' ? SWING_CD : kind === 'mirror' ? MIRROR_CD : CASTERS[item].cd);
 
 export function cropProgress(farm, crop, now, minute = 60000) {
   const [b0, b1] = farm.boost || [0, 0];
@@ -118,14 +180,50 @@ export function applyAction(s, a, ctx) {
   const farm = s.farm, soil = farm && PLOT_SOIL[farm.id];
 
   switch (a.t) {
-    case 'kill': {
+    case 'area': { // a new map loaded: the monsters of the last one are gone
+      e.foes = {}; e.hands = {};
+      return '';
+    }
+    case 'spawn': { // { id, m }: a monster appeared, with full HP
       const m = MONSTER_LOOT[a.m];
       if (!m) return 'unknown monster';
-      if (!take(e, LIMITS['kill:' + a.m] ? 'kill:' + a.m : 'kill', now)) return 'too fast';
-      e.xp += m.xp; e.kills += 1;
-      e.pending.gold[a.m] = Math.min(MAX_PENDING, (e.pending.gold[a.m] || 0) + 1);
-      e.pending.item[m.drop] = Math.min(MAX_PENDING, (e.pending.item[m.drop] || 0) + 1);
+      if (typeof a.id !== 'string' || !/^[a-z0-9]{4,16}$/.test(a.id) || e.foes[a.id]) return 'bad id';
+      const ids = Object.keys(e.foes);
+      if (ids.length >= MAX_FOES) delete e.foes[ids[0]]; // the oldest
+      e.foes[a.id] = { m: a.m, hp: m.hp };
       return '';
+    }
+    case 'hit': { // { id, k: kind, hand: 'R' | 'L', a: attack id, at: client ms, dmg }
+      const foe = e.foes[a.id];
+      if (!foe) return 'no such monster';
+      if (!POWER[a.k] || (a.hand !== 'R' && a.hand !== 'L')) return 'bad hit';
+      const hands = ctx.hands || {}, item = hands[a.hand] || null, other = hands[a.hand === 'R' ? 'L' : 'R'] || null;
+      if (!handAllows(a.k, item, other)) return 'wrong weapon';
+      const at = Number(a.at), att = typeof a.a === 'string' ? a.a.slice(0, 16) : '';
+      if (!Number.isFinite(at) || !att) return 'bad hit';
+      // the client's clock may not run ahead of the server's (no speeding up the game)
+      if (!e.clock || at < e.clock[0] || now - e.clock[1] > 120000) e.clock = [at, now];
+      if (at - e.clock[0] > now - e.clock[1] + CLOCK_SLACK_MS) return 'too fast';
+      // one attack per cooldown per hand, and only so many targets per attack
+      const h = e.hands[a.hand] || { a: '', at: -Infinity, n: {} };
+      if (h.a !== att) {
+        if (at - h.at < cooldownOf(a.k, item) * 1000 * CD_SLACK) return 'too fast';
+        e.hands[a.hand] = { a: att, at, n: {} };
+      }
+      const cur = e.hands[a.hand];
+      const limit = a.k === 'chain' ? (CASTERS[item] && CASTERS[item].chain) || 0 : MAX_TARGETS[a.k];
+      if ((cur.n[a.k] || 0) >= limit) return 'too many targets';
+      cur.n[a.k] = (cur.n[a.k] || 0) + 1;
+      const dmg = Math.min(Math.max(1, Math.floor(Number(a.dmg)) || 1), maxHit(a.k, ctx.stats || { atk: 10, mag: 2 }, foe.m));
+      foe.hp -= dmg;
+      if (foe.hp > 0) return '';
+      delete e.foes[a.id];
+      return credit(e, foe.m, now);
+    }
+    case 'kill': { // only local testing reports kills directly; the live game kills through hits
+      if (!ctx.dev) return 'kills come from hits';
+      if (!MONSTER_LOOT[a.m]) return 'unknown monster';
+      return credit(e, a.m, now);
     }
     case 'pickup': { // a drop walked over: { kind: 'gold', m, n } or { kind: 'item', id }
       if (a.kind === 'gold') {

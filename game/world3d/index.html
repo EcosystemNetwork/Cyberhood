@@ -221,7 +221,7 @@ if (!localStorage.getItem('taproot_session')) window.location.replace('/game/');
 else if (!localStorage.getItem('taproot_character')) window.location.replace('/game/?create=1');
 </script>
 <script src="/game/lib/ledger.js"></script>
-<script>Ledger.init({ syncCharacter: true, fast: new URLSearchParams(location.search).has('farmfast') });</script>
+<script>Ledger.init({ fast: new URLSearchParams(location.search).has('farmfast') });</script>
 <script src="/game/items.js"></script>
 <script src="/game/sprite.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
@@ -801,16 +801,16 @@ for (let i = TREES.length - 1; i >= 0; i--) {
 
 /* ---------- monsters (2D stats converted to tiles: speed and aggro / 16) ---------- */
 const MONSTERS = {
-  slime:  { name: 'Slime',      hp: 30,  speed: 1.5,  dmg: 6,  aggro: 4.4 },
-  shroom: { name: 'Shroom',     hp: 45,  speed: 1.1,  dmg: 8,  aggro: 3.8 },
-  bat:    { name: 'Bat',        hp: 24,  speed: 2.75, dmg: 5,  aggro: 6, fly: true },
-  goblin: { name: 'Goblin',     hp: 60,  speed: 2,    dmg: 12, aggro: 5.5 },
-  king:   { name: 'King Slime', hp: 200, speed: 1,    dmg: 18, aggro: 5, big: true, respawn: 45000 },
+  slime:  { name: 'Slime',      speed: 1.5,  dmg: 6,  aggro: 4.4 },
+  shroom: { name: 'Shroom',     speed: 1.1,  dmg: 8,  aggro: 3.8 },
+  bat:    { name: 'Bat',        speed: 2.75, dmg: 5,  aggro: 6, fly: true },
+  goblin: { name: 'Goblin',     speed: 2,    dmg: 12, aggro: 5.5 },
+  king:   { name: 'King Slime', speed: 1,    dmg: 18, aggro: 5, big: true, respawn: 45000 },
   // The arena's house fighter: a person, not a creature. Carries a sword and a fire staff,
   // closes to swing and throws a fireball from range. Only ever spawned in the pit.
-  gladiator: { name: 'Gladiator', hp: 150, speed: 2.1, dmg: 8, aggro: 11, respawn: 25000, human: true, cast: [2.2, 9.5] },
+  gladiator: { name: 'Gladiator', speed: 2.1, dmg: 8, aggro: 11, respawn: 25000, human: true, cast: [2.2, 9.5] },
 };
-// XP, gold and drops come from economy.js, the same table the server pays out from.
+// HP, XP, gold and drops come from economy.js, the same table the server checks hits and pays out from.
 for (const [k, m] of Object.entries(MONSTERS)) Object.assign(m, MONSTER_LOOT[k]);
 const LOOT = {
   slime_gel: { name: 'Slime Gel', color: '#6aff8a' }, spore_cap: { name: 'Spore Cap', color: '#ff4a6a' }, bat_fang: { name: 'Bat Fang', color: '#f4f0ff' },
@@ -2488,6 +2488,7 @@ let charData = (() => {
 // A hand that already holds something keeps it — this used to swap your chosen weapon back out
 // on every reload, which made it impossible to try anything else.
 const LOCAL_DEV = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+Ledger.act({ t: 'area' }); // a fresh map: the server forgets the last one's monsters
 if (LOCAL_DEV && charData) {
   const e = Object.assign({}, charData.equipment);
   for (const id of ['iron_sword', 'inferno_staff']) {
@@ -2496,6 +2497,7 @@ if (LOCAL_DEV && charData) {
     else if (!e.lhand) e.lhand = id;
   }
   charData.equipment = e;
+  Ledger.act({ t: 'equip', eq: e }); // the dev server owns everything, so it takes these too
   try {
     localStorage.setItem('taproot_character', JSON.stringify(charData));
     const own = JSON.parse(localStorage.getItem('taproot_owned') || '[]');
@@ -2716,7 +2718,9 @@ function spawnMonster(entry) {
   el.className = 'tag';
   el.innerHTML = `${cfg.name}<div class="thp"><i></i></div>`;
   labelsEl.appendChild(el);
-  monsters.push({ type, entry, cfg, view, el, bar: el.querySelector('i'), x: tx + 0.5, z: ty + 0.75, hp: cfg.hp, vx: 0, vz: 0, t: 0, kb: 0, kbx: 0, kbz: 0, flash: 0, face: 0, seed: Math.random() * 10 });
+  const sid = Math.random().toString(36).slice(2, 12).padEnd(6, '0'); // the server's name for it
+  Ledger.act({ t: 'spawn', id: sid, m: type });
+  monsters.push({ sid, type, entry, cfg, view, el, bar: el.querySelector('i'), x: tx + 0.5, z: ty + 0.75, hp: cfg.hp, vx: 0, vz: 0, t: 0, kb: 0, kbx: 0, kbz: 0, flash: 0, face: 0, seed: Math.random() * 10 });
 }
 function monsterFree(m, x, z) {
   if (x < 0.5 || z < 0.6 || x > MAP_W - 0.5 || z > MAP_H - 0.25) return false;
@@ -2872,6 +2876,7 @@ function equip(id, slot) {
   eq[slot] = id;
   charData.equipment = eq;
   try { localStorage.setItem(HAD_CHAR ? 'taproot_character' : 'taproot3d_look', JSON.stringify(charData)); } catch (e) {}
+  if (HAD_CHAR) Ledger.act({ t: 'equip', eq });
   dressHero(charData);
   floatText(P.x, 2, P.z, `Equipped ${it.name}`, '#c8ff2e');
 }
@@ -2930,6 +2935,7 @@ function swing(hand = 'R') {
   if (L) { attackCdL = caster ? caster.cd : 0.36; P.atkL = 0; mp.atkL = Math.round(performance.now()); }
   else { attackCd = caster ? caster.cd : 0.36; P.atk = 0; mp.atk = Math.round(performance.now()); } // stamp the swing so other players see it once
   if (caster) { setTimeout(() => castBall(hand), 120); return; } // wands and staffs shoot instead
+  const att = newAttack();
   // auto-aim: a swing turns onto anything within reach in front of you
   const lock = assistTarget(P.x, P.z, Math.sin(P.heading), Math.cos(P.heading), 2.2, 0.8);
   const dir = lock ? Math.atan2(lock.x - P.x, lock.z - P.z) : P.heading;
@@ -2938,14 +2944,19 @@ function swing(hand = 'R') {
   setTimeout(() => {
     const reach = lock ? Math.min(1.1, Math.max(0.75, Math.hypot(lock.x - P.x, lock.z - P.z) - 0.4)) : 0.75;
     const hx = P.x + Math.sin(dir) * reach, hz = P.z + Math.cos(dir) * reach;
-    for (const m of monsters) if (!m.dead && Math.hypot(m.x - hx, m.z - hz) < (m.cfg.big ? 1.25 : 0.95)) hitMonster(m);
+    for (const m of monsters) if (!m.dead && Math.hypot(m.x - hx, m.z - hz) < (m.cfg.big ? 1.25 : 0.95)) hitMonster(m, statNow('atk'), 'swing', hand, att);
     if (ARENA) for (const g of ghosts.values()) if (!g.hid && Math.hypot(g.x - hx, g.z - hz) < 0.95 && Math.abs(g.y - P.y) < 1.2) hitPlayer(g, statNow('atk'), hand);
     if (ARENA) smashCrate(hx, hz);
   }, 110);
 }
-function hitMonster(m, power = statNow('atk')) {
+// An attack: an id the server groups its hits by, and when it started (for weapon cooldowns).
+const clientMs = () => Math.round(performance.timeOrigin + performance.now());
+const newAttack = () => ({ id: Math.random().toString(36).slice(2, 10), at: clientMs() });
+// kind: swing | shot | aoe | chain | boom | mirror — the server checks the damage against it
+function hitMonster(m, power = statNow('atk'), kind = 'swing', hand = 'R', att = newAttack()) {
   const dmg = Math.max(1, Math.round(power + Math.random() * 4));
   m.hp -= dmg;
+  if (m.sid) Ledger.act({ t: 'hit', id: m.sid, k: kind, hand, a: att.id, at: att.at, dmg });
   m.flash = 0.09;
   const dx = m.x - P.x, dz = m.z - P.z, d = Math.hypot(dx, dz) || 1, push = m.cfg.big ? 4.4 : 8.75;
   m.kb = 0.16; m.kbx = dx / d * push; m.kbz = dz / d * push;
@@ -3037,7 +3048,7 @@ function spawnShot(x, y, z, dx, dy, dz, c, hand) {
   scene.add(g);
   const light = c.boomerang ? null : FB_LIGHTS.find((l) => !l.userData.busy);
   if (light) { light.userData.busy = true; light.color.set(c.color); light.intensity = 6; }
-  const fb = { g, halo, x, y, z, dx, dy, dz, dist: 0, light, c, trailT: 0, hand };
+  const fb = { g, halo, x, y, z, dx, dy, dz, dist: 0, light, c, trailT: 0, hand, att: newAttack() };
   if (c.boomerang) fb.boom = { back: false, hit: new Set(), age: 0 };
   fireballs.push(fb);
   burst(x, y, z, c.color, 5);
@@ -3192,7 +3203,7 @@ function chainFrom(fb, first, power) {
   for (const [q] of near) {
     drawBolt(from.x, from.z, q.x, q.z);
     if (ghosts.has(q.id) && ghosts.get(q.id) === q) hitPlayer(q, power * 0.6, fb.hand, true);
-    else hitMonster(q, power * 0.6);
+    else hitMonster(q, power * 0.6, 'chain', fb.hand, fb.att);
     from = q;
   }
 }
@@ -3227,7 +3238,7 @@ function updateBoomerang(fb, dt) {
   const power = statNow('atk') * 1.1 + 4;
   for (const m of monsters) {
     if (m.dead || b.hit.has(m)) continue;
-    if (Math.hypot(m.x - fb.x, m.z - fb.z) < (m.cfg.big ? 1.3 : 0.8)) { b.hit.add(m); hitMonster(m, power); }
+    if (Math.hypot(m.x - fb.x, m.z - fb.z) < (m.cfg.big ? 1.3 : 0.8)) { b.hit.add(m); hitMonster(m, power, 'boom', fb.hand, fb.att); }
   }
   if (ARENA) for (const g of ghosts.values()) {
     if (g.dead || g.hid || b.hit.has(g)) continue;
@@ -3250,7 +3261,7 @@ function explode(fb) {
   scene.add(b);
   blasts.push({ m: b, age: 0, r: 0.6 + c.aoe * 0.6 });
   if (ARENA) smashCrate(x, z);
-  if (c.aoe) for (const m of monsters) if (!m.dead && Math.hypot(m.x - x, m.z - z) < c.aoe) hitMonster(m, statNow('atk') * 0.5 + statNow('mag') * 0.8);
+  if (c.aoe) for (const m of monsters) if (!m.dead && Math.hypot(m.x - x, m.z - z) < c.aoe) hitMonster(m, statNow('atk') * 0.5 + statNow('mag') * 0.8, 'aoe', fb.hand, fb.att);
   if (c.aoe && ARENA) for (const g of ghosts.values()) if (g !== fb.foe && Math.hypot(g.x - x, g.z - z) < c.aoe) hitPlayer(g, statNow('atk') * 0.5 + statNow('mag') * 0.8, fb.hand, true);
   scene.remove(fb.g);
   fb.g.traverse((o) => o.material && o.material.dispose());
@@ -3277,7 +3288,7 @@ function updateFireballs(dt, t) {
       || circles.some(([x, z, r]) => Math.hypot(fb.x - x, fb.z - z) < r);
     if (ARENA) for (const g of ghosts.values()) if (!g.dead && !g.hid && Math.hypot(g.x - fb.x, g.z - fb.z) < 0.7 && fb.y > g.y && fb.y < g.y + 1.8) { fb.foe = g; break; }
     const power = statNow('atk') * 0.6 + statNow('mag') * 1.4;
-    if (hit) { hitMonster(hit, power); chillMonster(hit, fb.c); chainFrom(fb, hit, power); }
+    if (hit) { hitMonster(hit, power, fb.c === MIRROR_SHOT ? 'mirror' : 'shot', fb.hand, fb.att); chillMonster(hit, fb.c); chainFrom(fb, hit, power); }
     if (fb.foe) { hitPlayer(fb.foe, power, fb.hand, true, fb.c.slow); chainFrom(fb, fb.foe, power); }
     const landed = fb.y <= 0.05 || fb.y <= groundAt(fb.x, fb.z, fb.y) + 0.05 || blockCellAt(fb.x, fb.y, fb.z);
     // an unopened drop crate stops a shot, so a caster can break it open like a sword can
@@ -3316,8 +3327,7 @@ function killMonster(m) {
   m.dying = 0;
   m.el.remove();
   burst(m.x, 0.5, m.z, m.cfg.big ? '#c06aff' : '#eaff8a', 12);
-  const [g0, g1] = m.cfg.gold, type = Object.keys(MONSTERS).find((k) => MONSTERS[k] === m.cfg);
-  Ledger.act({ t: 'kill', m: type });
+  const [g0, g1] = m.cfg.gold, type = m.type; // the server counts the kill itself, from the hits
   spawnDrop({ kind: 'gold', m: type, amount: g0 + Math.floor(Math.random() * (g1 - g0 + 1)) }, m.x, m.z);
   spawnDrop({ kind: 'item', id: m.cfg.drop, amount: 1 }, m.x, m.z);
   const before = 1 + Math.floor(field.xp / 100);
@@ -5302,7 +5312,10 @@ const REFUSED = {
   'not ripe': 'That crop isn\'t ripe yet.',
   'too fast': 'Easy there: that reward was too fast to count.',
 };
-Ledger.on('rejected', (bad) => {
+const QUIET = new Set(['hit', 'spawn', 'area', 'pickup']); // combat bookkeeping: the server's state answer is enough
+Ledger.on('rejected', (all) => {
+  const bad = all.filter(([a]) => !QUIET.has(a.t));
+  if (!bad.length) return;
   const why = bad.map(([, w]) => w).find((w) => REFUSED[w]) || bad[0][1];
   toast(REFUSED[why] || `The server didn't accept that (${why})`);
 });
@@ -5319,7 +5332,7 @@ window.__world3d = { P, ghosts, arena, farms, updateIndoor, aimPoint, spectating
   arenaMod, buff: () => buffNow(), free,
   equip: (id, slot) => equip(id, slot), gearOf: (slot) => gear(slot), parrying: () => parrying(),
   view: viewName, autoAim: () => autoAim, setAutoAim: (on) => setAutoAim(on), camYaw: () => camYaw, setCamYaw: (v) => { camYaw = v; }, nitro: () => nitro, setNitro: (v) => { nitro = v; nitroLock = false; }, jump,
-  killMonster, collect, shopAct, claimPlot, plant, harvest, owned: () => owned, // economy tests
+  killMonster, hitMonster, collect, shopAct, claimPlot, plant, harvest, owned: () => owned, // economy tests
   spawn: (type, x, z) => { spawnMonster(type); const m = monsters[monsters.length - 1]; m.x = x; m.z = z; m.t = 99; m.vx = m.vz = 0; return monsters.length - 1; },
   foeCast: (i) => castFoeBall(monsters[i]), chilled, smoked: () => Math.max(0, (smokeUntil - performance.now()) / 1000), colosseum: () => COLO && { arena: [A.doors.find((d) => /area=arena/.test(d.href)).x + 0.5, A.doors.find((d) => /area=arena/.test(d.href)).y + 0.5], stands: [A.doors.find((d) => /area=stands/.test(d.href)).x + 0.5, A.doors.find((d) => /area=stands/.test(d.href)).y + 0.5] }, hazardNow, clockOffset: () => HAZ.offset, hazards: () => [...HAZ.views.values()], hazardClock: (ms) => { HAZ.pinned = ms === undefined || ms === null ? null : ms; }, slowed, setHp: (n) => { hp = n; updateHud(); }, drawnBlocks: (id) => ((plotViews.get(id) || {}).blockMeshes || []).reduce((n, m) => n + m.count, 0), getPitch: () => fpPitch, firstPerson: () => firstPerson, setPitch: (v) => { fpPitch = v; }, openShop, hiddenBlocks, doorAngle: (id, i, j, k) => { const v = plotViews.get(id); return (v && v.doorAng && v.doorAng.get(`${i},${j},${k}`)) || 0; }, shopSpots, aimBlock, mouse, camera, building: () => building, toScreen, groundAt, solidAt, setBlocks, plots: PLOTS, placed, decorCrops, myFarm: () => myFarm, farmTile: () => farmTile(), hp: () => hp, mp, monsters, drops, field: () => field, hero: () => hero, fireballs, tp: (x, z, yaw) => { P.x = x; P.z = z; P.vx = P.vz = 0; if (yaw !== undefined) camYaw = yaw; }, cam: (dist, pitch) => { camDistT = camDist = dist; camPitchT = camPitch = pitch; }, size: [MAP_W, MAP_H], info: () => { // one full frame's draw calls and triangles (all passes, shadows included)
   renderer.info.autoReset = false; renderer.info.reset(); composer.render();
