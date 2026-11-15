@@ -2857,6 +2857,12 @@ let laptop = false;
 try { laptop = localStorage.getItem('taproot3d_ctrl') === 'laptop'; } catch (e) {}
 const viewName = () => (firstPerson ? 'first' : shoulder ? 'shoulder' : 'third');
 const exitLock = () => { if (document.pointerLockElement) document.exitPointerLock(); };
+// Laptop controls: grab the mouse so it steers the view like the arrow keys. Browsers allow this
+// only from a key press or click, so any game key (or a click) grabs it; Esc lets it go.
+const grabMouse = () => {
+  if (!laptop || document.pointerLockElement || modal || chatOpen || (building && !mouseLook())) return;
+  try { const p = canvas.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (err) {}
+};
 function setView(v) {
   firstPerson = v === 'first';
   shoulder = v === 'shoulder';
@@ -5101,6 +5107,7 @@ addEventListener('keydown', (e) => {
   if (e.repeat) return;
   if (chatOpen) return; // typing: the chat box handles its own keys
   if ((e.code === 'KeyT' || e.code === 'Enter') && !modal) { e.preventDefault(); openChat(); return; }
+  if (e.code !== 'Escape' && e.code !== 'KeyM' && e.code !== 'KeyB') grabMouse();
   keys[e.code] = true;
   if (modal) { if (e.code === 'Escape' || e.code === 'KeyF') closeModal(); return; } // a shop / crafting panel is open
   if (e.code === 'KeyU') setSprint(!sprintOn);
@@ -5210,14 +5217,15 @@ for (const [id, dir] of [['camUpBtn', 1], ['camDownBtn', -1]]) {
 $('viewBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); cycleView(); });
 $('aimBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); setAutoAim(!autoAim); });
 $('aimBtn').classList.toggle('on', autoAim);
-const LOOK_HELP = { classic: $('lookHelp').innerHTML, laptop: '<b>WASD</b> move &middot; <b>Arrows</b> look &middot; <b>Click</b> the game, then the trackpad looks (<b>Esc</b> frees it) &middot;' };
+const LOOK_HELP = { classic: $('lookHelp').innerHTML, laptop: '<b>WASD</b> move &middot; <b>Arrows / mouse</b> look &middot; <b>Esc</b> frees the mouse &middot;' };
 function setControls(on, say) {
   laptop = on;
   try { localStorage.setItem('taproot3d_ctrl', on ? 'laptop' : 'classic'); } catch (e) {}
   $('ctrlBtn').firstChild.textContent = on ? 'Laptop' : 'Classic';
   $('lookHelp').innerHTML = LOOK_HELP[on ? 'laptop' : 'classic'];
   if (!on && !mouseLook()) exitLock();
-  if (say) toast(on ? 'Laptop controls: WASD walk, arrows look, click the game to look with the trackpad (M to switch back)' : 'Classic controls (M for laptop controls)');
+  if (on && say) grabMouse();
+  if (say) toast(on ? 'Laptop controls: WASD walk, arrows or mouse look, Esc frees the mouse (M to switch back)' : 'Classic controls (M for laptop controls)');
 }
 setControls(laptop, false);
 $('ctrlBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); setControls(!laptop, true); });
