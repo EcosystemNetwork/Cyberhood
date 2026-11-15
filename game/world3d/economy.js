@@ -24,6 +24,9 @@ export const MONSTER_LOOT = {
   goblin:    { hp: 60,  xp: 15, gold: [3, 5],   drop: 'goblin_ear' },
   king:      { hp: 200, xp: 60, gold: [15, 25], drop: 'royal_jelly' },
   gladiator: { hp: 150, xp: 45, gold: [10, 18], drop: 'laurel' },
+  // the two giants of the Mine's deepest floor (B2, The Hollow)
+  golem_crystal: { hp: 1000, xp: 400, gold: [120, 160], drop: 'golem_core' },
+  spider_queen:  { hp: 800,  xp: 350, gold: [100, 140], drop: 'queen_silk' },
 };
 
 /* ---- combat ----
@@ -113,12 +116,14 @@ export function barrelSpot(slot, gen) {
 export const PLOT_SOIL = { 1: [24, 24], 2: [8, 8], 3: [8, 8] };
 
 /* How fast rewards can come in, as token buckets: [burst, seconds per refill]. Monsters
-   respawn 12-18 s after a kill (King Slime 45 s, the Gladiator 25 s) and no area has more
+   respawn 12-18 s after a kill (King Slime 45 s, the Gladiator 25 s, the giants 120 s) and no area has more
    than five of one kind, so a real player can't beat these; a script can't go faster. */
 export const LIMITS = {
   kill: [8, 2.4],
   'kill:king': [2, 40],
   'kill:gladiator': [2, 22],
+  'kill:golem_crystal': [2, 110], // the giants come back after 120 s
+  'kill:spider_queen': [2, 110],
   barrel: [4, 8],
 };
 export const MAX_PENDING = 30;   // uncollected drops kept per kind

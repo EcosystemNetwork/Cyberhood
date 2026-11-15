@@ -6,6 +6,11 @@
       "permanent": false
     },
     {
+      "source": "/solo",
+      "destination": "/game/world3d/?solo=1",
+      "permanent": false
+    },
+    {
       "source": "/game/world",
       "destination": "/game/world3d/",
       "permanent": false
