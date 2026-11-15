@@ -20,5 +20,8 @@ for (const f of self.SOLO_FILES) {
   if (/\.(js|html)$/.test(f)) put(rel, local(readFileSync(new URL(rel, ROOT), 'utf8')));
   else { mkdirSync(dirname(new URL(rel, WWW).pathname), { recursive: true }); copyFileSync(new URL(rel, ROOT), new URL(rel, WWW)); }
 }
-put('index.html', '<!doctype html><meta charset="utf-8"><script>location.replace("/game/world3d/index.html?solo=1")</script>');
+// The app's web server answers any folder address (/game/sea3d/?...) with this root page, so it
+// forwards to that folder's index.html, keeping the query; the bare app start goes to solo.
+put('index.html', '<!doctype html><meta charset="utf-8"><script>const p = location.pathname === "/" ? "/game/world3d/" : location.pathname.replace(/\\/?$/, "/");' +
+  'location.replace(p + "index.html" + (location.search || "?solo=1"))</script>');
 console.log(`www ready: ${self.SOLO_FILES.length} files`);

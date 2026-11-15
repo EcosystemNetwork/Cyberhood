@@ -238,7 +238,7 @@
     #nearChip { left: 12px; top: 96px; transform: none; }
     .farmbar { left: 12px; transform: none; }
   }
-  body.solo #chat, body.solo #chatBtn, body.solo .links, body.solo #gearBtn { display: none !important; }
+  body.solo #chat, body.solo #chatBtn, body.solo .links { display: none !important; }
   #fade { position: fixed; inset: 0; z-index: 9; background: #000; opacity: 0; pointer-events: none; transition: opacity 0.7s; }
 
   @media (max-width: 640px) {
@@ -2403,10 +2403,9 @@ function currentAction() {
 }
 function setSail() {
   if (!BOARD_AT || leaving || Math.hypot(P.x - BOARD_AT.x, P.z - BOARD_AT.z) > 2) return;
-  if (SOLO) { toast("Sailing isn't in solo yet"); return; }
   leaving = true;
   $('fade').style.opacity = 1;
-  setTimeout(() => { location.href = '/game/sea3d/?from=docks'; }, 450);
+  setTimeout(() => { location.href = withSolo('/game/sea3d/?from=docks'); }, 450);
 }
 boats.forEach((b) => { b.g.position.set(b.x, b.y, b.z); scene.add(b.g); });
 
@@ -2830,7 +2829,7 @@ signs.forEach((s) => {
 
 /* ---------- game state ---------- */
 const from = new URLSearchParams(location.search).get('from');
-const spawnAt = A.arrive[from] || START;
+const spawnAt = A.arrive[from] || (!from && A.arrive.respawn) || START; // a fresh start begins in the town square, by the fountain
 // Camera views (C or the camera button): drag / scroll still fine-tune any of them; the pick is remembered.
 const CAM_MODES = [
   { name: 'Chase', dist: 6, pitch: 0.34, follow: true },
@@ -3698,7 +3697,7 @@ function openArmory() {
   toggleBag(false);
   const wrap = document.createElement('div');
   wrap.id = 'armoryOverlay';
-  wrap.innerHTML = '<iframe id="armoryFrame" title="Gear" src="/game/?armory=1&embed=1"></iframe><button id="armoryClose" type="button">Done</button>';
+  wrap.innerHTML = `<iframe id="armoryFrame" title="Gear" src="${withSolo('/game/?armory=1&embed=1')}"></iframe><button id="armoryClose" type="button">Done</button>`;
   document.body.appendChild(wrap);
   // Done goes through the Armory's own Back, so it saves to your account the same way
   $('armoryClose').addEventListener('click', () => {
