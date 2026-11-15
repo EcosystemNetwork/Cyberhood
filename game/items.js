@@ -25,6 +25,7 @@
   const ITEMS = {
     // HEAD
     iron_helm:     { name: 'Iron Helm',     slot: 'head',   rarity: 'common',    stats: { hp: 10, def: 3 } },
+    archmage_hat:  { name: "Archmage's Hat", slot: 'head', rarity: 'legendary', stats: { hp: 10, mag: 8 } },  // endless mana
     wizard_hat:    { name: 'Wizard Hat',    slot: 'head',   rarity: 'common',    stats: { hp: 5, mag: 3 } },
     ranger_hood:   { name: 'Ranger Hood',   slot: 'head',   rarity: 'common',    stats: { def: 1, spd: 2 } },
     rogue_hood:    { name: 'Rogue Hood',    slot: 'head',   rarity: 'common',    stats: { def: 1, spd: 3 } },
@@ -64,6 +65,7 @@
     inferno_staff: { name: 'Inferno Staff', slot: 'rhand',  rarity: 'legendary', stats: { atk: 4, mag: 12 } },
     ice_wand:      { name: 'Ice Wand',      slot: 'rhand',  rarity: 'uncommon',  stats: { atk: 1, mag: 5 } },  // slows what it hits
     thunder_staff: { name: 'Thunder Staff', slot: 'rhand',  rarity: 'rare',      stats: { atk: 2, mag: 9 } },  // jumps to two more
+    dragon_staff:  { name: 'Dragon Staff',  slot: 'rhand',  rarity: 'legendary', stats: { atk: 5, mag: 16 } },  // a slow, huge dragon fireball; forged from boss parts
     boomerang:     { name: 'Boomerang',     slot: 'rhand',  rarity: 'uncommon',  stats: { atk: 6, spd: 1 } },  // hits out and back
     // LEFT HAND (shields / off-hand)
     wooden_shield: { name: 'Wooden Shield', slot: 'lhand',  rarity: 'common',    stats: { def: 4, hp: 5 } },

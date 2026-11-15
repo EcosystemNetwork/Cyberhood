@@ -27,6 +27,8 @@
   .title { font: 400 19px/1.1 'Lilita One', system-ui, sans-serif; color: #fff; text-shadow: 0 2px 0 rgba(0, 0, 0, 0.5); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .hp { position: relative; margin-top: 6px; height: 18px; border-radius: 10px; background: #1a0624; border: 2px solid #12031a; overflow: hidden; }
   #hpFill { height: 100%; width: 100%; background: linear-gradient(#e2ff7a, #8ad400); box-shadow: 0 0 10px rgba(200, 255, 46, 0.7); transition: width 0.2s; }
+  #wardIcon { position: absolute; right: 12px; top: 8px; font-size: 18px; filter: drop-shadow(0 0 6px #ffcf3a); animation: wardPulse 1.4s ease-in-out infinite; }
+  @keyframes wardPulse { 50% { transform: scale(1.15); } }
   .hp.mp { height: 14px; margin-top: 4px; }
   .hp.mp.empty { animation: mpFlash 0.45s; }
   @keyframes mpFlash { 0%, 100% { box-shadow: none; } 40% { box-shadow: 0 0 0 2px #ff5a5a, 0 0 14px #ff5a5a; } }
@@ -355,6 +357,7 @@ if (!window.SOLO) {
   <div class="avatar" aria-hidden="true"></div>
   <div class="tl-body">
     <div class="title" id="areaTitle">Taproot Fields</div>
+    <div id="wardIcon" title="Phoenix Ward: your next hit is blocked" hidden>&#128293;</div>
     <div class="hp"><div id="hpFill"></div><span id="hpText"></span></div>
     <div class="hp mp"><div id="manaFill"></div><span id="manaText">MP 100 / 100</span></div>
     <div class="links"><a href="/game/">Back</a></div>
@@ -3297,15 +3300,16 @@ function jump() {
 /* Mana: staffs and wands spend it, everything else is free. It refills on its own like nitro
    (empty to full in 8 s, twice as fast in the safe camp). */
 const MANA_MAX = 100;
-const MANA_COST = { apprentice_wand: 10, oak_staff: 12, fire_wand: 15, ice_wand: 15, inferno_staff: 20, thunder_staff: 25 };
+const MANA_COST = { apprentice_wand: 10, oak_staff: 12, fire_wand: 15, ice_wand: 15, inferno_staff: 20, thunder_staff: 25, dragon_staff: 40 };
+const endlessMana = () => gear('head') === 'archmage_hat'; // the Archmage's Hat: casting is free
 let mana = MANA_MAX, manaShown = -1, manaWarned = 0, regen = 0;
-const manaCost = (hand, caster) => (caster.boomerang ? 0 : MANA_COST[gear(hand === 'L' ? 'lhand' : 'rhand')] ?? 12);
+const manaCost = (hand, caster) => (caster.boomerang || endlessMana() ? 0 : MANA_COST[gear(hand === 'L' ? 'lhand' : 'rhand')] ?? 12);
 function drawMana() {
-  const v = Math.floor(mana);
+  const v = endlessMana() ? -2 : Math.floor(mana);
   if (v === manaShown) return;
   manaShown = v;
-  $('manaFill').style.width = `${(mana / MANA_MAX) * 100}%`;
-  $('manaText').textContent = `MP ${v} / ${MANA_MAX}`;
+  $('manaFill').style.width = v < 0 ? '100%' : `${(mana / MANA_MAX) * 100}%`;
+  $('manaText').textContent = v < 0 ? 'MP \u221E' : `MP ${v} / ${MANA_MAX}`;
 }
 function outOfMana() {
   const bar = $('manaFill').parentElement;
@@ -3374,9 +3378,80 @@ function castBall(hand = 'R') {
     x = camera.position.x + SEG.x * 0.6 - SEG.z * side; y = camera.position.y - 0.2 + SEG.y * 0.6; z = camera.position.z + SEG.z * 0.6 + SEG.x * side;
     dx = SEG.x; dy = SEG.y; dz = SEG.z;
   }
+  if (c.pillar) { spawnPillar(pillarSpot(c), c, hand); return; }
   const lock = assistTarget(x, z, dx, dz, c.range);
   if (lock) { const L = Math.hypot(lock.x - x, lock.y - y, lock.z - z) || 1; dx = (lock.x - x) / L; dy = (lock.y - y) / L; dz = (lock.z - z) / L; }
   spawnShot(x, y, z, dx, dy, dz, c, hand);
+}
+/* The Inferno Staff's pillar of flame: a spot on the floor (what auto-aim is on, where the
+   crosshair meets the ground, or where the aim ring sits) glows and blinks for a second, then a
+   column of fire erupts there and burns everything standing in it. */
+const pillars = [];
+function pillarSpot(c) {
+  const fx = Math.sin(P.heading), fz = Math.cos(P.heading);
+  const lock = assistTarget(P.x, P.z, fx, fz, c.range);
+  if (lock) return { x: lock.x, z: lock.z };
+  if (mouseLook()) {
+    camera.getWorldDirection(SEG);
+    const flat = Math.hypot(SEG.x, SEG.z) || 1;
+    let d = c.range * 0.6;
+    if (SEG.y < -0.02) d = Math.min(c.range, Math.hypot(SEG.x, SEG.z) * (camera.position.y / -SEG.y));
+    const ox = camera.position.x - P.x, oz = camera.position.z - P.z; // the camera sits at (or just behind) you
+    return { x: P.x + ox + (SEG.x / flat) * d, z: P.z + oz + (SEG.z / flat) * d };
+  }
+  const a = aimPoint();
+  if (a) return { x: a.x, z: a.z };
+  return { x: P.x + fx * 7, z: P.z + fz * 7 };
+}
+function spawnPillar(at, c, hand) {
+  const r = c.aoe, g = new THREE.Group(), y0 = groundAt(at.x, at.z, 0) + 0.05;
+  const mark = new THREE.MeshBasicMaterial({ color: '#ff3a1a', transparent: true, opacity: 0.35, depthWrite: false, side: THREE.DoubleSide });
+  const disc = new THREE.Mesh(new THREE.CircleGeometry(r, 40), mark);
+  const ring = new THREE.Mesh(new THREE.RingGeometry(r - 0.1, r, 48), new THREE.MeshBasicMaterial({ color: '#ffb03a', transparent: true, opacity: 0.95, side: THREE.DoubleSide }));
+  for (const m of [disc, ring]) { m.rotation.x = -Math.PI / 2; g.add(m); }
+  g.position.set(at.x, y0, at.z);
+  scene.add(g);
+  pillars.push({ g, disc, ring, x: at.x, z: at.z, r, c, hand, age: 0, fired: false, col: null });
+}
+function updatePillars(dt) {
+  for (let i = pillars.length - 1; i >= 0; i--) {
+    const p = pillars[i];
+    p.age += dt;
+    if (!p.fired) { // the warning: blink faster as it gets close
+      const on = Math.sin(p.age * (8 + p.age * 18)) > 0;
+      p.disc.material.opacity = on ? 0.5 : 0.18;
+      p.ring.scale.setScalar(1 + (1 - p.age) * 0.15);
+      if (p.age >= 1) {
+        p.fired = true;
+        const col = new THREE.Group();
+        const outer = new THREE.Mesh(new THREE.CylinderGeometry(p.r * 0.85, p.r, 6, 28, 1, true),
+          new THREE.MeshBasicMaterial({ color: '#ff5a1a', transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+        const inner = new THREE.Mesh(new THREE.CylinderGeometry(p.r * 0.45, p.r * 0.6, 6, 20, 1, true),
+          new THREE.MeshBasicMaterial({ color: '#ffe08a', transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+        outer.position.y = inner.position.y = 3;
+        col.add(outer, inner);
+        col.position.set(p.x, p.g.position.y, p.z);
+        col.scale.y = 0.1;
+        scene.add(col);
+        p.col = col;
+        for (let k = 0; k < 6; k++) burst(p.x + (Math.random() - 0.5) * p.r, 0.3 + k * 0.6, p.z + (Math.random() - 0.5) * p.r, k % 2 ? '#ffe08a' : '#ff5a1a', 6);
+        shake = Math.max(shake, 0.25);
+        const power = (statNow('atk') * 0.6 + statNow('mag') * 1.4) * 1.8;
+        for (const m of monsters) if (!m.dead && Math.hypot(m.x - p.x, m.z - p.z) < p.r + (m.cfg.giant ? 1 : 0.3)) hitMonster(m, power);
+        if (ARENA) { for (const gh of ghosts.values()) if (!gh.dead && !gh.hid && Math.hypot(gh.x - p.x, gh.z - p.z) < p.r) hitPlayer(gh, power, p.hand, true); smashCrate(p.x, p.z); }
+      }
+    } else { // the column shoots up, then fades
+      const t = (p.age - 1) / 0.55;
+      p.col.scale.y = Math.min(1, 0.1 + t * 3);
+      p.col.children.forEach((m, j) => { m.material.opacity = (j ? 0.9 : 0.8) * (1 - t); m.rotation.y += dt * (j ? -6 : 4); });
+      p.disc.material.opacity = 0.5 * (1 - t);
+      p.ring.material.opacity = 0.95 * (1 - t);
+      if (t >= 1) {
+        for (const o of [p.g, p.col]) { scene.remove(o); o.traverse((m) => { if (m.material) m.material.dispose(); if (m.geometry) m.geometry.dispose(); }); }
+        pillars.splice(i, 1);
+      }
+    }
+  }
 }
 /* Auto-aim: when you're already roughly facing something (within about 23 degrees) and it's in
    range, your shot bends onto it, and a sword swing turns onto anything within reach. Toggled with
@@ -3429,8 +3504,20 @@ function spawnShot(x, y, z, dx, dy, dz, c, hand) {
     halo = new THREE.Mesh(FB_GEO, new THREE.MeshBasicMaterial({ color: c.color, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false }));
     halo.scale.setScalar(0.38 * s);
     g.add(core, shell, halo);
+    if (c.dragon) { // a dragon's head leads the ball: snout, horns and two burning eyes
+      const red = new THREE.MeshBasicMaterial({ color: '#c8281e' }), bone = new THREE.MeshBasicMaterial({ color: '#efe2c0' });
+      const snout = new THREE.Mesh(new THREE.ConeGeometry(0.16 * s, 0.42 * s, 8), red);
+      snout.rotation.x = Math.PI / 2; snout.position.z = 0.32 * s; g.add(snout);
+      for (const sx of [-1, 1]) {
+        const horn = new THREE.Mesh(new THREE.ConeGeometry(0.035 * s, 0.26 * s, 6), bone);
+        horn.position.set(sx * 0.11 * s, 0.17 * s, -0.04 * s); horn.rotation.set(-0.9, 0, sx * -0.35); g.add(horn);
+        const eye = new THREE.Mesh(FB_GEO, new THREE.MeshBasicMaterial({ color: '#ffe23a' }));
+        eye.scale.setScalar(0.035 * s); eye.position.set(sx * 0.09 * s, 0.08 * s, 0.17 * s); g.add(eye);
+      }
+    }
   }
   g.position.set(x, y, z);
+  if (c.dragon) g.lookAt(x + dx, y + dy, z + dz);
   scene.add(g);
   const light = c.boomerang ? null : FB_LIGHTS.find((l) => !l.userData.busy);
   if (light) { light.userData.busy = true; light.color.set(c.color); light.intensity = 6; }
@@ -3647,13 +3734,16 @@ function explode(fb) {
   scene.add(b);
   blasts.push({ m: b, age: 0, r: 0.6 + c.aoe * 0.6 });
   if (ARENA) smashCrate(x, z);
-  if (c.aoe) for (const m of monsters) if (!m.dead && Math.hypot(m.x - x, m.z - z) < c.aoe) hitMonster(m, statNow('atk') * 0.5 + statNow('mag') * 0.8);
-  if (c.aoe && ARENA) for (const g of ghosts.values()) if (g !== fb.foe && Math.hypot(g.x - x, g.z - z) < c.aoe) hitPlayer(g, statNow('atk') * 0.5 + statNow('mag') * 0.8, fb.hand, true);
+  const splash = (statNow('atk') * 0.5 + statNow('mag') * 0.8) * (c.dmg || 1);
+  if (c.dragon) { burst(x, y, z, '#ffcf3a', 24); shake = Math.max(shake, 0.3); }
+  if (c.aoe) for (const m of monsters) if (!m.dead && Math.hypot(m.x - x, m.z - z) < c.aoe) hitMonster(m, splash);
+  if (c.aoe && ARENA) for (const g of ghosts.values()) if (g !== fb.foe && Math.hypot(g.x - x, g.z - z) < c.aoe) hitPlayer(g, splash, fb.hand, true);
   scene.remove(fb.g);
   fb.g.traverse((o) => o.material && o.material.dispose());
   if (fb.light) { fb.light.userData.busy = false; fb.light.intensity = 0; }
 }
 function updateFireballs(dt, t) {
+  updatePillars(dt);
   for (let i = fireballs.length - 1; i >= 0; i--) {
     const fb = fireballs[i], step = (fb.c.speed || 15) * dt;
     if (fb.boom) { if (updateBoomerang(fb, dt)) { dropShot(fb); fireballs.splice(i, 1); } continue; }
@@ -3662,7 +3752,7 @@ function updateFireballs(dt, t) {
     fb.halo.scale.setScalar(0.38 * fb.c.size * (1 + Math.sin(t * 40) * 0.12));
     if (fb.light) fb.light.position.copy(fb.g.position);
     fb.trailT += dt;
-    if (fb.trailT > 0.03) { fb.trailT = 0; burst(fb.x, fb.y, fb.z, fb.c.color, 1); }
+    if (fb.trailT > 0.03) { fb.trailT = 0; burst(fb.x, fb.y, fb.z, fb.c.color, fb.c.dragon ? 3 : 1); }
     let hit = null;
     for (const m of monsters) {
       if (m.dead) continue;
@@ -3673,7 +3763,7 @@ function updateFireballs(dt, t) {
     const wall = cx < 0 || cz < 0 || cx >= MAP_W || cz >= MAP_H || (blocked[cz][cx] && waterAt(fb.x * T, fb.z * T) < 0)
       || circles.some(([x, z, r]) => Math.hypot(fb.x - x, fb.z - z) < r);
     if (ARENA) for (const g of ghosts.values()) if (!g.dead && !g.hid && Math.hypot(g.x - fb.x, g.z - fb.z) < 0.7 && fb.y > g.y && fb.y < g.y + 1.8) { fb.foe = g; break; }
-    const power = statNow('atk') * 0.6 + statNow('mag') * 1.4;
+    const power = (statNow('atk') * 0.6 + statNow('mag') * 1.4) * (fb.c.dmg || 1);
     if (hit) { hitMonster(hit, power); chillMonster(hit, fb.c); chainFrom(fb, hit, power); }
     if (fb.foe) { hitPlayer(fb.foe, power, fb.hand, true, fb.c.slow); chainFrom(fb, fb.foe, power); }
     const landed = fb.y <= 0.05 || fb.y <= groundAt(fb.x, fb.z, fb.y) + 0.05 || blockCellAt(fb.x, fb.y, fb.z);
@@ -3772,8 +3862,35 @@ function queenMoves(mo, v, dt, dx, dz, dist, tt) {
   v.body.position.y = -crouch * 0.35 + (moving ? Math.abs(Math.sin(tt * 9)) * 0.06 : 0);
   v.legs.forEach((l) => { l.hip.rotation.y = l.base + (moving ? Math.sin(tt * (mo.dash > 0 ? 22 : 11) + l.i * 1.6 + (l.s > 0 ? Math.PI : 0)) * 0.3 : 0); });
 }
+/* Phoenix Ward (Phoenix Plate): the first hit you take after 10 seconds without being hit does
+   nothing. A golden ring circles you while it's ready; any hit, warded or not, restarts the clock. */
+const WARD_MS = 10000;
+let wardReady = true, lastHitAt = -1e9;
+const hasWard = () => gear('body') === 'phoenix_plate';
+const wardRing = new THREE.Mesh(new THREE.TorusGeometry(0.62, 0.035, 8, 40),
+  new THREE.MeshBasicMaterial({ color: '#ffcf3a', transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false }));
+wardRing.rotation.x = Math.PI / 2;
+scene.add(wardRing);
+function wardBlocks() { // call when a hit lands on you: true if the ward ate it
+  const ready = hasWard() && wardReady;
+  lastHitAt = performance.now();
+  if (!ready) return false;
+  wardReady = false;
+  floatText(P.x, 2, P.z, 'Warded!', '#ffcf3a');
+  burst(P.x, 1.1, P.z, '#ffcf3a', 18);
+  burst(P.x, 1.1, P.z, '#ff7a1a', 8);
+  return true;
+}
+function updateWard(t) {
+  const on = hasWard();
+  if (on && !wardReady && performance.now() - lastHitAt > WARD_MS) { wardReady = true; burst(P.x, 0.6, P.z, '#ffcf3a', 8); }
+  wardRing.visible = on && wardReady && !fainted;
+  if (wardRing.visible) { wardRing.position.set(P.x, P.y + 0.75 + Math.sin(t * 2.5) * 0.08, P.z); wardRing.rotation.z = t * 1.5; wardRing.material.opacity = 0.5 + Math.sin(t * 4) * 0.2; }
+  $('wardIcon').hidden = !(on && wardReady);
+}
 function hurtPlayer(m, dx, dz, dist) {
   if (inSafe(P.x, P.z)) return; // nothing reaches you in the safe camp
+  if (wardBlocks()) { inv = 0.9; return; }
   const dmg = Math.max(1, Math.round(m.cfg.dmg * 50 / (50 + stats.def)));
   hp = Math.max(0, hp - dmg);
   inv = 0.9;
@@ -4235,6 +4352,7 @@ function useItem(id) {
 
 function hazardHurt(power, weapon) {
   if (fainted || performance.now() < safeUntil || inSafe(P.x, P.z)) return;
+  if (wardBlocks()) return;
   const dmg = Math.max(1, Math.round(power * 50 / (50 + statNow('def'))));
   hp = Math.max(0, hp - dmg);
   hero.hurt();
@@ -4528,6 +4646,7 @@ function onHit(d) {
     shootAt(d.x, d.z);
     return;
   }
+  if (wardBlocks()) return; // Phoenix Ward works in the arena too
   if (d.slow) chill(d.slow);
   const dmg = Math.max(1, Math.round(d.dmg * 50 / (50 + statNow('def'))));
   hp = Math.max(0, hp - dmg);
@@ -5432,6 +5551,7 @@ function update(dt, now) {
   const boosting = moving && (sprintOn || ((keys.ShiftLeft || keys.ShiftRight) && !shiftCancel)) && !nitroLock && nitro > 0;
   if (boosting) { if (gear('feet') !== 'windrunner_boots') nitro -= dt * 0.12; if (nitro <= 0) { nitro = 0; nitroLock = true; } } // windrunner boots never tire
   else { nitro = Math.min(1, nitro + dt * 0.3); if (nitroLock && nitro > 0.25) nitroLock = false; }
+  updateWard(t);
   const camping = inSafe(P.x, P.z);
   mana = Math.min(MANA_MAX, mana + dt * (MANA_MAX / 8) * (camping ? 2 : 1)); drawMana();
   if (camping && !fainted && hp < stats.hp) { // resting by the fire: about 6% of your health a second
@@ -5814,7 +5934,7 @@ window.__world3d = { P, ghosts, arena, ladders: LADDERS, action: () => action &&
   equip: (id, slot) => equip(id, slot), gearOf: (slot) => gear(slot), parrying: () => parrying(),
   view: viewName, autoAim: () => autoAim, setAutoAim: (on) => setAutoAim(on), camYaw: () => camYaw, setCamYaw: (v) => { camYaw = v; }, nitro: () => nitro, setNitro: (v) => { nitro = v; nitroLock = false; }, jump,
   spawn: (type, x, z) => { spawnMonster(type); const m = monsters[monsters.length - 1]; m.x = x; m.z = z; m.t = 99; m.vx = m.vz = 0; return monsters.length - 1; },
-  foeCast: (i) => castFoeBall(monsters[i]), chilled, smoked: () => Math.max(0, (smokeUntil - performance.now()) / 1000), colosseum: () => COLO && { arena: [A.doors.find((d) => /area=arena/.test(d.href)).x + 0.5, A.doors.find((d) => /area=arena/.test(d.href)).y + 0.5], stands: [A.doors.find((d) => /area=stands/.test(d.href)).x + 0.5, A.doors.find((d) => /area=stands/.test(d.href)).y + 0.5] }, hazardNow, clockOffset: () => HAZ.offset, hazards: () => [...HAZ.views.values()], hazardClock: (ms) => { HAZ.pinned = ms === undefined || ms === null ? null : ms; }, slowed, setHp: (n) => { hp = n; updateHud(); }, drawnBlocks: (id) => ((plotViews.get(id) || {}).blockMeshes || []).reduce((n, m) => n + m.count, 0), getPitch: () => fpPitch, mana: () => mana, inSafe: () => inSafe(P.x, P.z), safe: () => SAFE && { x: SAFE.x, y: SAFE.y, r: SAFE.r }, camDistT: () => camDistT, getYaw: () => camYaw, firstPerson: () => firstPerson, setPitch: (v) => { fpPitch = v; }, openShop, hiddenBlocks, doorAngle: (id, i, j, k) => { const v = plotViews.get(id); return (v && v.doorAng && v.doorAng.get(`${i},${j},${k}`)) || 0; }, shopSpots, aimBlock, mouse, camera, building: () => building, toScreen, groundAt, solidAt, setBlocks, plots: PLOTS, placed, decorCrops, myFarm: () => myFarm, farmTile: () => farmTile(), hp: () => hp, mp, monsters, drops, field: () => field, hero: () => hero, fireballs, tp: (x, z, yaw) => { P.x = x; P.z = z; P.vx = P.vz = 0; if (yaw !== undefined) camYaw = yaw; }, cam: (dist, pitch) => { camDistT = camDist = dist; camPitchT = camPitch = pitch; }, size: [MAP_W, MAP_H], info: () => { // one full frame's draw calls and triangles (all passes, shadows included)
+  foeCast: (i) => castFoeBall(monsters[i]), chilled, smoked: () => Math.max(0, (smokeUntil - performance.now()) / 1000), colosseum: () => COLO && { arena: [A.doors.find((d) => /area=arena/.test(d.href)).x + 0.5, A.doors.find((d) => /area=arena/.test(d.href)).y + 0.5], stands: [A.doors.find((d) => /area=stands/.test(d.href)).x + 0.5, A.doors.find((d) => /area=stands/.test(d.href)).y + 0.5] }, hazardNow, clockOffset: () => HAZ.offset, hazards: () => [...HAZ.views.values()], hazardClock: (ms) => { HAZ.pinned = ms === undefined || ms === null ? null : ms; }, slowed, setHp: (n) => { hp = n; updateHud(); }, drawnBlocks: (id) => ((plotViews.get(id) || {}).blockMeshes || []).reduce((n, m) => n + m.count, 0), getPitch: () => fpPitch, mana: () => mana, wardReady: () => wardReady, pillars, inSafe: () => inSafe(P.x, P.z), safe: () => SAFE && { x: SAFE.x, y: SAFE.y, r: SAFE.r }, camDistT: () => camDistT, getYaw: () => camYaw, firstPerson: () => firstPerson, setPitch: (v) => { fpPitch = v; }, openShop, hiddenBlocks, doorAngle: (id, i, j, k) => { const v = plotViews.get(id); return (v && v.doorAng && v.doorAng.get(`${i},${j},${k}`)) || 0; }, shopSpots, aimBlock, mouse, camera, building: () => building, toScreen, groundAt, solidAt, setBlocks, plots: PLOTS, placed, decorCrops, myFarm: () => myFarm, farmTile: () => farmTile(), hp: () => hp, mp, monsters, drops, field: () => field, hero: () => hero, fireballs, tp: (x, z, yaw) => { P.x = x; P.z = z; P.vx = P.vz = 0; if (yaw !== undefined) camYaw = yaw; }, cam: (dist, pitch) => { camDistT = camDist = dist; camPitchT = camPitch = pitch; }, size: [MAP_W, MAP_H], info: () => { // one full frame's draw calls and triangles (all passes, shadows included)
   renderer.info.autoReset = false; renderer.info.reset(); composer.render();
   const r = { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles };
   renderer.info.autoReset = true; return r;

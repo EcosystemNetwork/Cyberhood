@@ -137,6 +137,7 @@
       d.rows(10, [[10, 29], [7, 32], [9, 30]], 'brim');
       d.px(20, 5, 'star');
     },
+    archmage_hat(d) { HEADS.wizard_hat(d); },
     ranger_hood: hood,
     rogue_hood(d) { hood(d); d.rows(17, [[14, 25], [14, 25], [14, 25], [15, 24], [16, 23]], 'mask'); },
     gold_crown(d) {
@@ -194,6 +195,7 @@
       d.rows(1, [[30, 31], [29, 32], [29, 32], [29, 32], [30, 31]], 'flameOrb'); d.px(30, 2, 'flameHi');
       sparks(d, [[27, 2], [34, 1], [34, 6], [26, 6]]);
     },
+    dragon_staff(d) { WEAPONS.inferno_staff(d); },
     void_blade(d) { sword(d); sparks(d, [[33, 12], [27, 17], [34, 24]]); },
     composite_bow(d) {
       d.fill(30, 23, 30, 44, 'string');

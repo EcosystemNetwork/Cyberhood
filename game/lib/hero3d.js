@@ -320,16 +320,18 @@ const HEAD_GEAR = {
     part(new THREE.TorusGeometry(0.315 * Math.sin(1.45), 0.026, 10, 40), M.gold, tilt, [0, 0.315 * Math.cos(1.45), 0], null, [Math.PI / 2, 0, 0]);
     for (const s of [-1, 1]) part(strand([[s * 0.24, 0.12, 0], [s * 0.38, 0.22, 0], [s * 0.46, 0.4, -0.03], [s * 0.41, 0.55, -0.07]], 0.06, 0.004), toon('#efe6d0'), hs);
   },
-  wizard_hat(hs, M, ctx) {
-    part(new THREE.CylinderGeometry(0.44, 0.46, 0.025, 40), toon('#4e3588'), hs, [0, 0.2, 0], null, [-0.12, 0, 0]);
+  wizard_hat(hs, M, ctx, brim = '#4e3588', cone = '#5b3f9a', starC = '#ffe680') {
+    part(new THREE.CylinderGeometry(0.44, 0.46, 0.025, 40), toon(brim), hs, [0, 0.2, 0], null, [-0.12, 0, 0]);
     const tip = group(hs, [0, 0.2, 0]);
     ctx.springs.push({ obj: tip, k: 40, c: 4, gain: 0.6 });
-    part(strand([[0, 0, 0], [0, 0.24, -0.02], [0.02, 0.42, -0.1], [0.11, 0.5, -0.25]], 0.25, 0.02, 16, 18), toon('#5b3f9a'), tip);
+    part(strand([[0, 0, 0], [0, 0.24, -0.02], [0.02, 0.42, -0.1], [0.11, 0.5, -0.25]], 0.25, 0.02, 16, 18), toon(cone), tip);
     part(G.tube, M.gold, hs, [0, 0.245, -0.005], [0.238, 0.06, 0.238], null, false);
     const star = new THREE.Shape();
     for (let i = 0; i < 10; i++) { const a = (i / 10) * Math.PI * 2 - Math.PI / 2, r = i % 2 ? 0.022 : 0.05; i ? star.lineTo(Math.cos(a) * r, -Math.sin(a) * r) : star.moveTo(Math.cos(a) * r, -Math.sin(a) * r); }
-    part(new THREE.ExtrudeGeometry(star, { depth: 0.012, bevelEnabled: false }), glow('#ffe680', 0.9), hs, [0, 0.36, 0.19], null, [-0.3, 0, 0]);
+    part(new THREE.ExtrudeGeometry(star, { depth: 0.012, bevelEnabled: false }), glow(starC, 0.9), hs, [0, 0.36, 0.19], null, [-0.3, 0, 0]);
   },
+  // the Archmage's Hat: a midnight wizard hat with a glowing cyan star (endless mana)
+  archmage_hat(hs, M, ctx) { HEAD_GEAR.wizard_hat(hs, M, ctx, '#16163a', '#22225e', '#7ae8ff'); },
   ranger_hood(hs, M, ctx) { HEAD_GEAR.hood(hs, M, ctx, '#4f8a3c', '#24381d', false); },
   rogue_hood(hs, M, ctx) { HEAD_GEAR.hood(hs, M, ctx, '#3c3c4a', '#1c1a24', true); },
   hood(hs, M, ctx, c, inner, mask) {
@@ -470,7 +472,21 @@ const WEAPONS = {
     }
     part(G.sph, glow('#ff5a1a', 2.2), w, [0, 0.83, 0], 0.085, null, false);
     part(G.sph, glow('#ffe08a', 2), w, [0, 0.83, 0], 0.045, null, false);
-    return { type: 'pole', tip: [0, 0.86, 0], base: [0, 0.6, 0], trail: '#ff6a2e', cast: { color: '#ff6a2e', cd: 0.6, range: 16, aoe: 1.8, size: 1.5 } };
+    return { type: 'pole', tip: [0, 0.86, 0], base: [0, 0.6, 0], trail: '#ff6a2e', cast: { color: '#ff6a2e', cd: 1.2, range: 14, aoe: 1.8, size: 1.5, pillar: true } }; // aim a spot: it blinks, then a column of fire
+  },
+  // The Dragon Staff: blood-red wood topped with a dragon's head breathing a slow, huge fireball.
+  dragon_staff(w) {
+    part(new THREE.CylinderGeometry(0.022, 0.03, 1.1, 8), toon('#5a1418'), w, [0, 0.2, 0]);
+    const h = group(w, [0, 0.84, 0.02]), scale = toon('#9a2420');
+    part(rbox(0.12, 0.1, 0.13, 0.03), scale, h);
+    part(rbox(0.08, 0.06, 0.12, 0.02), scale, h, [0, -0.015, 0.1]);
+    for (const s of [-1, 1]) {
+      part(G.cone, toon('#efe2c0'), h, [s * 0.04, 0.08, -0.04], [0.014, 0.11, 0.014], [-0.7, 0, s * 0.25], false);
+      part(G.sph, glow('#ffcf3a', 2), h, [s * 0.036, 0.03, 0.065], 0.015, null, false);
+    }
+    part(G.sph, glow('#ff5a1a', 2.4), h, [0, -0.02, 0.18], 0.045, null, false);
+    return { type: 'pole', tip: [0, 0.82, 0.22], base: [0, 0.6, 0], trail: '#ff4a1a',
+      cast: { color: '#ff4a1a', cd: 4, range: 18, aoe: 2.4, size: 3, speed: 5, dmg: 3, dragon: true } };
   },
   // An ice wand: pale wood and a frost crystal. Its bolt is fast and slows what it hits.
   ice_wand: (w) => WEAPONS.wand(w, '#cfe2ee', '#9ae8ff', 0.34,
