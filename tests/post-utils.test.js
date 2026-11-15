@@ -44,3 +44,25 @@ test('renderParagraphs leaves non-https image lines as escaped text', () => {
 test('toPlainText swaps images for [image: url] placeholders', () => {
   assert.equal(toPlainText('one\n\n![c](https://x.co/a.jpg)'), 'one\n\n[image: https://x.co/a.jpg]');
 });
+
+const { renderPostPage } = require('../api/_render-post.js');
+const fs = require('node:fs');
+
+test('renderPostPage fills the real template with title, body, og tags and slug', () => {
+  const tpl = fs.readFileSync(require('node:path').join(__dirname, '..', 'p', 'index.html'), 'utf8');
+  const html = renderPostPage(tpl, {
+    slug: 'hi', title: 'Hi <b>', created_at: '2026-07-09T00:30:00Z',
+    body: 'hello\n\n![c](https://x.co/a.jpg)'
+  }, 'https://site.test');
+  assert.match(html, /<title>Hi &lt;b&gt; - Taproot's Blog<\/title>/);
+  assert.match(html, /<p>hello<\/p><figure><img src="https:\/\/x\.co\/a\.jpg"/);
+  assert.match(html, /og:image" content="https:\/\/x\.co\/a\.jpg"/);
+  assert.match(html, /twitter:card" content="summary_large_image"/);
+  assert.match(html, /data-slug="hi"/);
+  assert.match(html, /<div id="post-date" class="article-date">July 9, 2026</);
+  assert.ok(!html.includes('post-page.js'));
+});
+
+test('renderPostPage throws when the template changes shape', () => {
+  assert.throws(() => renderPostPage('<html></html>', { slug: 'a', title: 't', body: 'b', created_at: '2026-01-01T00:00:00Z' }, 'https://s.t'));
+});
