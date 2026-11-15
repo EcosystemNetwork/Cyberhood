@@ -210,6 +210,34 @@
   #aimBtn.on { opacity: 1; box-shadow: 0 0 0 2px #ff4a3a inset; }
   .actions .touch { padding: 6px 12px; border-radius: 999px; font-size: 14px; background: linear-gradient(#ffd27a, #e89a2a); box-shadow: 0 3px 0 #8a4a10; }
   .actions .touch.on { background: linear-gradient(#ff8a8a, #e04a4a); box-shadow: 0 3px 0 #8a1a1a; }
+  /* phones: a visible joystick under the left thumb, jump + attack side by side under the right */
+  #joyRing { position: fixed; z-index: 3; width: 120px; height: 120px; margin: -60px 0 0 -60px; border-radius: 50%; pointer-events: none;
+    border: 3px solid rgba(255, 255, 255, 0.55); background: rgba(18, 6, 28, 0.25); }
+  #joyRing i { position: absolute; left: 50%; top: 50%; width: 50px; height: 50px; margin: -25px 0 0 -25px; border-radius: 50%; background: rgba(255, 255, 255, 0.7); }
+  .thumbs { display: contents; }
+  @media (pointer: coarse) {
+    .help { display: none; }
+    .thumbs { display: flex; gap: 12px; align-items: flex-end; }
+    #attackBtn { width: 84px; height: 84px; }
+    #jumpBtn { width: 64px; height: 64px; }
+    .actions button { min-height: 44px; min-width: 44px; }
+    .nitro { pointer-events: none; } /* display only: never steal a joystick touch */
+  }
+  /* Fold closed (very narrow): small buttons two abreast so the column stays short */
+  @media (pointer: coarse) and (max-width: 400px) {
+    .actions { display: grid; grid-template-columns: auto auto; justify-items: center; }
+    .actions .thumbs, .actions .tilt { grid-column: 1 / -1; }
+    .mini { width: 104px; height: 104px; }
+    .pills { top: 120px; }
+    .tl { width: calc(100% - 132px); }
+    body .nitro { bottom: auto; top: 92px; } body .nitro .bar { width: 50px; } body #nitroText { display: none; } /* under the HP panel: the bottom row belongs to the thumbs */
+  }
+  /* Fold open (near-square): nothing tappable on the crease down the middle */
+  @media (pointer: coarse) and (min-aspect-ratio: 4/5) and (max-aspect-ratio: 5/4) {
+    body .nitro { right: auto; left: max(12px, env(safe-area-inset-left, 0px)); bottom: 16px; }
+    #nearChip { left: 12px; top: 96px; transform: none; }
+    .farmbar { left: 12px; transform: none; }
+  }
   body.solo #chat, body.solo #chatBtn, body.solo .links, body.solo #gearBtn { display: none !important; }
   #fade { position: fixed; inset: 0; z-index: 9; background: #000; opacity: 0; pointer-events: none; transition: opacity 0.7s; }
 
@@ -283,9 +311,10 @@ if (!window.SOLO) {
   <button id="rotBtn" class="touch" type="button" tabindex="-1" hidden>&#8635; Turn</button>
   <button id="breakBtn" class="touch" type="button" tabindex="-1" hidden>&#9935; Break</button>
   <button id="bagBtn" type="button" tabindex="-1">Bag<kbd>B</kbd></button>
-  <button id="jumpBtn" type="button" tabindex="-1" aria-label="Jump">JUMP</button>
-  <button id="attackBtn" type="button" tabindex="-1" aria-label="Attack">&#9876;&#65039;</button>
+  <div class="thumbs"><button id="jumpBtn" type="button" tabindex="-1" aria-label="Jump">JUMP</button>
+  <button id="attackBtn" type="button" tabindex="-1" aria-label="Attack">&#9876;&#65039;</button></div>
 </div>
+<div id="joyRing" hidden><i></i></div>
 <div class="help"><b>WASD</b> move &middot; <b>Drag / Q E</b> look &middot; <b>Z X</b> tilt &middot; <b>Space</b> jump &middot; <b>'</b> / <b>J</b> right hand &middot; <b>;</b> left hand &middot; <b>Shift</b> nitro &middot; <b>C</b> camera &middot; <b>F</b> use &middot; <b>H</b> potion &middot; <b>N</b> smoke &middot; <b>B</b> bag &middot; <b>U</b> sprint toggle &middot; <b>V</b> view &middot; <b>L</b> auto-aim &middot; <b>T</b> chat</div>
 <div id="crosshair" hidden></div>
 <div id="aimRing" hidden></div>
@@ -5081,10 +5110,27 @@ addEventListener('keydown', (e) => {
 });
 addEventListener('keyup', (e) => { keys[e.code] = false; if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') shiftCancel = false; });
 addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
-let drag = null, joy = null;
+let drag = null, joy = null, pinch = null;
+const touches = new Map(); // touch pointers on the canvas, for two-finger pinch zoom
+const span = () => { const [a, b] = [...touches.values()]; return Math.hypot(a.x - b.x, a.y - b.y) || 1; };
+const joyRing = $('joyRing'), joyKnob = joyRing.firstElementChild;
+const endJoy = () => { joy = null; joyRing.hidden = true; };
 canvas.addEventListener('pointerdown', (e) => {
-  canvas.setPointerCapture(e.pointerId);
-  if (e.pointerType === 'touch' && e.clientX < innerWidth / 2 && !joy) { joy = { id: e.pointerId, sx: e.clientX, sy: e.clientY, fx: 0, fy: 0 }; return; }
+  try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+  if (e.pointerType === 'touch') {
+    touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (touches.size === 2) { // second finger: pinch, so neither steering nor looking
+      endJoy(); drag = null; canvas.classList.remove('drag');
+      pinch = { span: span(), dist: camDistT };
+      return;
+    }
+    if (pinch) return;
+  }
+  if (e.pointerType === 'touch' && e.clientX < innerWidth / 2 && !joy) {
+    joy = { id: e.pointerId, sx: e.clientX, sy: e.clientY, fx: 0, fy: 0 };
+    joyRing.hidden = false; joyRing.style.left = e.clientX + 'px'; joyRing.style.top = e.clientY + 'px'; joyKnob.style.transform = '';
+    return;
+  }
   drag = { id: e.pointerId, x: e.clientX, y: e.clientY };
   canvas.classList.add('drag');
 });
@@ -5097,9 +5143,13 @@ document.addEventListener('mousemove', (e) => {
   fpPitch = clamp(fpPitch - e.movementY * 0.0025, -1.3, 1.3);
 });
 canvas.addEventListener('pointermove', (e) => {
+  if (touches.has(e.pointerId)) touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pinch) { if (touches.size >= 2) camDistT = clamp(pinch.dist * pinch.span / span(), 3, 18); return; }
   if (joy && e.pointerId === joy.id) {
     const dx = e.clientX - joy.sx, dy = e.clientY - joy.sy, d = Math.max(30, Math.hypot(dx, dy));
     joy.fx = dx / d; joy.fy = -dy / d;
+    const k = Math.min(50, Math.hypot(dx, dy)) / (Math.hypot(dx, dy) || 1);
+    joyKnob.style.transform = `translate(${dx * k}px, ${dy * k}px)`;
   } else if (drag && e.pointerId === drag.id) {
     camYaw -= (e.clientX - drag.x) * 0.006;
     camPitchT = Math.max(0.05, Math.min(1.35, camPitchT + (e.clientY - drag.y) * 0.004));
@@ -5109,7 +5159,9 @@ canvas.addEventListener('pointermove', (e) => {
   }
 });
 const endPointer = (e) => {
-  if (joy && e.pointerId === joy.id) joy = null;
+  touches.delete(e.pointerId);
+  if (pinch && touches.size < 2) pinch = null;
+  if (joy && e.pointerId === joy.id) endJoy();
   if (drag && e.pointerId === drag.id) { drag = null; canvas.classList.remove('drag'); }
 };
 canvas.addEventListener('pointerup', endPointer);
@@ -5145,7 +5197,15 @@ $('viewBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); cycleV
 $('aimBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); setAutoAim(!autoAim); });
 $('aimBtn').classList.toggle('on', autoAim);
 $('bagBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); toggleBag(); });
+// Fold open (a near-square touch screen): pull the camera back a little to show more world
+let squareBoost = 0;
+const fitSquare = () => {
+  const a = innerWidth / innerHeight, want = matchMedia('(pointer: coarse)').matches && a > 0.8 && a < 1.25 ? 3 : 0;
+  camDistT = clamp(camDistT + want - squareBoost, 3, 18); squareBoost = want;
+};
+fitSquare();
 addEventListener('resize', () => {
+  fitSquare();
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
@@ -5548,7 +5608,7 @@ window.__world3d = { P, ghosts, arena, ladders: LADDERS, action: () => action &&
   equip: (id, slot) => equip(id, slot), gearOf: (slot) => gear(slot), parrying: () => parrying(),
   view: viewName, autoAim: () => autoAim, setAutoAim: (on) => setAutoAim(on), camYaw: () => camYaw, setCamYaw: (v) => { camYaw = v; }, nitro: () => nitro, setNitro: (v) => { nitro = v; nitroLock = false; }, jump,
   spawn: (type, x, z) => { spawnMonster(type); const m = monsters[monsters.length - 1]; m.x = x; m.z = z; m.t = 99; m.vx = m.vz = 0; return monsters.length - 1; },
-  foeCast: (i) => castFoeBall(monsters[i]), chilled, smoked: () => Math.max(0, (smokeUntil - performance.now()) / 1000), colosseum: () => COLO && { arena: [A.doors.find((d) => /area=arena/.test(d.href)).x + 0.5, A.doors.find((d) => /area=arena/.test(d.href)).y + 0.5], stands: [A.doors.find((d) => /area=stands/.test(d.href)).x + 0.5, A.doors.find((d) => /area=stands/.test(d.href)).y + 0.5] }, hazardNow, clockOffset: () => HAZ.offset, hazards: () => [...HAZ.views.values()], hazardClock: (ms) => { HAZ.pinned = ms === undefined || ms === null ? null : ms; }, slowed, setHp: (n) => { hp = n; updateHud(); }, drawnBlocks: (id) => ((plotViews.get(id) || {}).blockMeshes || []).reduce((n, m) => n + m.count, 0), getPitch: () => fpPitch, firstPerson: () => firstPerson, setPitch: (v) => { fpPitch = v; }, openShop, hiddenBlocks, doorAngle: (id, i, j, k) => { const v = plotViews.get(id); return (v && v.doorAng && v.doorAng.get(`${i},${j},${k}`)) || 0; }, shopSpots, aimBlock, mouse, camera, building: () => building, toScreen, groundAt, solidAt, setBlocks, plots: PLOTS, placed, decorCrops, myFarm: () => myFarm, farmTile: () => farmTile(), hp: () => hp, mp, monsters, drops, field: () => field, hero: () => hero, fireballs, tp: (x, z, yaw) => { P.x = x; P.z = z; P.vx = P.vz = 0; if (yaw !== undefined) camYaw = yaw; }, cam: (dist, pitch) => { camDistT = camDist = dist; camPitchT = camPitch = pitch; }, size: [MAP_W, MAP_H], info: () => { // one full frame's draw calls and triangles (all passes, shadows included)
+  foeCast: (i) => castFoeBall(monsters[i]), chilled, smoked: () => Math.max(0, (smokeUntil - performance.now()) / 1000), colosseum: () => COLO && { arena: [A.doors.find((d) => /area=arena/.test(d.href)).x + 0.5, A.doors.find((d) => /area=arena/.test(d.href)).y + 0.5], stands: [A.doors.find((d) => /area=stands/.test(d.href)).x + 0.5, A.doors.find((d) => /area=stands/.test(d.href)).y + 0.5] }, hazardNow, clockOffset: () => HAZ.offset, hazards: () => [...HAZ.views.values()], hazardClock: (ms) => { HAZ.pinned = ms === undefined || ms === null ? null : ms; }, slowed, setHp: (n) => { hp = n; updateHud(); }, drawnBlocks: (id) => ((plotViews.get(id) || {}).blockMeshes || []).reduce((n, m) => n + m.count, 0), getPitch: () => fpPitch, camDistT: () => camDistT, getYaw: () => camYaw, firstPerson: () => firstPerson, setPitch: (v) => { fpPitch = v; }, openShop, hiddenBlocks, doorAngle: (id, i, j, k) => { const v = plotViews.get(id); return (v && v.doorAng && v.doorAng.get(`${i},${j},${k}`)) || 0; }, shopSpots, aimBlock, mouse, camera, building: () => building, toScreen, groundAt, solidAt, setBlocks, plots: PLOTS, placed, decorCrops, myFarm: () => myFarm, farmTile: () => farmTile(), hp: () => hp, mp, monsters, drops, field: () => field, hero: () => hero, fireballs, tp: (x, z, yaw) => { P.x = x; P.z = z; P.vx = P.vz = 0; if (yaw !== undefined) camYaw = yaw; }, cam: (dist, pitch) => { camDistT = camDist = dist; camPitchT = camPitch = pitch; }, size: [MAP_W, MAP_H], info: () => { // one full frame's draw calls and triangles (all passes, shadows included)
   renderer.info.autoReset = false; renderer.info.reset(); composer.render();
   const r = { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles };
   renderer.info.autoReset = true; return r;
