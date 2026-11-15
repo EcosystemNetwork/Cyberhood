@@ -241,6 +241,20 @@
     .farmbar { left: 12px; transform: none; }
   }
   body.solo #chat, body.solo #chatBtn, body.solo .links { display: none !important; }
+  #loader { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; transition: opacity 0.4s;
+    background: radial-gradient(ellipse at 50% 30%, #9a2aa8, #4a0e5e 60%, #24062e); }
+  #loader.gone { opacity: 0; pointer-events: none; }
+  .ld-card { width: min(420px, 86vw); text-align: center; }
+  .ld-logo { font: 64px/1 'Lilita One', system-ui, sans-serif; color: var(--lime); letter-spacing: 1px; text-shadow: 0 5px 0 #2a0a3a, 0 0 28px rgba(200, 255, 46, 0.45); }
+  .ld-where { margin-top: 8px; font: 20px 'Lilita One', system-ui, sans-serif; color: #fff; opacity: 0.9; }
+  .ld-sprout { margin: 26px auto 18px; width: 34px; height: 44px; animation: ldHop 0.7s ease-in-out infinite alternate; }
+  .ld-sprout i { display: block; width: 34px; height: 44px; background: linear-gradient(#d8ff7a, #8ad400); border-radius: 50% 50% 50% 50% / 62% 62% 38% 38%; clip-path: polygon(50% 0, 100% 45%, 100% 100%, 0 100%, 0 45%); box-shadow: inset -6px -6px 0 rgba(0, 0, 0, 0.12); }
+  @keyframes ldHop { from { transform: translateY(0) scaleY(0.94); } to { transform: translateY(-12px) scaleY(1.04); } }
+  .ld-bar { height: 18px; border-radius: 10px; background: #1a0624; border: 3px solid #12031a; overflow: hidden; box-shadow: 0 0 0 2px var(--rim); }
+  #ldFill { width: 4%; height: 100%; background: linear-gradient(#e6ff7a, #8ad400); box-shadow: 0 0 12px rgba(200, 255, 46, 0.7); transition: width 0.25s; }
+  .ld-step { margin-top: 10px; font: 800 15px 'Nunito', system-ui, sans-serif; color: #f0e0ff; }
+  .ld-step.bad { color: #ffb0b0; }
+  .ld-tip { margin-top: 22px; font: 700 14px/1.4 'Nunito', system-ui, sans-serif; color: #c8b0d8; }
   #fade { position: fixed; inset: 0; z-index: 9; background: #000; opacity: 0; pointer-events: none; transition: opacity 0.7s; }
 
   @media (max-width: 640px) {
@@ -277,6 +291,58 @@ if (!window.SOLO) {
 </script>
 </head>
 <body>
+<div id="loader">
+  <div class="ld-card">
+    <div class="ld-logo">Taproot</div>
+    <div class="ld-where" id="ldWhere"></div>
+    <div class="ld-sprout"><i></i></div>
+    <div class="ld-bar"><div id="ldFill"></div></div>
+    <div class="ld-step" id="ldStep">Loading&hellip;</div>
+    <div class="ld-tip" id="ldTip"></div>
+  </div>
+</div>
+<script>
+// The loading screen: on screen from the first paint, filled in as the world is built
+// (LOAD.step), and faded out after the first frame is drawn (LOAD.done).
+(() => {
+  const AREA_NAMES = { arena: 'Taproot Arena', stands: 'Arena Stands', cave: 'Taproot Mine', cave_b1: 'Crystal Tunnels', cave_b2: 'The Hollow', workshop: 'The Workshop', clubhouse: 'Clubhouse' };
+  const TIPS = ['Press B for your bag, and Gear inside it to change your outfit.', 'Shift (or Nitro) gives you a burst of speed.', 'The colosseum is at the east end of the main street.',
+    'Claim a plot in the Avenues and grow your own crops.', 'Sail from the end of the docks pier.', 'Press V to switch between third person, over the shoulder and first person.',
+    'Press M on a laptop for Minecraft-style controls.', 'The Mine goes three floors deep. Two giants wait at the bottom.'];
+  const a = new URLSearchParams(location.search).get('area');
+  document.getElementById('ldWhere').textContent = AREA_NAMES[a] || 'The Overworld';
+  document.getElementById('ldTip').textContent = 'Tip: ' + TIPS[Math.floor(Math.random() * TIPS.length)];
+  const t0 = performance.now(), times = [];
+  let last = t0, lastLabel = 'start';
+  window.LOAD = {
+    times,
+    step(label, pct) {
+      const now = performance.now(); times.push([lastLabel, Math.round(now - last)]); last = now; lastLabel = label;
+      document.getElementById('ldFill').style.width = pct + '%';
+      document.getElementById('ldStep').textContent = label + '\u2026';
+      // let the browser paint the bar before the next (blocking) chunk of work
+      return new Promise((r) => { requestAnimationFrame(() => setTimeout(r, 0)); setTimeout(r, 100); });
+    },
+    tick(pct) { // mid-stage progress: move the bar, and let it paint every so often
+      document.getElementById('ldFill').style.width = pct + '%';
+      if (performance.now() - (this.yielded || 0) < 120) return;
+      this.yielded = performance.now();
+      return new Promise((r) => { requestAnimationFrame(() => setTimeout(r, 0)); setTimeout(r, 100); });
+    },
+    done() {
+      if (!document.getElementById('loader')) return;
+      times.push([lastLabel, Math.round(performance.now() - last)], ['total', Math.round(performance.now() - t0)]);
+      document.getElementById('ldFill').style.width = '100%';
+      const el = document.getElementById('loader');
+      el.classList.add('gone');
+      setTimeout(() => el.remove(), 450);
+    },
+    fail(msg) { const st = document.getElementById('ldStep'); if (st) { st.textContent = 'Something went wrong: ' + msg + ' (try reloading)'; st.classList.add('bad'); } },
+  };
+  addEventListener('error', (e) => window.LOAD.fail(e.message || 'error'));
+  addEventListener('unhandledrejection', (e) => window.LOAD.fail((e.reason && e.reason.message) || 'error'));
+})();
+</script>
 <canvas id="scene"></canvas>
 <div id="labels"></div>
 
@@ -390,6 +456,7 @@ const PLOT_Q = new URLSearchParams(location.search).get('plot'); // which player
 const T = 16;
 const MINI = 4; // minimap pixels per tile
 
+await LOAD.step('Reading the map', 15);
 /* ---------- areas (copied from /game/world/, exits point at the 3D pages) ---------- */
 const borderTrees = (edges, W = 48, H = 36) => {
   const t = [];
@@ -1101,12 +1168,49 @@ const tallType = (cx, cy) => {
   return null;
 };
 
+await LOAD.step('Painting the ground', 28);
 /* ---------- ground texture: painted once from the world queries, 32 px per tile ----------
    Painted in 1024 px chunks (one texture each), so the big stitched map stays fast to paint and
    within GPU texture limits; each chunk only checks the paths that come near it. */
 const S = 2, CH = 1024, GW = MAP_W * T * S, GH = MAP_H * T * S;
 const groundChunks = []; // { canvas, glow, x, y } in texture pixels
-{
+/* Painting the ground is most of the load time (seconds for the big map), and it comes out the same
+   every time until the page or the map changes. So the finished chunks are kept in the browser's
+   cache under a fingerprint of this page and the map, and the next load (leaving the arena, a
+   reload) just draws them back. Any change to the page or map makes a new fingerprint and a repaint. */
+const GROUND_CACHE = 'taproot-ground', GROUND_AREA = `/__ground/${AREA || 'world'}`;
+const fingerprint = (str) => { let h = 2166136261; for (let i = 0; i < str.length; i++) h = Math.imul(h ^ str.charCodeAt(i), 16777619); return (h >>> 0).toString(36); };
+const GROUND_KEY = await (async () => {
+  try { return fingerprint((await (await fetch(location.pathname)).text()) + JSON.stringify(MINE) + `${MAP_W}x${MAP_H}|${S}`); } catch (e) { return null; }
+})();
+async function loadGround() {
+  try {
+    const c = await caches.open(GROUND_CACHE), meta = await c.match(`${GROUND_AREA}/meta`);
+    if (!meta || !GROUND_KEY) return null;
+    const m = await meta.json();
+    if (m.key !== GROUND_KEY) return null;
+    const draw = async (url, w, h) => {
+      const r = await c.match(url);
+      if (!r) throw new Error('missing chunk');
+      const bmp = await createImageBitmap(await r.blob()), cv = canvasOf(w, h);
+      cv.getContext('2d').drawImage(bmp, 0, 0); bmp.close();
+      return cv;
+    };
+    return await Promise.all(m.chunks.map(async (ch, i) => ({ x: ch.x, y: ch.y,
+      canvas: await draw(`${GROUND_AREA}/${i}`, ch.w, ch.h), glow: ch.glow ? await draw(`${GROUND_AREA}/${i}g`, ch.w, ch.h) : null })));
+  } catch (e) { return null; }
+}
+async function saveGround() { // after the first frame, in the background
+  try {
+    if (!GROUND_KEY) return;
+    const c = await caches.open(GROUND_CACHE), put = (url, cv) => new Promise((r) => cv.toBlob((b) => r(b && c.put(url, new Response(b))), 'image/webp', 0.92)); // near-lossless, and far quicker to encode than PNG
+    for (const [i, ch] of groundChunks.entries()) { await put(`${GROUND_AREA}/${i}`, ch.canvas); if (ch.glow) await put(`${GROUND_AREA}/${i}g`, ch.glow); }
+    await c.put(`${GROUND_AREA}/meta`, new Response(JSON.stringify({ key: GROUND_KEY, chunks: groundChunks.map((ch) => ({ x: ch.x, y: ch.y, w: ch.canvas.width, h: ch.canvas.height, glow: !!ch.glow })) })));
+  } catch (e) {}
+}
+const cachedGround = await loadGround();
+if (cachedGround) groundChunks.push(...cachedGround);
+else {
   const GRASS = { grass: [rgb('#7cba4c'), rgb('#62a03e')], town: [rgb('#78b04a'), rgb('#5f9a3c')], forest: [rgb('#4f9a3a'), rgb('#3f8530')] };
   const PATH = [rgb('#d8b48a'), rgb('#c8a074')], PATH_LIP = rgb('#a8805a');
   const BEACH = [rgb('#f4dca4'), rgb('#e6c98c')], SAND = rgb('#eed39a');
@@ -1145,7 +1249,9 @@ const groundChunks = []; // { canvas, glow, x, y } in texture pixels
     farT[ty * MAP_W + tx] = all;
   }
   const tileOf = (px, py) => Math.min(MAP_H - 1, Math.max(0, Math.floor(py / T))) * MAP_W + Math.min(MAP_W - 1, Math.max(0, Math.floor(px / T)));
+  const chunkCount = Math.ceil(GH / CH) * Math.ceil(GW / CH);
   for (let cy0 = 0; cy0 < GH; cy0 += CH) for (let cx0 = 0; cx0 < GW; cx0 += CH) {
+    await LOAD.tick(28 + 22 * groundChunks.length / chunkCount); // keep the bar moving through the long paint
     const w = Math.min(CH, GW - cx0), h = Math.min(CH, GH - cy0), PW = w + PAD * 2, PH = h + PAD * 2;
     const bx1 = cx0 / S / T - 1, by1 = cy0 / S / T - 1, bx2 = (cx0 + w) / S / T + 1, by2 = (cy0 + h) / S / T + 1;
     pathList = PATHS.filter(([x1, y1, x2, y2, r]) => Math.max(x1, x2) + r + 1 > bx1 && Math.min(x1, x2) - r - 1 < bx2 && Math.max(y1, y2) + r + 1 > by1 && Math.min(y1, y2) - r - 1 < by2);
@@ -1228,6 +1334,7 @@ const groundChunks = []; // { canvas, glow, x, y } in texture pixels
   pathList = PATHS;
 }
 
+await LOAD.step('Lighting the world', 50);
 /* ---------- renderer, scene, lights ---------- */
 const canvas = document.getElementById('scene');
 // Phones (touch screens) get a lighter frame: fewer pixels, no glow pass, cheaper shadows and
@@ -1802,6 +1909,7 @@ const PROPS = {
   },
 };
 
+await LOAD.step('Building houses and trees', 60);
 /* ---------- build the world ---------- */
 // ground: a thick slab, with each painted chunk laid on top as its own textured plane
 const seaMat = DAY ? toon({ color: '#3f86d8', emissive: '#0a2850' }) : toon({ color: '#4a2ac0', emissive: '#1a0a50' });
@@ -2573,6 +2681,7 @@ function updateSky() {
   stars.position.copy(camera.position);
 }
 
+await LOAD.step('Growing the grass', 78);
 /* ---------- grass: instanced blades that sway and part around the player ---------- */
 const U = { time: { value: 0 }, player: { value: new THREE.Vector3() } };
 function grassMesh(spots, height, width, baseCol, tipCol) {
@@ -2633,6 +2742,7 @@ function grassMesh(spots, height, width, baseCol, tipCol) {
   grassMesh(tuftSpots, 0.45, 0.045, '#1f7a24', '#3aa83a');
 }
 
+await LOAD.step('Waking the townsfolk', 86);
 /* ---------- characters ---------- */
 const SPH = new THREE.SphereGeometry(1, 20, 14);
 function part(geo, mat, parent, x = 0, y = 0, z = 0, sx = 1, sy = sx, sz = sx) {
@@ -5258,6 +5368,7 @@ addEventListener('resize', () => {
   composer.setSize(innerWidth, innerHeight);
 });
 
+await LOAD.step('Almost there', 95);
 /* ---------- main loop ---------- */
 const clock = new THREE.Clock();
 const camPos = new THREE.Vector3(), lookAt = new THREE.Vector3();
@@ -5670,6 +5781,7 @@ renderBag();
   update(dt, performance.now());
   if (PORTAL) { PORTAL.ring.tick(performance.now()); PORTAL.sprout.tick(performance.now()); }
   if (PHONE) renderer.render(scene, camera); else composer.render(); // the glow pass costs a phone more than it shows
+  if (!frame.shown) { frame.shown = true; LOAD.done(); if (!cachedGround) setTimeout(saveGround, 1500); } // the first frame is drawn: lift the loading screen
   requestAnimationFrame(frame);
 })();
 </script>
