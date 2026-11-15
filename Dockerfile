@@ -8,4 +8,6 @@ COPY game/ ./game/
 EXPOSE 8137
 VOLUME /app/data
 ENV DB_PATH=/app/data/game-local-db.json
+# a real server: no local-testing perks (every item owned, free smoke bombs)
+ENV GAME_DEV=0
 CMD ["node", "game-dev-server.js"]

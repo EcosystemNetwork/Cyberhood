@@ -69,6 +69,7 @@
 
   /* bottom-left: controls */
   .help { position: fixed; z-index: 3; left: 12px; bottom: 12px; padding: 8px 14px; font: 800 13px/1.3 'Nunito', sans-serif; border-radius: 999px; background: var(--panel); border: 2px solid var(--rim); box-shadow: 0 0 0 2px var(--glow); }
+  .help[hidden] { display: none; }
   .help b { font-family: 'Lilita One', sans-serif; font-weight: 400; color: var(--lime); }
 
   /* bag */
@@ -80,8 +81,10 @@
   #gearBtn { margin-left: auto; margin-right: 10px; padding: 5px 12px; border-radius: 999px; border: 2px solid #2a0a3a; cursor: pointer;
     font: 14px 'Lilita One', sans-serif; color: #2a1200; background: linear-gradient(#ffd27a, #e89a2a); box-shadow: 0 2px 0 #8a4a10; }
   /* the Armory from the pre-game page, laid over the world when you open Gear */
-  #armoryOverlay { position: fixed; inset: 0; z-index: 20; background: rgba(10, 4, 20, 0.6); display: flex; }
-  #armoryOverlay iframe { flex: 1; border: 0; background: transparent; }
+  #armoryOverlay { position: fixed; inset: 0; z-index: 20; background: rgba(10, 4, 20, 0.55); display: flex; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box; }
+  #armoryBox { position: relative; width: min(980px, 100%); height: min(720px, 100%); border-radius: 16px; overflow: hidden;
+    border: 2px solid #4a1a62; box-shadow: 0 18px 60px rgba(0, 0, 0, 0.6); background: #150f24; }
+  #armoryBox iframe { display: block; width: 100%; height: 100%; border: 0; background: transparent; }
   #armoryClose { position: absolute; top: 12px; right: 14px; z-index: 1; padding: 6px 14px; border-radius: 999px; border: 2px solid #2a0a3a;
     font: 15px 'Lilita One', sans-serif; color: #fff; background: #241040; cursor: pointer; }
   .bag-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
@@ -217,6 +220,8 @@
 if (!localStorage.getItem('taproot_session')) window.location.replace('/game/');
 else if (!localStorage.getItem('taproot_character')) window.location.replace('/game/?create=1');
 </script>
+<script src="/game/lib/ledger.js"></script>
+<script>Ledger.init({ syncCharacter: true, fast: new URLSearchParams(location.search).has('farmfast') });</script>
 <script src="/game/items.js"></script>
 <script src="/game/sprite.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
@@ -265,7 +270,7 @@ else if (!localStorage.getItem('taproot_character')) window.location.replace('/g
   <button id="jumpBtn" type="button" tabindex="-1" aria-label="Jump">JUMP</button>
   <button id="attackBtn" type="button" tabindex="-1" aria-label="Attack">&#9876;&#65039;</button>
 </div>
-<div class="help"><b>WASD</b> move &middot; <b>Drag / Q E</b> look &middot; <b>Z X</b> tilt &middot; <b>Space</b> jump &middot; <b>'</b> / <b>J</b> right hand &middot; <b>;</b> left hand &middot; <b>Shift</b> nitro &middot; <b>C</b> camera &middot; <b>F</b> use &middot; <b>H</b> potion &middot; <b>N</b> smoke &middot; <b>B</b> bag &middot; <b>U</b> sprint toggle &middot; <b>V</b> view &middot; <b>L</b> auto-aim &middot; <b>T</b> chat</div>
+<div class="help" id="helpBar"><b>I</b> hide &middot; <b>WASD</b> move &middot; <b>Drag / Q E</b> look &middot; <b>Z X</b> tilt &middot; <b>Space</b> jump &middot; <b>'</b> / <b>J</b> right hand &middot; <b>;</b> left hand &middot; <b>Shift</b> nitro &middot; <b>C</b> camera &middot; <b>F</b> use &middot; <b>H</b> potion &middot; <b>N</b> smoke &middot; <b>B</b> bag &middot; <b>U</b> sprint toggle &middot; <b>V</b> view &middot; <b>L</b> auto-aim &middot; <b>T</b> chat</div>
 <div id="crosshair" hidden></div>
 <div id="aimRing" hidden></div>
 <div id="aimArc" hidden></div>
@@ -322,9 +327,11 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { makeHero3D, loadBlenderParts } from '/game/lib/hero3d.js';
 import { loadBlenderHero, makeBlenderHero } from '/game/lib/blenderhero.js';
+import { loadGlbHero, makeGlbHero } from '/game/lib/glbhero.js';
 import { SHOPS, SELL, RECIPES, CONSUMABLES } from './shops.js';
 import { CROPS, BUILDS, ALTAR, FARM_ITEMS } from './farm.js';
 import { BLOCKS, BLOCK_IDS, MAX_H, unpack, pack, standHeight, blockedAt, raycast, canPlace } from './blocks.js';
+import { MONSTER_LOOT } from './economy.js';
 import { ARENA_CENTER, ARENA_RADIUS, standY, standBlocked, tomatoArc, TOMATO_GRAVITY, TOMATO_COOLDOWN_MS,
   HAZARDS, TELL_MS, eventsNear, BUFFS, buffAt } from './arena.js';
 import * as arenaMod from './arena.js';
@@ -794,15 +801,17 @@ for (let i = TREES.length - 1; i >= 0; i--) {
 
 /* ---------- monsters (2D stats converted to tiles: speed and aggro / 16) ---------- */
 const MONSTERS = {
-  slime:  { name: 'Slime',      hp: 30,  speed: 1.5,  dmg: 6,  xp: 5,  aggro: 4.4, drop: 'slime_gel', gold: [1, 2] },
-  shroom: { name: 'Shroom',     hp: 45,  speed: 1.1,  dmg: 8,  xp: 8,  aggro: 3.8, drop: 'spore_cap', gold: [1, 3] },
-  bat:    { name: 'Bat',        hp: 24,  speed: 2.75, dmg: 5,  xp: 7,  aggro: 6,   drop: 'bat_fang', gold: [1, 2], fly: true },
-  goblin: { name: 'Goblin',     hp: 60,  speed: 2,    dmg: 12, xp: 15, aggro: 5.5, drop: 'goblin_ear', gold: [3, 5] },
-  king:   { name: 'King Slime', hp: 200, speed: 1,    dmg: 18, xp: 60, aggro: 5,   drop: 'royal_jelly', gold: [15, 25], big: true, respawn: 45000 },
+  slime:  { name: 'Slime',      hp: 30,  speed: 1.5,  dmg: 6,  aggro: 4.4 },
+  shroom: { name: 'Shroom',     hp: 45,  speed: 1.1,  dmg: 8,  aggro: 3.8 },
+  bat:    { name: 'Bat',        hp: 24,  speed: 2.75, dmg: 5,  aggro: 6, fly: true },
+  goblin: { name: 'Goblin',     hp: 60,  speed: 2,    dmg: 12, aggro: 5.5 },
+  king:   { name: 'King Slime', hp: 200, speed: 1,    dmg: 18, aggro: 5, big: true, respawn: 45000 },
   // The arena's house fighter: a person, not a creature. Carries a sword and a fire staff,
   // closes to swing and throws a fireball from range. Only ever spawned in the pit.
-  gladiator: { name: 'Gladiator', hp: 150, speed: 2.1, dmg: 8,  xp: 45, aggro: 11, drop: 'laurel', gold: [10, 18], respawn: 25000, human: true, cast: [2.2, 9.5] },
+  gladiator: { name: 'Gladiator', hp: 150, speed: 2.1, dmg: 8, aggro: 11, respawn: 25000, human: true, cast: [2.2, 9.5] },
 };
+// XP, gold and drops come from economy.js, the same table the server pays out from.
+for (const [k, m] of Object.entries(MONSTERS)) Object.assign(m, MONSTER_LOOT[k]);
 const LOOT = {
   slime_gel: { name: 'Slime Gel', color: '#6aff8a' }, spore_cap: { name: 'Spore Cap', color: '#ff4a6a' }, bat_fang: { name: 'Bat Fang', color: '#f4f0ff' },
   goblin_ear: { name: 'Goblin Ear', color: '#8ad43a' }, royal_jelly: { name: 'Royal Jelly', color: '#c06aff' },
@@ -1703,6 +1712,10 @@ const BLENDER_COTTAGE = BLENDER ? (await new GLTFLoader().loadAsync('/game/asset
 const BLENDER_HERO = new URLSearchParams(location.search).get('hero') === 'blender';
 if (BLENDER || BLENDER_HERO) await loadBlenderParts('/game/assets3d/hero_parts.glb');
 if (BLENDER_HERO) await loadBlenderHero('/game/assets3d/hero_blender.glb');
+// Style test: ?hero=rogue makes your hero the Tripo-generated rogue (game/assets/characterart).
+const GLB_HEROES = { rogue: '/game/assets/characterart/rouge.glb' };
+const GLB_HERO = GLB_HEROES[new URLSearchParams(location.search).get('hero')] || null;
+if (GLB_HERO) await loadGlbHero(GLB_HERO);
 // Trees are instanced: one geometry per kind (node transforms baked in), drawn hundreds of times.
 const BLENDER_TREES = {};
 if (BLENDER) await Promise.all(['tree_round', 'tree_oak', 'tree_pine'].map(async (k) => {
@@ -2624,8 +2637,8 @@ const setFirstPerson = (on) => setView(on ? 'first' : 'third');
 if (INDOOR) { camDist = camDistT = 7.5; camPitch = camPitchT = 0.95; }
 if (STANDS) { camDist = camDistT = 11; camPitch = camPitchT = 0.62; } // looking down at the sand
 function makePlayerHero(look) {
-  if (!BLENDER_HERO) return makeHero(look);
-  const h = makeBlenderHero(look);
+  if (!BLENDER_HERO && !GLB_HERO) return makeHero(look);
+  const h = GLB_HERO ? makeGlbHero(look) : makeBlenderHero(look);
   scene.add(h.root);
   return h;
 }
@@ -2669,7 +2682,7 @@ let field = null;
 try { field = JSON.parse(localStorage.getItem(FIELD_KEY)); } catch (e) {}
 field = Object.assign({ xp: 0, kills: 0, gold: 0 }, field);
 if (!field.bag || typeof field.bag !== 'object') field.bag = {};
-if (LOCAL_DEV) field.bag.smoke_bomb = Math.max(field.bag.smoke_bomb || 0, 5); // local testing: always a few to hand
+if (LOCAL_DEV) field.bag.smoke_bomb = Math.max(field.bag.smoke_bomb || 0, 5); // local testing: always a few to hand (dev accounts get 5 on the server too)
 const saveField = () => { try { localStorage.setItem(FIELD_KEY, JSON.stringify(field)); } catch (e) {} };
 
 // player hitbox: 0.56 x 0.4 tiles at the feet, checked against the tile grid
@@ -2823,11 +2836,14 @@ function shopAct(act, id, extra) {
     field.gold -= price;
     const n = ITEM(id) ? 1 : +(shopAct.n || 1);
     if (ITEM(id)) { owned.push(id); saveOwned(); } else field.bag[id] = (field.bag[id] || 0) + n;
+    Ledger.act({ t: 'buy', shop: modal.name, id, n });
     floatText(P.x, 2, P.z, `Bought ${n > 1 ? n + ' ' : ''}${nameOf(id)}`, '#ffe066');
   } else if (act === 'sell') {
     const n = Math.min(+extra, field.bag[id] || 0);
+    if (!(n > 0)) return;
     field.bag[id] -= n;
     field.gold += SELL[id] * n;
+    Ledger.act({ t: 'sell', id, n });
     floatText(P.x, 2, P.z, `+${SELL[id] * n} gold`, '#ffd34a');
   } else if (act === 'craft') {
     const r = RECIPES.find((x) => x.id === id);
@@ -2835,6 +2851,7 @@ function shopAct(act, id, extra) {
     Object.entries(r.needs).forEach(([k, n]) => { field.bag[k] -= n; });
     field.gold -= r.gold || 0;
     if (ITEM(id)) { owned.push(id); saveOwned(); } else field.bag[id] = (field.bag[id] || 0) + (r.qty || 1);
+    Ledger.act({ t: 'craft', id });
     floatText(P.x, 2.2, P.z, `Crafted ${nameOf(id)}!`, '#7ae0ff');
     hero.emote('happy', 1.2);
     burst(P.x, 1.2, P.z, '#7ae0ff', 14);
@@ -2876,6 +2893,7 @@ function drink(id) {
   const c = CONSUMABLES[id];
   if (!c || !(field.bag[id] > 0) || hp >= stats.hp) return;
   field.bag[id] -= 1;
+  Ledger.act({ t: 'use', id });
   const gain = Math.min(c.heal, stats.hp - hp);
   hp += gain;
   floatText(P.x, 1.8, P.z, `+${gain} HP`, '#6aff8a');
@@ -3298,8 +3316,9 @@ function killMonster(m) {
   m.dying = 0;
   m.el.remove();
   burst(m.x, 0.5, m.z, m.cfg.big ? '#c06aff' : '#eaff8a', 12);
-  const [g0, g1] = m.cfg.gold;
-  spawnDrop({ kind: 'gold', amount: g0 + Math.floor(Math.random() * (g1 - g0 + 1)) }, m.x, m.z);
+  const [g0, g1] = m.cfg.gold, type = Object.keys(MONSTERS).find((k) => MONSTERS[k] === m.cfg);
+  Ledger.act({ t: 'kill', m: type });
+  spawnDrop({ kind: 'gold', m: type, amount: g0 + Math.floor(Math.random() * (g1 - g0 + 1)) }, m.x, m.z);
   spawnDrop({ kind: 'item', id: m.cfg.drop, amount: 1 }, m.x, m.z);
   const before = 1 + Math.floor(field.xp / 100);
   field.xp += m.cfg.xp;
@@ -3351,6 +3370,7 @@ function spawnDrop(d, x, z) {
 }
 function collect(d) {
   d.taken = 0.001;
+  Ledger.act(d.kind === 'gold' ? { t: 'pickup', kind: 'gold', m: d.m, n: d.amount } : { t: 'pickup', kind: 'item', id: d.id });
   if (d.kind === 'gold') { field.gold += d.amount; floatText(P.x, 1.6, P.z, `+${d.amount} gold`, '#ffd34a'); }
   else { field.bag[d.id] = (field.bag[d.id] || 0) + d.amount; floatText(P.x, 1.6, P.z, `+1 ${LOOT[d.id].name}`, '#ffffff'); }
   saveField();
@@ -3384,15 +3404,25 @@ function openArmory() {
   toggleBag(false);
   const wrap = document.createElement('div');
   wrap.id = 'armoryOverlay';
-  wrap.innerHTML = '<iframe id="armoryFrame" title="Gear" src="/game/?armory=1&embed=1"></iframe><button id="armoryClose" type="button">Done</button>';
+  wrap.innerHTML = '<div id="armoryBox"><iframe id="armoryFrame" title="Gear" src="/game/?armory=1&embed=1"></iframe><button id="armoryClose" type="button">Done</button></div>';
   document.body.appendChild(wrap);
   // Done goes through the Armory's own Back, so it saves to your account the same way
-  $('armoryClose').addEventListener('click', () => {
-    const back = $('armoryFrame').contentDocument && $('armoryFrame').contentDocument.getElementById('armBack');
-    const shown = back && !back.closest('[hidden]');
-    if (shown) back.click(); else closeArmory();
+  const done = armoryDone;
+  $('armoryClose').addEventListener('click', done);
+  wrap.addEventListener('click', (e) => { if (e.target === wrap) done(); }); // click the world behind it to close
+  $('armoryFrame').addEventListener('load', () => { // Escape closes it, wherever the focus is
+    try { $('armoryFrame').contentWindow.addEventListener('keydown', (e) => { if (e.key === 'Escape') done(); }); } catch (e) {}
   });
 }
+function armoryDone() {
+  const doc = $('armoryFrame') && $('armoryFrame').contentDocument;
+  const back = doc && doc.getElementById('armBack');
+  const shown = back && !back.closest('[hidden]');
+  if (shown) back.click(); else closeArmory();
+}
+addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && $('armoryOverlay')) { e.stopImmediatePropagation(); armoryDone(); }
+}, true);
 function closeArmory() {
   const wrap = $('armoryOverlay');
   if (!wrap) return;
@@ -3404,6 +3434,14 @@ function closeArmory() {
 addEventListener('message', (e) => {
   if (e.origin === location.origin && e.data && e.data.type === 'taproot-armory-closed') closeArmory();
 });
+
+// I shows / hides the controls bar at the bottom; the choice is remembered.
+function toggleHelp(show) {
+  const bar = $('helpBar');
+  bar.hidden = show === undefined ? !bar.hidden : !show;
+  try { localStorage.setItem('taproot_help_hidden', bar.hidden ? '1' : '0'); } catch (e) {}
+}
+try { if (localStorage.getItem('taproot_help_hidden') === '1') $('helpBar').hidden = true; } catch (e) {}
 
 function toggleBag(open) {
   const panel = $('bagPanel');
@@ -3531,9 +3569,9 @@ function onState(d) {
   if (d.atk && d.atk !== g.atkSeen) { g.atkSeen = d.atk; g.atk = 0; }
   if (d.atkL && d.atkL !== g.atkLSeen) { g.atkLSeen = d.atkL; g.atkL = 0; }
 }
-if (window.supabase && !new URLSearchParams(location.search).has('nomp')) {
-  const sb = window.supabase.createClient('https://azvdqigaqwbeakjieaps.supabase.co',
-    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF6dmRxaWdhcXdiZWFramllYXBzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0OTE0NjEsImV4cCI6MjA5OTA2NzQ2MX0.QXBpcGKsot8A8w6rq76F6lvGjCVJN0NytDmfmE8C-Dw');
+if (window.supabase && !new URLSearchParams(location.search).has('nomp')) (async () => {
+  const RT = await Ledger.realtime(); // the accounts' Supabase project, once the server has its public key
+  const sb = window.supabase.createClient(RT.url, RT.key);
   // local dev / test runs get their own channel, so they never show up for players on the live site
   const LOCAL = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
   // one channel per area, so players elsewhere don't receive — and aren't billed for — this area's traffic
@@ -3580,7 +3618,7 @@ if (window.supabase && !new URLSearchParams(location.search).has('nomp')) {
   // keep-alive on a timer, so a player whose tab is in the background (no frames) doesn't vanish
   setInterval(() => { if (mp.live && performance.now() - mp.last > 3000) { mp.channel.send({ type: 'broadcast', event: 'move', payload: myState() }); mp.last = performance.now(); } }, 3000);
   addEventListener('pagehide', () => { if (mp.live) mp.channel.send({ type: 'broadcast', event: 'leave', payload: { id: mp.id } }); });
-}
+})();
 function sendChat() {
   const txt = $('chatIn').value.trim().slice(0, 200);
   $('chatIn').value = '';
@@ -3672,7 +3710,7 @@ if (window.supabase && !new URLSearchParams(location.search).has('nomp')) {
   (async () => {
     try {
       const t0 = Date.now();
-      const r = await fetch('https://azvdqigaqwbeakjieaps.supabase.co/rest/v1/', { method: 'HEAD' });
+      const r = await fetch('/api/game/config');
       const d = Date.parse(r.headers.get('date') || '');
       if (Number.isFinite(d)) HAZ.offset = d + (Date.now() - t0) / 2 - Date.now(); // half the round trip
     } catch (e) {}
@@ -3727,6 +3765,7 @@ function useItem(id) {
   if (c.smoke) {
     if (smokedNow()) return;
     field.bag[id] -= 1;
+    Ledger.act({ t: 'use', id });
     smoke(c.smoke);
     saveField();
     renderBag();
@@ -4106,9 +4145,10 @@ if (STANDS) {
    per player). On your own plot, 1 / 2 / 3 pick a seed, F on empty soil plants it and F on a ripe
    crop harvests it. Crops grow on the real clock, also while you're away. G opens build mode:
    Growth Altar, Clubhouse, Scarecrow (R rotates, F places, X picks one back up for a refund).
-   For now each owner keeps their plot in this browser and shows it to everyone online over the
-   multiplayer channel ('farm'). A shared Supabase table should replace that before going live, so
-   plots stay visible while their owners are offline. ?farmfast=1 turns minutes into seconds. */
+   Plots are kept on the server with their owner's account (one plot per player, one owner per
+   plot), every change goes through the server's rules, and everyone loads all claimed plots from
+   /api/game/farms, so farms show while their owners are offline. Live changes still travel over
+   the multiplayer channel ('farm'). ?farmfast=1 turns minutes into seconds (local testing). */
 const FAST = new URLSearchParams(location.search).has('farmfast') ? 60 : 1;
 const MIN = 60000 / FAST;
 const SEEDS = Object.keys(CROPS);
@@ -4116,25 +4156,18 @@ const PLOTS = (A.plots || []).filter((p) => p[4] === 'player').map(([x1, y1, x2,
   const g0 = gateAt(x1, x2);
   return { id, x1, y1, x2, y2, side, i0: x1 + 1, j0: y1 + 1, nx: x2 - x1 - 1, nz: y2 - y1 - 1, sign: { x: g0 + 4.3, z: side === 's' ? y2 + 1.55 : y1 - 0.55 } };
 });
-const FARM_KEY = `taproot_farm2_${mp.name}`; // farm2: plots were resized, so the old 8 x 8 saves start fresh
-let myFarm = null;
-try { myFarm = JSON.parse(localStorage.getItem(FARM_KEY)); } catch (e) {}
+// Your plot is kept on the server with your account (Ledger); this is the last copy it sent.
+let myFarm = Ledger.cached().farm;
 const farms = new Map(); // plot id -> farm: { id, owner, claimed, crops: { 'i,j': { k, t } }, builds: [{ k, i, j, r }], boost: [from, to], members }
 if (myFarm) farms.set(myFarm.id, myFarm);
 let selSeed = SEEDS[0], building = null;
 
-const saveFarm = () => { try { if (myFarm) localStorage.setItem(FARM_KEY, JSON.stringify(myFarm)); else localStorage.removeItem(FARM_KEY); } catch (e) {} };
+const saveFarm = () => {}; // each change goes to the server as its own action (Ledger.act)
 function sendFarm() { if (mp.live && myFarm) mp.channel.send({ type: 'broadcast', event: 'farm', payload: { farm: myFarm } }); }
 function farmChanged() { saveFarm(); sendFarm(); }
 function onFarm({ farm: f }) {
-  if (!f || !f.owner || f.owner === mp.name) return;
-  if (myFarm && f.id === myFarm.id) { // two players claimed the same plot: the earlier claim keeps it
-    if (f.claimed >= myFarm.claimed) { sendFarm(); return; }
-    toast(`${f.owner} claimed Plot ${f.id} first`);
-    chatLine('', `${f.owner} claimed Plot ${f.id} before you did. Pick another free plot.`, true);
-    myFarm = null;
-    saveFarm();
-  }
+  if (!f || !f.owner) return;
+  if (myFarm && f.id === myFarm.id) return; // the server decides who holds a plot; ours comes from it
   if (!farms.has(f.id) && PLOTS.length) chatLine('', `${f.owner} farms Plot ${f.id}`, true);
   farms.set(f.id, f);
 }
@@ -4192,8 +4225,9 @@ function timeLeft(f, c) {
 // ---- actions
 function claimPlot(p) {
   if (myFarm || farms.has(p.id)) return;
-  myFarm = { id: p.id, owner: mp.name, claimed: Date.now(), crops: {}, builds: [], boost: [0, 0], members: [] };
+  myFarm = { id: p.id, owner: mp.name, claimed: Date.now(), crops: {}, builds: [], blocks: '', boost: [0, 0], members: [] };
   farms.set(p.id, myFarm);
+  Ledger.act({ t: 'claim', plot: p.id });
   farmChanged();
   floatText(P.x, 2.2, P.z, `Plot ${p.id} is yours!`, '#c8ff2e');
   hero.emote('happy', 1.2);
@@ -4205,6 +4239,7 @@ function plant(key) {
   if (!(field.bag[id] > 0) || myFarm.crops[key]) return;
   field.bag[id] -= 1;
   myFarm.crops[key] = { k: selSeed, t: Date.now() };
+  { const [i, j] = key.split(',').map(Number); Ledger.act({ t: 'plant', k: selSeed, i, j }); }
   saveField(); renderBag(); farmChanged();
   burst(P.x, 0.3, P.z, '#8a5a36', 6);
 }
@@ -4214,6 +4249,7 @@ function harvest(key) {
   const n = CROPS[c.k].yield;
   field.bag[c.k] = (field.bag[c.k] || 0) + n;
   delete myFarm.crops[key];
+  { const [i, j] = key.split(',').map(Number); Ledger.act({ t: 'harvest', i, j }); }
   saveField(); renderBag(); updateHud(); farmChanged();
   floatText(P.x, 1.7, P.z, `+${n} ${CROPS[c.k].name}`, '#ffb04a');
   burst(P.x, 0.5, P.z, '#ffd23a', 8);
@@ -4221,6 +4257,7 @@ function harvest(key) {
 function offerAltar() {
   if (!(field.bag[ALTAR.offering] > 0) || boosted(myFarm)) return;
   field.bag[ALTAR.offering] -= 1;
+  Ledger.act({ t: 'offer' });
   const now = Date.now();
   myFarm.boost = [now, now + ALTAR.minutes * MIN];
   saveField(); renderBag(); farmChanged();
@@ -4334,6 +4371,7 @@ function placeBlock() {
   const p = plotOf(myFarm.id), t = blockType(), vox = voxOf(p);
   field.bag['block_' + t] -= 1;
   vox.set(a.place[0], a.place[1], a.place[2], t, building.r);
+  Ledger.act({ t: 'place', b: t, i: a.place[0], j: a.place[1], k: a.place[2], r: building.r });
   setPlotBlocks(p, vox);
 }
 function breakBlock() {
@@ -4343,6 +4381,7 @@ function breakBlock() {
   if (!c) return;
   vox.del(a.i, a.j, a.k);
   field.bag['block_' + c.t] = (field.bag['block_' + c.t] || 0) + 1;
+  Ledger.act({ t: 'break', i: a.i, j: a.j, k: a.k });
   setPlotBlocks(p, vox);
   burst(p.i0 + a.i + 0.5, a.k + 0.5, p.j0 + a.j + 0.5, '#d8c8a8', 8);
 }
@@ -4383,6 +4422,7 @@ function placeBuild() {
   if (t.why) return;
   field.gold -= it.cost;
   myFarm.builds.push({ k: building.k, i: t.i, j: t.j, r: building.r });
+  Ledger.act({ t: 'build', k: building.k, i: t.i, j: t.j, r: building.r });
   saveField(); updateHud(); farmChanged();
   burst(t.p.i0 + t.i + t.s / 2, 1, t.p.j0 + t.j + t.s / 2, '#c8ff2e', 16);
   floatText(P.x, 2.2, P.z, `Built a ${it.name}!`, '#c8ff2e');
@@ -4392,6 +4432,7 @@ function pickUpBuild() {
   if (!hit) return;
   myFarm.builds.splice(myFarm.builds.indexOf(hit), 1);
   field.gold += BUILDS[hit.k].cost;
+  Ledger.act({ t: 'unbuild', i: hit.i, j: hit.j });
   saveField(); updateHud(); farmChanged();
   floatText(P.x, 2.2, P.z, `Picked up the ${BUILDS[hit.k].name} (+${BUILDS[hit.k].cost} gold)`, '#ffd34a');
 }
@@ -4747,12 +4788,12 @@ function updateFarm(dt, now) {
 }
 // chat commands for clubhouse owners: /invite name, /kick name, /members
 function farmCommand(txt) {
-  const [cmd, ...rest] = txt.trim().split(/\s+/), who = rest.join(' ');
+  const [cmd, ...rest] = txt.trim().split(/\s+/), who = rest.join(' ').slice(0, 16);
   if (!['/invite', '/kick', '/members'].includes(cmd)) return false;
   if (!myFarm) { chatLine('', 'You need a plot (and a clubhouse) first.', true); return true; }
   myFarm.members ||= [];
-  if (cmd === '/invite' && who && !myFarm.members.includes(who)) { myFarm.members.push(who); farmChanged(); }
-  if (cmd === '/kick') { myFarm.members = myFarm.members.filter((m) => m !== who); farmChanged(); }
+  if (cmd === '/invite' && who && !myFarm.members.includes(who)) { myFarm.members.push(who); Ledger.act({ t: 'invite', who }); farmChanged(); }
+  if (cmd === '/kick' && who) { myFarm.members = myFarm.members.filter((m) => m !== who); Ledger.act({ t: 'kick', who }); farmChanged(); }
   chatLine('', `Clubhouse members: ${myFarm.members.length ? myFarm.members.join(', ') : 'nobody yet (type /invite name)'}`, true);
   return true;
 }
@@ -4783,6 +4824,7 @@ addEventListener('keydown', (e) => {
   if (e.code === 'KeyC') cycleCam();
   if (e.code === 'KeyV') cycleView();
   if (e.code === 'KeyL') setAutoAim(!autoAim);
+  if (e.code === 'KeyI') toggleHelp();
   if (e.code === 'KeyF' && action) action.run();
   if (e.code === 'Escape') toggleBag(false);
   farmKey(e.code);
@@ -5239,12 +5281,45 @@ function update(dt, now) {
   if (exit) goTo(exit.href);
 }
 
+/* ---------- the server's word on gold, items and the farm ----------
+   Everything above plays out at once in this browser and is sent to the server (Ledger.act).
+   The server's answer is the account's real state: take it in, so if the browser ever got
+   ahead of the rules (or another device played since), this corrects it. */
+Ledger.on('state', (st) => {
+  const e = st.econ;
+  Object.assign(field, { gold: e.gold, xp: e.xp, kills: e.kills, bag: { ...e.bag } });
+  owned.splice(0, owned.length, ...st.owned);
+  const had = myFarm;
+  myFarm = st.farm;
+  if (had && (!myFarm || had.id !== myFarm.id)) farms.delete(had.id);
+  if (myFarm) farms.set(myFarm.id, myFarm);
+  if (!myFarm && building) setBuilding(false);
+  if (myFarm && (!had || had.id !== myFarm.id || JSON.stringify(had) !== JSON.stringify(myFarm))) sendFarm();
+  updateHud(); renderBag(); renderModal();
+});
+const REFUSED = {
+  'plot taken': 'Someone else already holds that plot. Pick another free one.',
+  'not ripe': 'That crop isn\'t ripe yet.',
+  'too fast': 'Easy there: that reward was too fast to count.',
+};
+Ledger.on('rejected', (bad) => {
+  const why = bad.map(([, w]) => w).find((w) => REFUSED[w]) || bad[0][1];
+  toast(REFUSED[why] || `The server didn't accept that (${why})`);
+});
+// Farms are kept on the server too, so plots show even while their owners are offline.
+const loadFarms = () => Ledger.farms().then((list) => {
+  for (const f of list) if (!myFarm || f.id !== myFarm.id) farms.set(f.id, f);
+});
+if (PLOTS.length || CLUB) { loadFarms(); setInterval(loadFarms, 60000); }
+Ledger.load();
+
 SPAWN_LIST.forEach((type) => spawnMonster(type));
 // debug hook for tests and screenshots: __world3d.tp(x, z) teleports, .P is the player state
 window.__world3d = { P, ghosts, arena, farms, updateIndoor, aimPoint, spectating: () => STANDS, tomatoes, throwTomato,
   arenaMod, buff: () => buffNow(), free,
   equip: (id, slot) => equip(id, slot), gearOf: (slot) => gear(slot), parrying: () => parrying(),
   view: viewName, autoAim: () => autoAim, setAutoAim: (on) => setAutoAim(on), camYaw: () => camYaw, setCamYaw: (v) => { camYaw = v; }, nitro: () => nitro, setNitro: (v) => { nitro = v; nitroLock = false; }, jump,
+  killMonster, collect, shopAct, claimPlot, plant, harvest, owned: () => owned, // economy tests
   spawn: (type, x, z) => { spawnMonster(type); const m = monsters[monsters.length - 1]; m.x = x; m.z = z; m.t = 99; m.vx = m.vz = 0; return monsters.length - 1; },
   foeCast: (i) => castFoeBall(monsters[i]), chilled, smoked: () => Math.max(0, (smokeUntil - performance.now()) / 1000), colosseum: () => COLO && { arena: [A.doors.find((d) => /area=arena/.test(d.href)).x + 0.5, A.doors.find((d) => /area=arena/.test(d.href)).y + 0.5], stands: [A.doors.find((d) => /area=stands/.test(d.href)).x + 0.5, A.doors.find((d) => /area=stands/.test(d.href)).y + 0.5] }, hazardNow, clockOffset: () => HAZ.offset, hazards: () => [...HAZ.views.values()], hazardClock: (ms) => { HAZ.pinned = ms === undefined || ms === null ? null : ms; }, slowed, setHp: (n) => { hp = n; updateHud(); }, drawnBlocks: (id) => ((plotViews.get(id) || {}).blockMeshes || []).reduce((n, m) => n + m.count, 0), getPitch: () => fpPitch, firstPerson: () => firstPerson, setPitch: (v) => { fpPitch = v; }, openShop, hiddenBlocks, doorAngle: (id, i, j, k) => { const v = plotViews.get(id); return (v && v.doorAng && v.doorAng.get(`${i},${j},${k}`)) || 0; }, shopSpots, aimBlock, mouse, camera, building: () => building, toScreen, groundAt, solidAt, setBlocks, plots: PLOTS, placed, decorCrops, myFarm: () => myFarm, farmTile: () => farmTile(), hp: () => hp, mp, monsters, drops, field: () => field, hero: () => hero, fireballs, tp: (x, z, yaw) => { P.x = x; P.z = z; P.vx = P.vz = 0; if (yaw !== undefined) camYaw = yaw; }, cam: (dist, pitch) => { camDistT = camDist = dist; camPitchT = camPitch = pitch; }, size: [MAP_W, MAP_H], info: () => { // one full frame's draw calls and triangles (all passes, shadows included)
   renderer.info.autoReset = false; renderer.info.reset(); composer.render();

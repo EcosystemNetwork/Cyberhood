@@ -24,6 +24,8 @@ if (fs.existsSync(envPath)) {
 // Point the handler at THIS server's mock DB, with a throwaway key.
 process.env.SUPABASE_URL = process.env.SUPABASE_URL || `http://127.0.0.1:${PORT}`;
 process.env.SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || 'local-mock-key';
+// Local testing: every account owns every item (the live site never sets this).
+if (process.env.GAME_DEV === undefined) process.env.GAME_DEV = '1';
 
 const gameApi = require('./api/game/[action].js'); // reads the env vars above at require time
 
@@ -40,18 +42,23 @@ try {
 } catch (e) { /* start empty */ }
 const saveDb = () => { try { fs.writeFileSync(DB_FILE, JSON.stringify({ rows, nextId }, null, 2)); } catch (e) {} };
 
-// The handler only ever uses eq. and gt. filters, which is all we implement.
+// The handler only uses eq., gt. and not.is.null filters, which is all we implement.
 const parseFilters = (params) => {
   const out = [];
   for (const [k, v] of params) {
     if (k === 'select') continue;
-    const m = /^(eq|gt)\.([\s\S]*)$/.exec(v);
+    const m = /^(eq|gt|not\.is)\.([\s\S]*)$/.exec(v);
     if (m) out.push([k, m[1], m[2]]);
   }
   return out;
 };
+// Columns added by later migrations default like they do in Postgres, for accounts made before them.
+const COLUMN_DEFAULTS = { econ: {}, econ_rev: 0, farm: null, farm_plot: null };
+for (const r of rows) for (const [k, v] of Object.entries(COLUMN_DEFAULTS)) if (!(k in r)) r[k] = v;
 const matchRow = (row, filters) => filters.every(([f, op, val]) =>
-  op === 'eq' ? String(row[f]) === val : String(row[f] ?? '') > val);
+  op === 'eq' ? String(row[f]) === val : op === 'gt' ? String(row[f] ?? '') > val : row[f] !== null && row[f] !== undefined);
+// Postgres's unique (farm_plot): one owner per plot.
+const plotClash = (row, body) => body.farm_plot != null && rows.some((r) => r !== row && r.farm_plot === body.farm_plot);
 
 function handleMockDb(method, params, raw, respond) {
   const filters = parseFilters(params);
@@ -62,13 +69,17 @@ function handleMockDb(method, params, raw, respond) {
 
   if (method === 'POST') {
     if (rows.some((r) => r.username === body.username)) return respond(409, { error: 'duplicate key' });
-    const row = { id: nextId++, failed_attempts: 0, locked_until: null, character: null, inventory: null, session_hash: null, session_expires: null, ...body };
+    const row = { id: nextId++, failed_attempts: 0, locked_until: null, character: null, inventory: null, session_hash: null, session_expires: null, ...structuredClone(COLUMN_DEFAULTS), ...body };
     rows.push(row); saveDb();
     return respond(201, [row]);
   }
   if (method === 'PATCH') {
     const updated = [];
-    for (const r of rows) if (matchRow(r, filters)) { Object.assign(r, body); updated.push(r); }
+    const hit = rows.filter((r) => matchRow(r, filters));
+    if (hit.some((r) => plotClash(r, body))) {
+      return respond(409, { code: '23505', message: 'duplicate key value violates unique constraint "game_players_farm_plot_key"' });
+    }
+    for (const r of hit) { Object.assign(r, body); updated.push(r); }
     saveDb();
     return respond(200, updated);
   }

@@ -23,6 +23,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { makeHero3D } from '/game/lib/hero3d.js';
 import { toon, buildIslands, buildPlayerBoat, buildGalleon, buildBarrel, buildGull, buildDolphin, jollyTexture } from './world.js';
+import { BARREL_GOLD } from '../world3d/economy.js';
 
 const $ = (id) => document.getElementById(id);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -234,6 +235,14 @@ function floatText(x, y, z, msg, color) {
 }
 const treasures = islands.filter((I) => I.treasure);
 const updateHud = () => { $('goldText').textContent = field.gold; $('foundText').textContent = `${treasures.filter((I) => looted.includes(I.id)).length}/${treasures.length}`; };
+// The server keeps the gold and the opened chests: take its word whenever it answers.
+Ledger.on('state', (st) => {
+  Object.assign(field, { gold: st.econ.gold, xp: st.econ.xp, kills: st.econ.kills, bag: { ...st.econ.bag } });
+  looted.splice(0, looted.length, ...(st.econ.loot || []));
+  for (const I of treasures) if (I.chest && looted.includes(I.id)) { scene.remove(I.chest); I.chest = null; }
+  updateHud();
+});
+Ledger.load();
 updateHud();
 
 /* ---------- input ---------- */
@@ -303,6 +312,7 @@ function loot(I) {
   I.chest = null;
   looted.push(I.id);
   field.gold += I.treasure;
+  Ledger.act({ t: 'chest', id: I.id });
   save();
   updateHud();
   floatText(B.x, 5, B.z, `+${I.treasure} gold! Treasure found`, '#ffd34a');
@@ -434,8 +444,9 @@ function update(dt) {
     b.g.rotation.set(Math.sin(t + b.ph) * 0.3, t * 0.2 + b.ph, Math.cos(t * 0.8 + b.ph) * 0.3);
     if (Math.hypot(b.x - B.x, b.z - B.z) < 3) {
       b.gone = 25; b.g.visible = false;
-      field.gold += 3; save(); updateHud();
-      floatText(b.x, 3, b.z, '+3 gold', '#ffd34a');
+      field.gold += BARREL_GOLD; save(); updateHud();
+      Ledger.act({ t: 'barrel' });
+      floatText(b.x, 3, b.z, `+${BARREL_GOLD} gold`, '#ffd34a');
       splash(b.x, b.z, 8, 0.3);
     }
   }
