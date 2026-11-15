@@ -36,6 +36,8 @@ async function api(action, key, body) {
   return { status: res.status, data: await res.json() };
 }
 const PW = 'hunter2hunter2';
+// where a hit happens: you and the monster side by side (the server checks reach and movement)
+const NEAR = { px: 0, pz: 0, mx: 1, mz: 0 };
 async function account() {
   const username = 'e' + Math.random().toString(36).slice(2, 10);
   const r = await api('signup', null, { username, password: PW });
@@ -51,7 +53,7 @@ let T = Date.now();
 const rid = () => Math.random().toString(36).slice(2, 10);
 function fight(m, swings, dmg = 14) {
   const id = 'f' + rid();
-  return [{ t: 'spawn', id, m }, ...Array.from({ length: swings }, () => ({ t: 'hit', id, k: 'swing', hand: 'R', a: rid(), at: (T += 400), dmg }))];
+  return [{ t: 'spawn', id, m }, ...Array.from({ length: swings }, () => ({ t: 'hit', ...NEAR, id, k: 'swing', hand: 'R', a: rid(), at: (T += 400), dmg }))];
 }
 const ok = (r) => r.data.results.every((x) => x === '');
 
@@ -98,20 +100,20 @@ test('combat: only hits the server believes can kill', async () => {
   const id = 'goblin1';
   let r = await act(key,
     { t: 'kill', m: 'slime' },                                                         // kills aren't taken on trust
-    { t: 'hit', id: 'nobody', k: 'swing', hand: 'R', a: rid(), at: (T += 400), dmg: 5 }, // no such monster
+    { t: 'hit', ...NEAR, id: 'nobody', k: 'swing', hand: 'R', a: rid(), at: (T += 400), dmg: 5 }, // no such monster
     { t: 'spawn', id, m: 'goblin' },
     { t: 'spawn', id, m: 'goblin' },                                                   // already there
-    { t: 'hit', id, k: 'shot', hand: 'R', a: rid(), at: (T += 400), dmg: 5 },          // no wand in hand
-    { t: 'hit', id, k: 'swing', hand: 'R', a: rid(), at: (T += 400), dmg: 9999 },       // capped at 14
-    { t: 'hit', id, k: 'swing', hand: 'R', a: rid(), at: T + 50, dmg: 14 },             // faster than a swing
-    { t: 'hit', id, k: 'swing', hand: 'R', a: rid(), at: (T += 400), dmg: 14 });
+    { t: 'hit', ...NEAR, id, k: 'shot', hand: 'R', a: rid(), at: (T += 400), dmg: 5 },          // no wand in hand
+    { t: 'hit', ...NEAR, id, k: 'swing', hand: 'R', a: rid(), at: (T += 400), dmg: 9999 },       // capped at 14
+    { t: 'hit', ...NEAR, id, k: 'swing', hand: 'R', a: rid(), at: T + 50, dmg: 14 },             // faster than a swing
+    { t: 'hit', ...NEAR, id, k: 'swing', hand: 'R', a: rid(), at: (T += 400), dmg: 14 });
   assert.deepEqual(r.data.results, ['kills come from hits', 'no such monster', '', 'bad id', 'wrong weapon', '', 'too fast', '']);
   assert.equal(r.data.state.econ.kills, 0); // 28 of the goblin's 60 HP
-  r = await act(key, ...[1, 2, 3].map(() => ({ t: 'hit', id, k: 'swing', hand: 'R', a: rid(), at: (T += 400), dmg: 14 })));
+  r = await act(key, ...[1, 2, 3].map(() => ({ t: 'hit', ...NEAR, id, k: 'swing', hand: 'R', a: rid(), at: (T += 400), dmg: 14 })));
   assert.ok(ok(r));
   assert.equal(r.data.state.econ.kills, 1);
   assert.equal(r.data.state.econ.xp, 15);
-  r = await act(key, { t: 'hit', id, k: 'swing', hand: 'R', a: rid(), at: (T += 400), dmg: 14 });
+  r = await act(key, { t: 'hit', ...NEAR, id, k: 'swing', hand: 'R', a: rid(), at: (T += 400), dmg: 14 });
   assert.deepEqual(r.data.results, ['no such monster']); // dead is dead
 });
 
@@ -119,7 +121,7 @@ test('a game clock that runs fast is caught', async () => {
   const { key } = await account();
   const acts = [{ t: 'spawn', id: 'kingslime', m: 'king' }];
   let at = Date.now();
-  for (let i = 0; i < 30; i++) acts.push({ t: 'hit', id: 'kingslime', k: 'swing', hand: 'R', a: rid(), at: (at += 400), dmg: 14 });
+  for (let i = 0; i < 30; i++) acts.push({ t: 'hit', ...NEAR, id: 'kingslime', k: 'swing', hand: 'R', a: rid(), at: (at += 400), dmg: 14 });
   const r = await act(key, ...acts); // 12 s of swings sent in a moment
   assert.ok(r.data.results.includes('too fast'));
   assert.equal(r.data.state.econ.kills, 0);
@@ -129,10 +131,10 @@ test('equipping in the world changes what the next hits may do', async () => {
   const { key } = await account();
   await api('save', key, { character: { ...KNIGHT, cls: 'mage', equipment: {} } }); // the mage kit: oak staff
   const r = await act(key, { t: 'spawn', id: 'slime01', m: 'slime' },
-    { t: 'hit', id: 'slime01', k: 'swing', hand: 'R', a: rid(), at: (T += 700), dmg: 3 },
+    { t: 'hit', ...NEAR, id: 'slime01', k: 'swing', hand: 'R', a: rid(), at: (T += 700), dmg: 3 },
     { t: 'equip', eq: { rhand: 'oak_staff' } },
-    { t: 'hit', id: 'slime01', k: 'swing', hand: 'R', a: rid(), at: (T += 700), dmg: 3 },
-    { t: 'hit', id: 'slime01', k: 'shot', hand: 'R', a: rid(), at: (T += 700), dmg: 3 },
+    { t: 'hit', ...NEAR, id: 'slime01', k: 'swing', hand: 'R', a: rid(), at: (T += 700), dmg: 3 },
+    { t: 'hit', ...NEAR, id: 'slime01', k: 'shot', hand: 'R', a: rid(), at: (T += 700), dmg: 3 },
     { t: 'equip', eq: { rhand: 'cutlass' } }); // not owned: taken off
   assert.deepEqual(r.data.results, ['', '', '', 'wrong weapon', '', '']);
   assert.equal(r.data.character.equipment.rhand, null);

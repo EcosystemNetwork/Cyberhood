@@ -113,7 +113,7 @@
     inflight = (async () => {
       const batch = queue.slice(0, BATCH);
       let r;
-      try { r = await call('act', { actions: batch, fast: opts.fast || undefined }, keepalive); } catch (e) { r = null; }
+      try { r = await call('act', { actions: batch, fast: opts.fast || undefined, sent: Math.round(performance.timeOrigin + performance.now()) }, keepalive); } catch (e) { r = null; }
       if (!r || r.status === 0) { retryMs = Math.min(30000, (retryMs || 2000) * 2); schedule(retryMs); return; } // offline: try again
       if (r.status === 401) { lostSession(); return; }
       if (r.status === 200) {
@@ -168,9 +168,13 @@
   // Progress a browser saved before the server kept it, from the old localStorage keys.
   function legacyImport() {
     const field = getJSON(K.field), owned = getJSON(K.owned), loot = getJSON('taproot_sea_loot');
+    // the farm plot, saved per character name before farms moved to the server
+    let farm = null;
+    try { for (let i = 0; i < ls.length && !farm; i++) { const k = ls.key(i); if (k && k.startsWith('taproot_farm2_')) farm = getJSON(k); } } catch (e) {}
+    if (!farm || typeof farm !== 'object' || !farm.id) farm = null;
     const any = (field && (field.gold || field.xp || field.kills || Object.keys(field.bag || {}).length))
-      || (Array.isArray(owned) && owned.length) || (Array.isArray(loot) && loot.length);
-    return any ? { t: 'import', field: field || {}, owned: owned || [], loot: loot || [] } : null;
+      || (Array.isArray(owned) && owned.length) || (Array.isArray(loot) && loot.length) || farm;
+    return any ? { t: 'import', field: field || {}, owned: owned || [], loot: loot || [], ...(farm ? { farm } : {}) } : null;
   }
 
   const Ledger = {

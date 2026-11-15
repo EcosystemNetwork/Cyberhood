@@ -28,7 +28,13 @@ const server = spawn(process.execPath, [join(ROOT, 'game-dev-server.js')], {
 const dport = 9400 + Math.floor(Math.random() * 400);
 const chrome = spawn(CHROME, ['--headless=new', '--no-sandbox', `--remote-debugging-port=${dport}`, `--user-data-dir=${join(tmp, 'profile')}`,
   '--use-gl=swiftshader', '--enable-unsafe-swiftshader', 'about:blank'], { stdio: 'ignore' });
-const done = (code) => { chrome.kill(); server.kill(); rmSync(tmp, { recursive: true, force: true }); process.exit(code); };
+// close the browser first: it keeps writing to its profile while it shuts down
+const done = (code) => {
+  server.kill();
+  chrome.once('exit', () => { try { rmSync(tmp, { recursive: true, force: true, maxRetries: 5 }); } catch (e) {} process.exit(code); });
+  chrome.kill();
+  setTimeout(() => process.exit(code), 5000);
+};
 
 try {
   for (let i = 0; i < 50; i++) { try { await fetch(B + '/game/'); break; } catch (e) { await sleep(100); } }
@@ -94,7 +100,7 @@ try {
 
   // a cheat: gold given in the browser, then spent
   await ev(`(() => { const w = ${W}; w.field().gold += 5000; w.openShop('The Armoury'); w.shopAct('buy', 'mirror_shield', 240); return 1; })()`);
-  await sleep(2500);
+  await ev('Ledger.flush()'); // sent and answered (on a busy machine that takes a few seconds)
   assert.equal(await ev(`${W}.owned().includes('mirror_shield')`), false);
   assert.equal(await ev(`${W}.field().gold`), srv.econ.gold);
   assert.equal((await state(u.key)).econ.gold, srv.econ.gold);
@@ -110,7 +116,9 @@ try {
   const sail = (slot) => ev(`(() => { const s = ${S}, b = s.barrels[${slot}]; s.B.x = b.x; s.B.z = b.z; s.B.speed = 0; return 1; })()`);
   const far = await ev(`(() => { const s = ${S}, b0 = s.barrels[0]; let far = 1, best = 0;
     s.barrels.forEach((b, i) => { const d = Math.hypot(b.x - b0.x, b.z - b0.z); if (i && d > best) { best = d; far = i; } }); return far; })()`);
-  await sail(0); await sleep(400);
+  await sail(0);
+  // the game picks a barrel up in its frame loop: wait for it (a busy machine renders slowly)
+  for (let i = 0; i < 50 && !(await ev(`${S}.barrelGen[0] || 0`)); i++) await sleep(100);
   await sail(far); await sleep(400);
   await ev('Ledger.flush()'); await sleep(500);
   const sea = (await state(u.key)).econ;

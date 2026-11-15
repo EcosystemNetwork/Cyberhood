@@ -916,23 +916,23 @@ for (let i = TREES.length - 1; i >= 0; i--) {
 // how far from its centre a monster can be hit (giants are wide)
 const reachOf = (m, small, big) => m.cfg.size || (m.cfg.big ? big : small);
 const MONSTERS = {
-  slime:  { name: 'Slime',      speed: 1.5,  dmg: 6,  aggro: 4.4 },
-  shroom: { name: 'Shroom',     speed: 1.1,  dmg: 8,  aggro: 3.8 },
-  bat:    { name: 'Bat',        speed: 2.75, dmg: 5,  aggro: 6, fly: true },
-  goblin: { name: 'Goblin',     speed: 2,    dmg: 12, aggro: 5.5 },
-  king:   { name: 'King Slime', speed: 1,    dmg: 18, aggro: 5, big: true, respawn: 45000 },
+  slime:  { name: 'Slime',      dmg: 6,  aggro: 4.4 },
+  shroom: { name: 'Shroom',     dmg: 8,  aggro: 3.8 },
+  bat:    { name: 'Bat',        dmg: 5,  aggro: 6, fly: true },
+  goblin: { name: 'Goblin',     dmg: 12, aggro: 5.5 },
+  king:   { name: 'King Slime', dmg: 18, aggro: 5, big: true, respawn: 45000 },
   // The arena's house fighter: a person, not a creature. Carries a sword and a fire staff,
   // closes to swing and throws a fireball from range. Only ever spawned in the pit.
-  gladiator: { name: 'Gladiator', speed: 2.1, dmg: 8, aggro: 11, respawn: 25000, human: true, cast: [2.2, 9.5] },
+  gladiator: { name: 'Gladiator', dmg: 8, aggro: 11, respawn: 25000, human: true, cast: [2.2, 9.5] },
   // The two giants of the Hollow (B2). `size` is their reach in tiles, `tag` how high the name sits.
   // The golem plods, then winds up a ground slam you can see coming and step out of; the queen
   // circles, crouches, and lunges.
-  golem_crystal: { name: 'Grak, the Crystal Golem', speed: 0.9, dmg: 20, aggro: 11,
+  golem_crystal: { name: 'Grak, the Crystal Golem', dmg: 20, aggro: 11,
     big: true, giant: true, size: 1.6, tag: 3.9, respawn: 120000, slam: { range: 3.4, tell: 1.1, dmg: 34, cd: 4.5 } },
-  spider_queen: { name: 'The Spider Queen', speed: 2.0, dmg: 16, aggro: 12,
+  spider_queen: { name: 'The Spider Queen', dmg: 16, aggro: 12,
     big: true, giant: true, size: 1.6, tag: 2.6, respawn: 120000, lunge: { near: 3, far: 9, tell: 0.6, speed: 12, time: 0.45, cd: 3.5 } },
 };
-// HP, XP, gold and drops come from economy.js, the same table the server checks hits and pays out from.
+// HP, speed, XP, gold and drops come from economy.js, the same table the server checks hits and pays out from.
 for (const [k, m] of Object.entries(MONSTERS)) Object.assign(m, MONSTER_LOOT[k]);
 const LOOT = {
   slime_gel: { name: 'Slime Gel', color: '#6aff8a' }, spore_cap: { name: 'Spore Cap', color: '#ff4a6a' }, bat_fang: { name: 'Bat Fang', color: '#f4f0ff' },
@@ -3211,7 +3211,9 @@ function hitMonster(m, power = statNow('atk'), kind = 'swing', hand = 'R', att =
   const dmg = Math.max(1, Math.round(power + Math.random() * 4));
   m.hp -= dmg;
   m.mine += dmg;
-  if (m.sid) Ledger.act({ t: 'hit', id: m.sid, k: kind, hand, a: att.id, at: att.at, dmg });
+  // where you and it stood: the server checks nobody moved faster than the game allows, and that it was in reach
+  if (m.sid) Ledger.act({ t: 'hit', id: m.sid, k: kind, hand, a: att.id, at: att.at, dmg,
+    px: +P.x.toFixed(2), pz: +P.z.toFixed(2), mx: +m.x.toFixed(2), mz: +m.z.toFixed(2), pt: clientMs() });
   m.flash = 0.09;
   const dx = m.x - P.x, dz = m.z - P.z, d = Math.hypot(dx, dz) || 1, push = m.cfg.giant ? 0 : m.cfg.big ? 4.4 : 8.75;
   m.kb = 0.16; m.kbx = dx / d * push; m.kbz = dz / d * push;
@@ -3668,6 +3670,7 @@ function faint() {
   fade.style.opacity = 1;
   setTimeout(() => {
     P.x = START.x + 0.5; P.z = START.y + 0.75;
+    Ledger.act({ t: 'warp', x: P.x, z: P.z, at: clientMs() }); // woke at the start: not a teleport hack
     hp = stats.hp; inv = 1.5; fainted = false;
     updateHud();
     fade.style.opacity = 0;

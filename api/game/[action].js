@@ -180,6 +180,8 @@ async function act(user, actions, opts) {
       now: Date.now(), dev: DEV, isGear: (id) => has(G.ITEMS, id),
       owner: (user.character && user.character.name) || user.username,
       minute: DEV && opts.fast ? 1000 : 60000,
+      sent: opts.sent, // the browser's clock when it sent this batch (for the game-clock check)
+      plotTaken: opts.plotTaken, // an imported farm skips a plot someone else holds
       rand: () => crypto.randomInt(0, 2 ** 32) / 2 ** 32, // gold drops are rolled here, not in the browser
       ...fighter(user, s.owned),
     };
@@ -206,9 +208,10 @@ async function act(user, actions, opts) {
     });
     if (notMigrated(r)) throw new NotMigrated();
     if (r.status === 409 && /farm_plot/.test(JSON.stringify(r.data))) { // someone else holds that plot
-      const claim = actions.find((a) => a && a.t === 'claim');
+      // a claim, or a farm brought along by an import: try again without that plot
+      const claim = actions.find((a) => a && (a.t === 'claim' || (a.t === 'import' && a.farm && typeof a.farm === 'object')));
       if (!claim || opts.plotTaken) throw new Error('plot conflict');
-      opts.plotTaken = claim.plot;
+      opts.plotTaken = claim.t === 'claim' ? claim.plot : claim.farm.id;
       continue;
     }
     if (r.status >= 300) throw new Error('act write failed: ' + r.status);
@@ -300,7 +303,7 @@ module.exports = async (req, res) => {
     if (action === 'act') {
       const actions = Array.isArray(body.actions) ? body.actions : null;
       if (!actions || !actions.length || actions.length > MAX_ACTIONS) return send(400, { error: 'Invalid actions' });
-      const out = await act(user, actions, { fast: !!body.fast });
+      const out = await act(user, actions, { fast: !!body.fast, sent: Number(body.sent) }); // sent: the browser's clock when it sent this
       return send(200, out);
     }
 
