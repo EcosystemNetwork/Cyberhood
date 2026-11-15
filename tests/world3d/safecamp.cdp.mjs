@@ -20,15 +20,15 @@ try {
   assert.ok(d.every((v) => v >= S.r), `monsters stay outside the ring: ${d.map((v) => v.toFixed(2))}`);
   const hp = await A.ev('__world3d.hp()');
   assert.ok(hp > 40, `you heal in the camp and nothing hurts you there (hp 40 -> ${hp})`);
-  // mana: the inferno staff costs 20 a shot
-  await A.ev(`__world3d.equip('inferno_staff', 'rhand'); 1`);
+  // mana: the thunder staff costs 25 a shot
+  await A.ev(`__world3d.equip('thunder_staff', 'rhand'); 1`);
   await sleep(300);
   await A.ev(`__world3d.tp(${S.x + 6}, ${S.y}); 1`);
   const m0 = await A.ev('__world3d.mana()');
   await A.key('KeyJ', 'j'); await sleep(150);
   const m1 = await A.ev('__world3d.mana()');
   assert.ok(m0 - m1 > 15, `a staff shot spends mana (${m0.toFixed(1)} -> ${m1.toFixed(1)})`);
-  for (let i = 0; i < 12; i++) { await A.key('KeyJ', 'j'); await sleep(650); }
+  for (let i = 0; i < 12; i++) { await A.key('KeyJ', 'j'); await sleep(850); }
   const low = await A.ev('__world3d.mana()');
   assert.ok(low < 40, `spamming runs it down (${low.toFixed(1)})`);
   await sleep(3000);
