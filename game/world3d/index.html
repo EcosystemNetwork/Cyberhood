@@ -459,6 +459,7 @@ import * as arenaMod from './arena.js';
 import { FLOORS, floorMap, BELOW, ABOVE, SHIFT_1F } from './mine.js';
 import { makePortal, makeSprout } from './portal.js';
 import { makeSafeCamp } from './safe.js';
+import { openFossilDig } from './fossil.js';
 for (const id of BLOCK_IDS) FARM_ITEMS['block_' + id] = { name: BLOCKS[id].name, emoji: BLOCKS[id].emoji, info: 'Building block · place it on your plot in build mode (G)' };
 
 const AREA = new URLSearchParams(location.search).get('area');
@@ -649,6 +650,7 @@ const AREAS = {
     ],
     npcs: [['Tilda', 'the tinker', 3.6, 3.4, { skin: 1, hc: 2, hs: 'long', equipment: { eyes: 'round_specs', body: 'leather_vest', lhand: 'lantern' } },
       'Bring me monster parts and gold, and the crafting table can make wands and potions!']],
+    hatch: { x: 10, y: 3 }, // a trapdoor in the floor: the Fossil Dig mini game (fossil.js)
     start: { x: 6, y: 7 },
     exits: [{ edge: 's', range: [6, 7], href: '/game/world3d/?area=city&from=workshop', name: 'Taproot City' }],
     arrive: { city: { x: 6, y: 7 } },
@@ -714,6 +716,7 @@ const AREAS = {
       objects: [
         ['house_b', 12, 2, 4, 3], ['shop', 17, 2, 4, 3, 'Seed Shop'], ['house_a', 28, 1, 5, 4], ['house_b', 34, 2, 4, 3],
         ['tavern', 44, 2, 5, 3, 'Harvest Inn'], ['house_a', 50, 1, 4, 4],
+        ['agent_house', 30, 22, 4, 3, 'Agent Heights'],
         ['barn', 14, 45, 6, 4, "Bo's Barn"], ['shop', 46, 45, 5, 3, "Builder's Yard", Math.PI],
         ...lamps,
       ],
@@ -737,6 +740,7 @@ const AREAS = {
       ],
       exits: [{ edge: 's', range: [22, 26], href: '/game/world3d/?area=city&from=avenues', name: 'Taproot City' }],
       portal: { x: 24.5, y: 24.5, href: 'https://sendy.gg/#world', name: 'Sendy' }, // the middle of the big plot
+      link: { x: 32, y: 25.9, href: 'https://agentheights.com/app', name: 'Agent Heights' }, // the door of the Agent Heights house, east of the portal
       // back from a clubhouse: just outside that plot's gate
       arrive: { city: { x: 23.5, y: 44 }, ...Object.fromEntries(farmPlots.map(([x1, y1, x2, y2, , id, side]) => [`plot${id}`, { x: Math.floor((x1 + x2) / 2), y: side === 's' ? y2 + 1 : y1 - 2 }])) },
       spawn: [],
@@ -859,6 +863,7 @@ function stitch(title, size, parts) {
     Object.entries(a.decor || {}).forEach(([key, count]) => S.decorList.push({ key, count, box }));
     if (a.sailing) Object.assign(S, { sailing: true, fish: a.fish, harbour: [ox, oy] });
     if (a.portal) S.portal = { ...a.portal, x: a.portal.x + ox, y: a.portal.y + oy };
+    if (a.link) S.link = { ...a.link, x: a.link.x + ox, y: a.link.y + oy };
     S.paths.push(...a.paths.map(rect));
     S.ponds.push(...a.ponds.map((p) => ({ ...p, cx: p.cx + ox, cy: p.cy + oy })));
     for (const k of ['tall', 'plots', 'fenceRects']) S[k].push(...(a[k] || []).map(rect));
@@ -1116,6 +1121,8 @@ const addObject = (key, tx, ty, w, h, name, ry) => { block(tx, ty, w, h); placed
 for (let y = 0; y < MAP_H; y++) for (let x = 0; x < MAP_W; x++) if (isWaterCell(x, y)) blocked[y][x] = true;
 if (CAVE) CAVE.forEach((row, y) => [...row].forEach((ch, x) => { if (ch !== '.') blocked[y][x] = true; }));
 LADDERS.forEach((l) => { blocked[l.y][l.x] = true; });
+const HATCHES = A.hatch ? [{ x: A.hatch.x, y: A.hatch.y, dir: 'down' }] : []; // a hole in a room's floor that opens the Fossil Dig
+HATCHES.forEach((l) => { blocked[l.y][l.x] = true; });
 PLANKS.forEach(([x1, , x2, y2, kind]) => {
   if (kind !== 'quay') return;
   for (let x = x1; x <= x2; x++) if (!PLANKS.some(([a, b, c, d, k]) => k === 'dock' && x >= a && x <= c && y2 >= b && y2 <= d)) blocked[y2][x] = true;
@@ -1768,6 +1775,14 @@ const TOWN_BUILD = {
       put('toon', 'box', '#7aaee0', k * (W / 2 + 0.04), 1.6, 0, 0.05, 0.52, 0.52);
     }
   },
+  agent_house(r, w, d) { // Agent Heights: a navy-roofed cottage with a glowing door (A.link takes you to the app)
+    TOWN_BUILD.cottage(w, d, '#2e3f78', false);
+    const f = (d - 0.7) / 2 + 0.01;
+    put('glow', 'box', '#7fd8ff', 0, 0.92, f + 0.09, 0.62, 1.2, 0.03);
+    put('glow', 'box', '#d8f4ff', 0, 0.92, f + 0.11, 0.38, 1.0, 0.02);
+    put('toon', 'box', '#6a4426', 0, 2.0, f + 0.18, 1.5, 0.3, 0.06); // the sign board over the door
+    put('glow', 'box', '#7fd8ff', 0, 2.0, f + 0.22, 1.3, 0.04, 0.02);
+  },
   house_a(r, w, d) { TOWN_BUILD.cottage(w, d, ROOFS[Math.floor(r * 4)], false); },
   house_b(r, w, d) { TOWN_BUILD.cottage(w, d, ROOFS[(Math.floor(r * 4) + 1) % 4], r > 0.5); },
   tavern(r, w, d) {
@@ -2154,6 +2169,14 @@ if (INDOOR) {
   put('toon', 'cyl', '#2a2420', 0, 3.25, 0, 0.02, 0.5, 0.02);
   put('glow', 'sph', '#ffe8b0', 0, 2.92, 0, 0.16);
   put('toon', 'cone', '#3a3438', 0, 3.05, 0, 0.26, 0.18, 0.26);
+  HATCHES.forEach((h) => { // a trapdoor in the floor: a dark shaft in a timber collar, the top of a ladder, and the lid propped open against the wall
+    at(h.x + 0.5, h.y + 0.5);
+    put('flat', 'box', '#000000', 0, 0.015, 0, 1.3, 0.02, 1.3);
+    for (const [x, z, w, d] of [[0, -0.72, 1.6, 0.16], [0, 0.72, 1.6, 0.16], [-0.72, 0, 0.16, 1.28], [0.72, 0, 0.16, 1.28]]) put('toon', 'box', '#7a4a28', x, 0.07, z, w, 0.14, d);
+    for (const sx of [-0.28, 0.28]) put('toon', 'box', '#a06e46', sx, 0.15, -0.25, 0.08, 0.9, 0.08);
+    for (let i = 0; i < 3; i++) put('toon', 'box', '#a06e46', 0, -0.05 + i * 0.28, -0.25, 0.56, 0.06, 0.07);
+    put('toon', 'box', '#8a5a30', 0, 0.74, -0.44, 1.4, 0.07, 1.3, -1.2);
+  });
 }
 
 // arena: stone pit wall, three tiers of stands with a crowd, a gatehouse on the south side,
@@ -2507,6 +2530,7 @@ if (A.sailing) {
   boats.push({ g: buildGroup(() => BUILD.sloop(0, 3, 2)), x: 20.5 + HX, y: 0, z: 33.6 + HZ, ph: 0.7, mine: true });
 }
 // a portal out to sendy.gg (the Avenues' big plot), with its little sprout standing beside it
+const LINK = A.link || null; // a door out to another site: stand at it and press F
 const PORTAL = A.portal ? { ...A.portal, ring: makePortal(), sprout: makeSprout() } : null;
 if (PORTAL) {
   PORTAL.ring.position.set(PORTAL.x, 0, PORTAL.y);
@@ -2529,6 +2553,7 @@ const craftAt = placed.filter((o) => o.key === 'craft_table').map((o) => ({ x: o
 let action = null;
 function currentAction() {
   if (PORTAL && Math.hypot(P.x - PORTAL.x, P.z - PORTAL.y) < 2) return { text: `Press F to go through the portal to ${PORTAL.name}`, btn: '\u{1F300} Portal', run: () => { location.href = PORTAL.href; } };
+  if (LINK && Math.hypot(P.x - LINK.x, P.z - LINK.y) < 1.6) return { text: `Press F to enter ${LINK.name}`, btn: '\u{1F6AA} Enter', run: () => { location.href = LINK.href; } };
   const fa = farmAction();
   if (fa) return fa;
   for (const l of LADDERS) if (Math.hypot(P.x - (l.x + 0.5), P.z - (l.y + 0.5)) < 1.7) {
@@ -2536,6 +2561,7 @@ function currentAction() {
     return { text: `${l.dir === 'down' ? '\u25BC' : '\u25B2'} Press F to ${verb.toLowerCase()} \u00B7 to ${l.floor.code} ${l.floor.name}`, btn: `${l.dir === 'down' ? '\u25BC' : '\u25B2'} ${verb}`,
       run: () => goTo(`/game/world3d/?area=${l.to}&from=${AREA}`) };
   }
+  for (const h of HATCHES) if (Math.hypot(P.x - (h.x + 0.5), P.z - (h.y + 0.5)) < 1.7) return { text: '\u25BC Press F to climb down the hatch \u00B7 Fossil Dig', btn: '\u26CF Dig', run: openDig };
   if (BOARD_AT && Math.hypot(P.x - BOARD_AT.x, P.z - BOARD_AT.z) < 2) return { text: 'Press F to set sail', btn: '⛵ Set sail', run: setSail };
   for (const s of shopSpots) if (Math.hypot(P.x - s.x, P.z - s.z) < 2.4) return { text: `Press F to shop at ${s.name}`, btn: '\u{1F6D2} Shop', run: () => openShop(s.name) };
   if (craftAt && Math.hypot(P.x - craftAt.x, P.z - craftAt.z) < 2.3) return { text: 'Press F to use the crafting table', btn: '\u{1F528} Craft', run: openCraft };
@@ -3160,6 +3186,7 @@ function infoOf(id) {
 }
 let modal = null; // { kind: 'shop' | 'craft', name, tab }
 const openShop = (name) => { exitLock(); modal = { kind: 'shop', name, tab: 'buy' }; toggleBag(false); renderModal(); };
+const openDig = () => { exitLock(); modal = { kind: 'fossil' }; toggleBag(false); openFossilDig(() => { modal = null; }); }; // the overlay swallows keys itself
 const openCraft = () => { exitLock(); modal = { kind: 'craft' }; toggleBag(false); renderModal(); };
 function closeModal() { modal = null; $('shopPanel').hidden = true; }
 function gearButton(id) {
