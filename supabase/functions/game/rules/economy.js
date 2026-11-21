@@ -14,7 +14,7 @@
 import { SHOPS, SELL, RECIPES, CONSUMABLES } from './shops.js';
 import { CROPS, BUILDS, ALTAR } from './farm.js';
 import { BLOCKS, unpack, pack, canPlace } from './blocks.js';
-import { GUILD_ITEMS, newGuild, normGuild, guildAction, heroById, heroBusy, allyKit, ALLY, ALLY_CD_SLACK } from './guild.js';
+import { GUILD_ITEMS, newGuild, normGuild, guildAction, heroById, heroBusy, allyKit, petOf, ALLY, ALLY_CD_SLACK } from './guild.js';
 
 // Each monster's HP and walking speed (tiles a second), and what it pays out: XP on the kill,
 // then a gold drop and an item drop to pick up. (Damage and the rest of how it fights are in
@@ -454,7 +454,7 @@ export function applyAction(s, a, ctx) {
       const at = Number(a.at), mx = Number(a.mx), mz = Number(a.mz);
       if (![at, mx, mz].every(Number.isFinite)) return 'bad hit';
       if (!clockOk(e, at, now, ctx.sent)) return 'too fast';
-      const kit = allyKit(h);
+      const kit = allyKit(h, petOf(g, h));
       if (!ctx.dev) {
         if (!couldReach(foe.pos, mx, mz, at, MONSTER_LOOT[foe.m].speed, MONSTER_LOOT[foe.m].dash)) return 'monster moved too fast';
         if (!couldReach(e.pos, mx, mz, at, PLAYER_SPEED, ALLY.leash + kit.range)) return 'out of reach'; // it fights near you

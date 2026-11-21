@@ -87,3 +87,48 @@ test('a companion at your side: follow, fight, and the server checks its hits', 
   assert.equal(go({ t: 'g_quest', where: 'woods', party: [h.id], n: 1 }), '');
   assert.equal(s.econ.guild.follow, 0);
 });
+
+test('pets: hatch, give to a companion, and their bonuses; stamina tonics', async () => {
+  const { PETS, petBonus, allyKit, staminaOf, STAMINA_MAX, HATCH_GOLD } = await import('../game/world3d/guild.js');
+  const s = { econ: newEcon(), owned: [], farm: null };
+  s.econ.gold = 1000;
+  let now = 7e9;
+  const go = (a) => applyAction(s, a, { now, minute: MIN, rand, isGear: () => false });
+  go({ t: 'g_recruit' }); go({ t: 'g_recruit' });
+  const [h, h2] = s.econ.guild.heroes;
+  assert.equal(go({ t: 'g_hatch' }), 'no egg');
+  s.econ.bag.pet_egg = 2;
+  const gold = s.econ.gold;
+  assert.equal(go({ t: 'g_hatch' }), '');
+  assert.equal(s.econ.gold, gold - HATCH_GOLD);
+  assert.equal(s.econ.bag.pet_egg, 1);
+  const pet = s.econ.guild.pets[0];
+  assert.ok(PETS[pet.kind] && pet.hero === 0);
+  assert.equal(go({ t: 'g_pet', pet: pet.id, hero: h.id }), '');
+  assert.equal(pet.hero, h.id);
+  assert.equal(go({ t: 'g_pet', pet: pet.id, hero: h2.id }), '', 'moves to another companion');
+  assert.equal(pet.hero, h2.id);
+  // a battle pet makes its companion hit harder
+  const plain = allyKit(h2).dmg, fire = allyKit(h2, { kind: 'emberpup', rar: 0 }).dmg;
+  assert.ok(fire > plain);
+  assert.equal(petBonus({ kind: 'emberpup', rar: 2 }), PETS.emberpup.bonus + 10);
+  // away on an expedition: its pet can't be taken off
+  go({ t: 'g_quest', where: 'docks', party: [h2.id], n: 5 });
+  assert.equal(go({ t: 'g_pet', pet: pet.id, hero: 0 }), 'hero busy');
+  // tonics give stamina back
+  assert.equal(staminaOf(h2, now, MIN), 0);
+  s.econ.bag.stamina_tonic = 1;
+  assert.equal(go({ t: 'g_tonic', hero: h2.id, id: 'stamina_tonic' }), '');
+  assert.equal(staminaOf(h2, now, MIN), 10);
+  assert.equal(go({ t: 'g_tonic', hero: h2.id, id: 'stamina_tonic' }), 'none left');
+  s.econ.bag.grand_tonic = 1;
+  assert.equal(go({ t: 'g_tonic', hero: h.id, id: 'grand_tonic' }), 'not tired');
+  assert.equal(staminaOf(h, now, MIN), STAMINA_MAX);
+});
+
+test('tonics are brewed at the crafting table', () => {
+  const s = { econ: newEcon(), owned: [], farm: null };
+  s.econ.bag = { moonleaf: 2, minnow: 1 };
+  assert.equal(applyAction(s, { t: 'craft', id: 'stamina_tonic' }, { now: 1, isGear: () => false }), '');
+  assert.equal(s.econ.bag.stamina_tonic, 1);
+});

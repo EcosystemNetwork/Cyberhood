@@ -92,7 +92,7 @@ test('a kill pays XP, then its drops pay out once when picked up', async () => {
   assert.equal(r.data.results[11], ''); // the amount the browser asks for doesn't matter...
   const { gold, ...rest } = r.data.state.econ;
   assert.ok(gold >= 2 && gold <= 4, `gold ${gold}`); // ...the server rolls slime 1-2 + bat 1-2
-  assert.deepEqual(rest, { xp: 12, kills: 2, bag: { slime_gel: 1 }, loot: [], imported: false, barrels: {}, gearInv: [], guild: { heroes: [], next: 1, quests: [], qnext: 1, log: [], follow: 0 } });
+  assert.deepEqual(rest, { xp: 12, kills: 2, bag: { slime_gel: 1 }, loot: [], imported: false, barrels: {}, gearInv: [], guild: { heroes: [], next: 1, quests: [], qnext: 1, log: [], follow: 0, pets: [], pnext: 1 } });
 });
 
 test('combat: only hits the server believes can kill', async () => {
@@ -229,7 +229,7 @@ test('progress from before cloud saves can be brought in once, within one value 
     { t: 'import', field: { gold: 100 } }, { t: 'chest', id: 'wreck' });
   assert.deepEqual(r.data.results, ['', 'already imported', 'already looted']);
   const left = E.IMPORT_CAPS.value - E.valueOf('cutlass') - 99 * E.valueOf('slime_gel');
-  assert.deepEqual(r.data.state.econ, { gold: left, xp: 300, kills: 0, bag: { slime_gel: 99 }, loot: ['wreck'], imported: true, barrels: {}, gearInv: [], guild: { heroes: [], next: 1, quests: [], qnext: 1, log: [], follow: 0 } });
+  assert.deepEqual(r.data.state.econ, { gold: left, xp: 300, kills: 0, bag: { slime_gel: 99 }, loot: ['wreck'], imported: true, barrels: {}, gearInv: [], guild: { heroes: [], next: 1, quests: [], qnext: 1, log: [], follow: 0, pets: [], pnext: 1 } });
   assert.deepEqual(r.data.state.owned, ['cutlass']);
 });
 

@@ -549,7 +549,7 @@ import { ARENA_CENTER, ARENA_RADIUS, standY, standBlocked, tomatoArc, TOMATO_GRA
   HAZARDS, TELL_MS, eventsNear, BUFFS, buffAt } from './arena.js';
 import * as arenaMod from './arena.js';
 import { FLOORS, floorMap, BELOW, ABOVE, SHIFT_1F } from './mine.js';
-import { GUILD_ITEMS } from './guild.js';
+import { GUILD_ITEMS, PETS } from './guild.js';
 import { createGuildView } from './guildview.js';
 for (const id of BLOCK_IDS) FARM_ITEMS['block_' + id] = { name: BLOCKS[id].name, emoji: BLOCKS[id].emoji, info: 'Building block · place it on your plot in build mode (G)' };
 for (const [id, it] of Object.entries(GUILD_ITEMS)) FARM_ITEMS[id] = it; // what Guild expeditions bring home
@@ -3471,6 +3471,40 @@ function hitMonster(m, power = statNow('atk'), kind = 'swing', hand = 'R', att =
   if (!mobHost() && mp.live) mp.channel.send({ type: 'broadcast', event: 'mobhit', payload: { id: m.sid, dmg, kbx: +m.kbx.toFixed(2), kbz: +m.kbz.toFixed(2) } });
   floatText(m.x, m.cfg.tag || (m.cfg.big ? 2.2 : 1.3), m.z, String(dmg), '#ffffff');
   if (m.hp <= 0) killMonster(m);
+}
+// A Guild pet (guild.js PETS), small and round like everything else here: a blob, a pebble, a fish or a cat.
+const PET_MATS = {};
+function makePet(kind) {
+  const P = PETS[kind], root = new THREE.Group(), g = new THREE.Group();
+  g.scale.setScalar(1.5); // a touch bigger than life, so it reads at camera distance
+  root.add(g);
+  const mat = PET_MATS[kind] ||= toon({ color: P.color, ...(kind === 'emberpup' ? { emissive: '#7a2000' } : {}) });
+  const dark = PET_MATS[kind + '_d'] ||= toon({ color: new THREE.Color(P.color).multiplyScalar(0.6) });
+  if (P.shape === 'blob') { // a sprouting jelly
+    part(SPH, mat, g, 0, 0.17, 0, 0.2, 0.17, 0.2);
+    part(new THREE.ConeGeometry(1, 1, 5), dark, g, 0, 0.38, 0, 0.04, 0.1, 0.04);
+    part(SPH, dark, g, 0.05, 0.43, 0, 0.06, 0.025, 0.035);
+    eyes(g, 0.07, 0.2, 0.15, 0.04);
+  } else if (P.shape === 'rock') { // a pebble with feet
+    part(new THREE.DodecahedronGeometry(1, 0), mat, g, 0, 0.18, 0, 0.2, 0.16, 0.18);
+    for (const sx of [-1, 1]) part(SPH, dark, g, sx * 0.09, 0.03, 0.04, 0.05, 0.03, 0.06);
+    eyes(g, 0.07, 0.22, 0.14, 0.035);
+  } else if (P.shape === 'fish') { // a little fish that swims in the air
+    part(SPH, mat, g, 0, 0, 0, 0.11, 0.13, 0.2);
+    const tail = part(new THREE.ConeGeometry(1, 1, 4), dark, g, 0, 0, -0.24, 0.1, 0.14, 0.03);
+    tail.rotation.x = -Math.PI / 2;
+    part(SPH, dark, g, 0, 0.12, -0.02, 0.02, 0.06, 0.08);
+    eyes(g, 0.06, 0.04, 0.13, 0.03);
+  } else { // a cat-ish critter (Mosskit, Emberpup)
+    part(SPH, mat, g, 0, 0.15, -0.04, 0.13, 0.12, 0.18);
+    part(SPH, mat, g, 0, 0.3, 0.13, 0.13);
+    for (const sx of [-1, 1]) part(new THREE.ConeGeometry(1, 1, 4), dark, g, sx * 0.08, 0.43, 0.12, 0.045, 0.09, 0.04);
+    const tail = part(new THREE.CylinderGeometry(0.4, 1, 1, 6), dark, g, 0, 0.27, -0.24, 0.03, 0.22, 0.03);
+    tail.rotation.x = -0.6;
+    eyes(g, 0.055, 0.32, 0.24, 0.035);
+  }
+  scene.add(root);
+  return root;
 }
 // Your companion's hit (guildview.js): same as yours on screen, sent as 'ahit' so the server checks it
 // against the companion's own stats (guild.js allyKit).
@@ -6725,7 +6759,7 @@ guildView = createGuildView({
   online: () => !SOLO && !!sessionKey(), serverNow: () => Date.now() + (Ledger.status.offset || 0),
   act: (a) => Ledger.act(a), save: saveField, refresh: () => { updateHud(); renderBag(); }, toast,
   makeHero: (look) => makeHero(look), toScreen, free,
-  monsters: () => monsters, canFight: () => !ARENA && !STANDS && !fainted, hitMonster: allyHitMonster, burst,
+  monsters: () => monsters, canFight: () => !ARENA && !STANDS && !fainted, hitMonster: allyHitMonster, burst, makePet,
 });
 setInterval(() => { if (modal && modal.kind === 'guild') renderModal(); }, 1000); // countdowns
 Ledger.on('state', (st) => {

@@ -69,17 +69,39 @@ export const GUILD_ITEMS = {
   moonleaf:    { name: 'Moonleaf',    emoji: '\u{1F33F}', info: 'From foraging expeditions' },
   glowcap:     { name: 'Glowcap',     emoji: '\u{1F344}', info: 'A rare find in the Woods' },
   root_dew:    { name: 'Root Dew',    emoji: '\u{1F4A7}', info: 'Needed to summon a new companion' },
+  pet_egg:     { name: 'Pet Egg',     emoji: '\u{1F95A}', info: 'Hatch it at Hero Hall (Pets tab)' },
+  stamina_tonic: { name: 'Stamina Tonic', emoji: '\u{1F9C3}', info: 'Gives a companion 10 stamina (Hero Hall roster)' },
+  grand_tonic:   { name: 'Grand Tonic',   emoji: '\u{1F37E}', info: 'Gives a companion 25 stamina (Hero Hall roster)' },
 };
+// Brewed at the crafting table (shops.js RECIPES): stamina each gives back.
+export const TONICS = { stamina_tonic: 10, grand_tonic: 25 };
+
+/* ---- pets ----
+   Eggs turn up on expeditions. Hatched at Hero Hall, a pet goes to one companion: a trade pet
+   makes that trade's expeditions find more, a battle pet makes its companion hit harder.
+   `bonus` is the percentage at Common; each rarity step adds PET_RARITY_BONUS. */
+export const PETS = {
+  sproutling: { name: 'Sproutling', prof: 'farming',  bonus: 10, color: '#6ad44a', shape: 'blob' },
+  pebblit:    { name: 'Pebblit',    prof: 'mining',   bonus: 10, color: '#9a8f88', shape: 'rock' },
+  finnet:     { name: 'Finnet',     prof: 'fishing',  bonus: 10, color: '#4aa8e8', shape: 'fish' },
+  mosskit:    { name: 'Mosskit',    prof: 'foraging', bonus: 10, color: '#3a8a5a', shape: 'cat' },
+  emberpup:   { name: 'Emberpup',   prof: 'battle',   bonus: 8,  color: '#ff7a2a', shape: 'cat' },
+};
+export const PET_RARITY_BONUS = 5;
+export const PET_MAX = 12;
+export const HATCH_GOLD = 30;
+export const petBonus = (p) => PETS[p.kind].bonus + p.rar * PET_RARITY_BONUS;
+export const petOf = (g, h) => (g.pets || []).find((p) => p.hero === h.id) || null;
 
 export const EXPEDITIONS = {
   mine: { name: 'Mine Shafts', prof: 'mining', area: 'cave', minutes: 6, stamina: 5,
-    loot: [['copper_ore', 0.7, [1, 3]], ['silver_ore', 0.3, [1, 2]], ['sun_gem', 0.04, [1, 1]], ['root_dew', 0.12, [1, 1]]], gold: [1, 4] },
+    loot: [['copper_ore', 0.7, [1, 3]], ['silver_ore', 0.3, [1, 2]], ['sun_gem', 0.04, [1, 1]], ['root_dew', 0.12, [1, 1]], ['pet_egg', 0.025, [1, 1]]], gold: [1, 4] },
   fields: { name: 'Field Rows', prof: 'farming', area: 'fields', minutes: 6, stamina: 5,
-    loot: [['wheat', 0.6, [1, 3]], ['carrot', 0.5, [1, 3]], ['pumpkin', 0.06, [1, 1]], ['root_dew', 0.12, [1, 1]]], gold: [0, 2] },
+    loot: [['wheat', 0.6, [1, 3]], ['carrot', 0.5, [1, 3]], ['pumpkin', 0.06, [1, 1]], ['root_dew', 0.12, [1, 1]], ['pet_egg', 0.025, [1, 1]]], gold: [0, 2] },
   docks: { name: 'Harbour Nets', prof: 'fishing', area: 'docks', minutes: 6, stamina: 5,
-    loot: [['minnow', 0.75, [1, 3]], ['river_bass', 0.3, [1, 2]], ['goldfin', 0.04, [1, 1]], ['root_dew', 0.12, [1, 1]]], gold: [0, 3] },
+    loot: [['minnow', 0.75, [1, 3]], ['river_bass', 0.3, [1, 2]], ['goldfin', 0.04, [1, 1]], ['root_dew', 0.12, [1, 1]], ['pet_egg', 0.025, [1, 1]]], gold: [0, 3] },
   woods: { name: 'Deep Woods', prof: 'foraging', area: 'woods', minutes: 6, stamina: 5,
-    loot: [['moonleaf', 0.7, [1, 3]], ['spore_cap', 0.4, [1, 2]], ['glowcap', 0.05, [1, 1]], ['root_dew', 0.12, [1, 1]]], gold: [0, 2] },
+    loot: [['moonleaf', 0.7, [1, 3]], ['spore_cap', 0.4, [1, 2]], ['glowcap', 0.05, [1, 1]], ['root_dew', 0.12, [1, 1]], ['pet_egg', 0.025, [1, 1]]], gold: [0, 2] },
 };
 
 export const ROSTER_MAX = 12;
@@ -106,17 +128,19 @@ export const summonRestMinutes = (h) => 60 * (1 + h.sums);     // a parent rests
 export const ALLY = { leash: 7, aggro: 7 }; // tiles from you it will go to fight / looks for monsters
 export const ALLY_CD_SLACK = 0.85; // a hit may come this fraction of its cooldown early (frame timing)
 const MELEE = { range: 1.4, cd: 1.0 }, RANGED = { range: 7, cd: 1.3 };
-export function allyKit(h) {
+export function allyKit(h, pet) {
   const c = CLASSES[h.cls], ranged = ['ranger', 'sage', 'oracle'].includes(h.cls);
   const power = c.main.reduce((n, k) => n + h.stats[k], 0) / 2; // the class's two main stats
-  return { ...(ranged ? RANGED : MELEE), ranged, dmg: Math.round(3 + power * 0.6 + h.lv * 1.5) }; // dmg: the most one hit can do
+  const boost = pet && PETS[pet.kind].prof === 'battle' ? 1 + petBonus(pet) / 100 : 1;
+  return { ...(ranged ? RANGED : MELEE), ranged, dmg: Math.round((3 + power * 0.6 + h.lv * 1.5) * boost) }; // dmg: the most one hit can do
 }
-export const allyHit = (h, roll) => Math.max(1, Math.round(allyKit(h).dmg * (0.75 + 0.25 * roll)));
+export const allyHit = (h, pet, roll) => Math.max(1, Math.round(allyKit(h, pet).dmg * (0.75 + 0.25 * roll)));
 
 const NAMES_A = ['Bram', 'Tess', 'Odo', 'Fenna', 'Rook', 'Lio', 'Maeve', 'Garr', 'Sable', 'Wick', 'Hazel', 'Quill', 'Juno', 'Pell', 'Rusk', 'Ivy', 'Corin', 'Nell', 'Tamsin', 'Barley'];
+const PET_NAMES = ['Biscuit', 'Pip', 'Nutmeg', 'Clover', 'Tumble', 'Sprig', 'Pudding', 'Fizz', 'Button', 'Mochi', 'Pebble', 'Dumpling'];
 const NAMES_B = ['Thorn', 'Brook', 'Ashby', 'Moss', 'Fernley', 'Holt', 'Marrow', 'Reed', 'Stone', 'Briar', 'Dale', 'Wren', 'Hollow', 'Cole', 'Burrow'];
 
-export function newGuild() { return { heroes: [], next: 1, quests: [], qnext: 1, log: [], follow: 0 }; }
+export function newGuild() { return { heroes: [], next: 1, quests: [], qnext: 1, log: [], follow: 0, pets: [], pnext: 1 }; }
 export function normGuild(g) {
   const n = newGuild();
   if (!g || typeof g !== 'object') return n;
@@ -127,6 +151,8 @@ export function normGuild(g) {
     qnext: Number.isInteger(g.qnext) ? g.qnext : 1,
     log: Array.isArray(g.log) ? g.log.map((l) => ({ ...l })) : [],
     follow: Number.isInteger(g.follow) ? g.follow : 0,
+    pets: Array.isArray(g.pets) ? g.pets.map((p) => ({ ...p })) : [],
+    pnext: Number.isInteger(g.pnext) ? g.pnext : 1,
   };
 }
 
@@ -200,6 +226,7 @@ export function guildAction(g, e, a, ctx, add, has) {
       if (heroBusy(g, h.id)) return 'hero busy';
       g.heroes = g.heroes.filter((x) => x !== h);
       if (g.follow === h.id) g.follow = 0;
+      for (const p of g.pets) if (p.hero === h.id) p.hero = 0; // its pet waits at the hall
       return '';
     }
     case 'g_quest': { // { where, party: [hero ids], n: attempts }
@@ -228,7 +255,8 @@ export function guildAction(g, e, a, ctx, add, has) {
       for (const id of q.party) {
         const h = heroById(g, id);
         if (!h) continue;
-        const skill = (h.prof === X.prof ? PROF_LUCK : 1) * (1 + h.stats.lck / 100);
+        const pet = petOf(g, h);
+        const skill = (h.prof === X.prof ? PROF_LUCK : 1) * (1 + h.stats.lck / 100) * (pet && PETS[pet.kind].prof === X.prof ? 1 + petBonus(pet) / 100 : 1);
         for (let i = 0; i < q.n; i++) {
           for (const [item, chance, range] of X.loot) if (rand() < chance * skill) loot[item] = (loot[item] || 0) + between(rand, range);
           gold += between(rand, X.gold);
@@ -247,6 +275,40 @@ export function guildAction(g, e, a, ctx, add, has) {
       if (!h) return 'no such hero';
       if (heroBusy(g, h.id)) return 'hero busy';
       g.follow = h.id;
+      return '';
+    }
+    case 'g_tonic': { // { hero, id }: a stamina tonic from the bag
+      const h = heroById(g, a.hero), n = TONICS[a.id];
+      if (!h) return 'no such hero';
+      if (!n) return 'not a tonic';
+      if (!has(e.bag, a.id, 1)) return 'none left';
+      if (staminaOf(h, now, minute) >= STAMINA_MAX) return 'not tired';
+      add(e.bag, a.id, -1);
+      h.full = Math.max(now, (h.full || 0) - n * STAMINA_MINUTES * minute);
+      return '';
+    }
+    case 'g_hatch': { // hatch a pet egg
+      if (g.pets.length >= PET_MAX) return 'too many pets';
+      if (!has(e.bag, 'pet_egg', 1)) return 'no egg';
+      if (e.gold < HATCH_GOLD) return 'not enough gold';
+      add(e.bag, 'pet_egg', -1); e.gold -= HATCH_GOLD;
+      const kind = pick(rand, Object.keys(PETS));
+      const p = { id: g.pnext++, kind, rar: rollRarity(rand), hero: 0, name: pick(rand, PET_NAMES) };
+      g.pets.push(p);
+      log(g, { k: 'hatch', at: now, pet: p.id });
+      return '';
+    }
+    case 'g_pet': { // { pet, hero }: give a pet to a companion (hero 0: back to the hall)
+      const p = g.pets.find((x) => x.id === a.pet);
+      if (!p) return 'no such pet';
+      if (a.hero !== 0) {
+        const h = heroById(g, a.hero);
+        if (!h) return 'no such hero';
+        if (heroBusy(g, h.id)) return 'hero busy';
+        for (const o of g.pets) if (o.hero === h.id) o.hero = 0; // one pet each
+      }
+      if (p.hero && heroBusy(g, p.hero)) return 'hero busy'; // can't take it off someone who's away
+      p.hero = a.hero;
       return '';
     }
     case 'g_train': { // { hero, stat }: level up at the trainer, picking one stat to push

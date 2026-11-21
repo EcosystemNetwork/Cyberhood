@@ -15,19 +15,21 @@ import {
   ROSTER_MAX, PARTY_MAX, ATTEMPTS_MAX, STAMINA_MAX, RECRUIT_GOLD, PROF_SPEED,
   normGuild, guildAction, staminaOf, heroBusy, heroById, heroLook, levelXp, levelGold,
   maxSummons, summonGold, summonDew, ALLY, allyKit, allyHit,
+  PETS, PET_MAX, HATCH_GOLD, TONICS, petBonus, petOf,
 } from './guild.js';
 
-const ROLLED = new Set(['g_recruit', 'g_claim', 'g_train', 'g_summon']);
+const ROLLED = new Set(['g_recruit', 'g_claim', 'g_train', 'g_summon', 'g_hatch']);
 const SHOWN_MAX = 8;
 
 export function createGuildView(d) {
   /* d = { field, minute, online(), serverNow(), act(a), save(), refresh(), toast(msg),
            makeHero(look), toScreen(x, y, z), labelsEl, free(x, z), heroH, player: P, sfx,
            anchors: { hall, fields, woods, docks, cave: {x, z} } — where on this map each place is (missing: not on this map),
-           monsters(), canFight(), hitMonster(m, dmg, from, heroId), burst(x, y, z, color, n) — for the companion at your side } */
+           monsters(), canFight(), hitMonster(m, dmg, from, heroId), burst(x, y, z, color, n) — for the companion at your side,
+           makePet(kind) -> THREE.Group (a pet trotting after its companion) } */
   d.field.guild = normGuild(d.field.guild);
   const G = () => d.field.guild;
-  let pending = false, seenLog = topKey(G()), ui = { tab: 'roster', sel: [], where: 'mine', n: 1, train: null };
+  let pending = false, seenLog = topKey(G()), ui = { tab: 'roster', sel: [], where: 'mine', n: 1, train: null, petFor: 0 };
 
   function topKey(g) { const l = g.log[0]; return l ? `${l.k}:${l.at}` : ''; }
   const now = () => d.serverNow();
@@ -54,7 +56,8 @@ export function createGuildView(d) {
     'not enough gold': 'Not enough gold', 'too tired': 'Someone in that party is too tired: stamina comes back over time',
     'roster full': `Your guild is full (${ROSTER_MAX})`, 'not enough dew': 'Not enough Root Dew (expeditions find it)',
     'still resting': 'A parent is still resting from their last summon', 'not back yet': 'Not back yet', 'hero busy': 'That companion is busy',
-    'no summons left': 'A parent has no summons left',
+    'no summons left': 'A parent has no summons left', 'not tired': 'Already full of stamina', 'no egg': 'No Pet Egg in your bag',
+    'too many pets': 'Your guild has all the pets it can look after',
   };
   // The newest guild log entries since we last looked, as toasts.
   function announce() {
@@ -71,6 +74,7 @@ export function createGuildView(d) {
     if (l.k === 'recruit' && h) return `${h.name} joined: ${rar(h).name} ${clsOf(h).name}, ${PROFS[h.prof].name}`;
     if (l.k === 'summon' && h) return `Summoned ${h.name}: ${rar(h).name} ${clsOf(h).name}!`;
     if (l.k === 'train' && h) return `${h.name} reached Lv ${l.lv}`;
+    if (l.k === 'hatch') { const p = G().pets.find((x) => x.id === l.pet); return p ? `Hatched ${p.name} the ${RARITY[p.rar].name} ${PETS[p.kind].name}!` : ''; }
     if (l.k === 'quest') return `Back from ${EXPEDITIONS[l.where].name}: ${haul(l) || 'nothing this time'}`;
     return '';
   }
@@ -85,9 +89,9 @@ export function createGuildView(d) {
     panel.title.textContent = 'Hero Hall';
     panel.greet.textContent = pending ? 'The guild clerk is writing it down…'
       : `Companions ${g.heroes.length}/${ROSTER_MAX}. Recruit at the tavern, send them out, train them up, summon new ones.`;
-    panel.tabs.innerHTML = [['roster', 'Roster'], ['quest', 'Expeditions'], ['summon', 'Summon'], ['recruit', 'Recruit']]
+    panel.tabs.innerHTML = [['roster', 'Roster'], ['quest', 'Expeditions'], ['summon', 'Summon'], ['pets', 'Pets'], ['recruit', 'Recruit']]
       .map(([t, n]) => `<button data-tab="g:${t}" class="${ui.tab === t ? 'on' : ''}">${n}${t === 'quest' && ready() ? ' \u{2757}' : ''}</button>`).join('');
-    panel.list.innerHTML = ({ roster, quest, summon, recruit })[ui.tab]();
+    panel.list.innerHTML = ({ roster, quest, summon, pets, recruit })[ui.tab]();
   }
   const ready = () => G().quests.some((q) => now() >= q.end);
   const dis = (ok) => (ok && !pending ? '' : 'disabled');
@@ -95,7 +99,9 @@ export function createGuildView(d) {
   const heroName = (h) => `${h.name} <span style="color:${rar(h).color};font-size:13px">${rar(h).name}</span>`;
   function heroLine(h) {
     const st = staminaOf(h, now(), min());
-    return `Lv ${h.lv} ${clsOf(h).name} · ${PROFS[h.prof].emoji} ${PROFS[h.prof].name} · Gen ${h.gen} · \u{26A1}${st}/${STAMINA_MAX} · XP ${h.xp}/${levelXp(h.lv)}`;
+    const pet = petOf(G(), h);
+    return `Lv ${h.lv} ${clsOf(h).name} · ${PROFS[h.prof].emoji} ${PROFS[h.prof].name} · Gen ${h.gen} · \u{26A1}${st}/${STAMINA_MAX} · XP ${h.xp}/${levelXp(h.lv)}`
+      + (pet ? ` · \u{1F43E} ${pet.name}` : '');
   }
   const statLine = (h) => STATS.map((k) => `${k.toUpperCase()} ${h.stats[k]}`).join(' · ');
   function status(h) {
@@ -117,9 +123,38 @@ export function createGuildView(d) {
       const canTrain = h.xp >= levelXp(h.lv) && !heroBusy(g, h.id);
       const side = g.follow === h.id;
       const btn = `<button data-act="g_follow" data-id="${side ? 0 : h.id}" class="${side ? '' : 'alt'}" ${dis(side || !heroBusy(g, h.id))} title="Fights at your side">${side ? '\u{2714} With you' : 'Bring'}</button>`
-        + `<button data-act="g_pick_train" data-id="${h.id}" ${dis(canTrain && d.field.gold >= levelGold(h.lv))}>Train</button>`;
+        + `<button data-act="g_pick_train" data-id="${h.id}" ${dis(canTrain && d.field.gold >= levelGold(h.lv))}>Train</button>`
+        + tonicButton(h);
       return row(clsOf(h).emoji, heroName(h), `${heroLine(h)}<br>${statLine(h)}${status(h)}`, btn);
     }).join('');
+  }
+
+  // the smallest tonic in the bag that this companion can use
+  function tonicButton(h) {
+    if (staminaOf(h, now(), min()) >= STAMINA_MAX) return '';
+    const id = Object.keys(TONICS).find((k) => (d.field.bag[k] || 0) > 0);
+    return id ? `<button class="alt" data-act="g_tonic" data-id="${h.id}" data-x="${id}" ${dis(true)} title="+${TONICS[id]} stamina">\u{1F9C3} +${TONICS[id]}</button>` : '';
+  }
+  const petTitle = (p) => `${p.name} the ${PETS[p.kind].name} <span style="color:${RARITY[p.rar].color};font-size:13px">${RARITY[p.rar].name}</span>`;
+  const petPerk = (p) => (PETS[p.kind].prof === 'battle' ? `+${petBonus(p)}% damage when its companion fights at your side`
+    : `+${petBonus(p)}% finds on ${PROFS[PETS[p.kind].prof].name} expeditions`);
+  function pets() {
+    const g = G(), eggs = d.field.bag.pet_egg || 0;
+    let out = row('\u{1F95A}', `Hatch a Pet Egg (${HATCH_GOLD}g)`, `You have ${eggs} egg${eggs === 1 ? '' : 's'}. Expeditions sometimes find one. Pets ${g.pets.length}/${PET_MAX}.`,
+      `<button data-act="g_hatch" ${dis(eggs > 0 && d.field.gold >= HATCH_GOLD && g.pets.length < PET_MAX)}>Hatch</button>`);
+    for (const p of g.pets) {
+      const owner = p.hero && heroById(g, p.hero);
+      if (ui.petFor === p.id) {
+        const btns = g.heroes.filter((h) => !heroBusy(g, h.id)).map((h) => `<button class="${p.hero === h.id ? '' : 'alt'}" data-act="g_pet" data-id="${p.id}" data-x="${h.id}" ${dis(true)}>${clsOf(h).emoji} ${h.name}</button>`).join('');
+        out += `<div class="row" style="flex-wrap:wrap"><div class="ico">\u{1F43E}</div><div class="txt"><b>Who gets ${p.name}?</b><small>${petPerk(p)}</small></div>`
+          + `<div style="display:flex;flex-wrap:wrap;gap:4px;width:100%">${btns}<button class="alt" data-act="g_pet" data-id="${p.id}" data-x="0" ${dis(!owner || !heroBusy(g, owner.id))}>Hall</button><button class="alt" data-act="g_petfor" data-id="0">Cancel</button></div></div>`;
+        continue;
+      }
+      out += row('\u{1F43E}', petTitle(p), `${petPerk(p)} · ${owner ? `with ${owner.name}` : 'waiting at the hall'}`,
+        `<button class="alt" data-act="g_petfor" data-id="${p.id}" ${dis(!owner || !heroBusy(g, owner.id))}>${owner ? 'Move' : 'Give'}</button>`);
+    }
+    if (!g.pets.length) out += '<p class="shop-empty">No pets yet. Each pet helps one companion: trade pets find more on their trade\'s expeditions, an Emberpup makes its companion hit harder.</p>';
+    return out;
   }
 
   function quest() {
@@ -202,6 +237,10 @@ export function createGuildView(d) {
     else if (k === 'g_summon') { const [a, c] = ui.sel; ui.sel = []; act({ t: 'g_summon', a, b: c }); }
     else if (k === 'g_recruit') act({ t: 'g_recruit' });
     else if (k === 'g_follow') act({ t: 'g_follow', hero: +id });
+    else if (k === 'g_tonic') act({ t: 'g_tonic', hero: +id, id: b.dataset.x });
+    else if (k === 'g_hatch') act({ t: 'g_hatch' });
+    else if (k === 'g_petfor') ui.petFor = +id;
+    else if (k === 'g_pet') { ui.petFor = 0; act({ t: 'g_pet', pet: +id, hero: +b.dataset.x }); }
     render();
   }
   const setTab = (t) => { ui.tab = t; ui.sel = []; ui.train = null; render(); };
@@ -237,7 +276,7 @@ export function createGuildView(d) {
   }
   // The companion at your side: keeps up with you, and fights whatever comes near you.
   function fight(h, v, dt) {
-    const p = d.player, kit = allyKit(h);
+    const p = d.player, kit = allyKit(h, petOf(G(), h));
     v.cd = Math.max(0, v.cd - dt);
     if (Math.hypot(p.x - v.x, p.z - v.z) > 14) { v.x = p.x - Math.sin(p.heading) * 1.5; v.z = p.z - Math.cos(p.heading) * 1.5; } // fell far behind: catch up
     let foe = null, best = ALLY.aggro;
@@ -260,7 +299,7 @@ export function createGuildView(d) {
     // attack: in range and off cooldown
     if (foe && dist <= kit.range + 0.3 && v.cd <= 0) {
       v.cd = kit.cd; v.atk = 0;
-      const m = foe, dmg = allyHit(h, Math.random());
+      const m = foe, dmg = allyHit(h, petOf(G(), h), Math.random());
       setTimeout(() => {
         if (m.dead) return;
         if (kit.ranged) d.burst(m.x, 0.8, m.z, h.cls === 'ranger' ? '#c8823a' : '#9ae8ff', 8);
@@ -277,12 +316,31 @@ export function createGuildView(d) {
     const say = `Lv ${h.lv} ${clsOf(h).name} · ${foe ? '\u{2694}️ fighting' : 'with you'}`;
     if (v.small.textContent !== say) v.small.textContent = say;
   }
+  // A companion's pet trots along behind it (a fish swims beside it in the air, a little magic).
+  let clock = 0;
+  function petFollow(v, h, dt) {
+    const pet = petOf(G(), h);
+    if (v.pet && (!pet || v.pet.id !== pet.id)) { v.pet.g.removeFromParent(); v.pet = null; }
+    if (!pet || !d.makePet) return;
+    if (!v.pet) v.pet = { id: pet.id, g: d.makePet(pet.kind), x: v.x - 0.6, z: v.z - 0.6, heading: 0, fly: PETS[pet.kind].shape === 'fish' };
+    const P = v.pet, bx = v.x - Math.sin(v.heading) * 0.8 + Math.cos(v.heading) * 0.45, bz = v.z - Math.cos(v.heading) * 0.8 - Math.sin(v.heading) * 0.45;
+    const dx = bx - P.x, dz = bz - P.z, dist = Math.hypot(dx, dz);
+    const moving = dist > 0.12;
+    if (dist > 6) { P.x = bx; P.z = bz; }
+    else if (moving) { const step = Math.min(dist, (1 + dist * 3.5) * dt); P.x += (dx / dist) * step; P.z += (dz / dist) * step; P.heading = Math.atan2(dx, dz); }
+    const y = P.fly ? 0.55 + Math.sin(clock * 3 + pet.id) * 0.08 : moving ? Math.abs(Math.sin(clock * 11 + pet.id)) * 0.14 : 0;
+    P.g.position.set(P.x, y, P.z);
+    P.g.rotation.y = P.heading;
+    P.g.scale.y = moving || P.fly ? 1 : 1 + Math.sin(clock * 2.5 + pet.id) * 0.04; // breathing
+  }
+  const drop = (id, v) => { v.hero.root.removeFromParent(); v.el.remove(); if (v.pet) v.pet.g.removeFromParent(); views.delete(id); };
   function tick(dt) {
+    clock += dt;
     const want = wanted(), ids = new Set(want.map((w) => w.h.id));
-    for (const [id, v] of views) if (!ids.has(id)) { v.hero.root.removeFromParent(); v.el.remove(); views.delete(id); }
+    for (const [id, v] of views) if (!ids.has(id)) drop(id, v);
     for (const { h, q, anchor, side } of want) {
       let v = views.get(h.id);
-      if (v && v.side !== !!side) { v.hero.root.removeFromParent(); v.el.remove(); views.delete(h.id); v = null; } // changed role: start afresh
+      if (v && v.side !== !!side) { drop(h.id, v); v = null; } // changed role: start afresh
       if (!v) {
         const at = spotNear(anchor, 3);
         const el = document.createElement('div');
@@ -292,7 +350,7 @@ export function createGuildView(d) {
         v = { hero: d.makeHero(heroLook(h)), el, small: el.querySelector('small'), x: at.x, z: at.z, tx: at.x, tz: at.z, wait: Math.random() * 3, anchor, heading: 0, side: !!side, cd: 0, atk: -1 };
         views.set(h.id, v);
       }
-      if (side) { fight(h, v, dt); continue; }
+      if (side) { fight(h, v, dt); petFollow(v, h, dt); continue; }
       // amble between spots near the anchor; working companions stop to work
       const dx = v.tx - v.x, dz = v.tz - v.z, dist = Math.hypot(dx, dz);
       if (dist > 0.1) {
@@ -316,6 +374,7 @@ export function createGuildView(d) {
       const say = q ? (now() >= q.end ? `${PROFS[h.prof].emoji} done! collect at Hero Hall` : `${PROFS[EXPEDITIONS[q.where].prof].emoji} working · ${left(q.end - now())}`)
         : `Lv ${h.lv} ${clsOf(h).name} · \u{26A1}${staminaOf(h, now(), min())}`;
       if (v.small.textContent !== say) v.small.textContent = say;
+      petFollow(v, h, dt);
     }
   }
 
