@@ -99,6 +99,7 @@
   .menus button { padding: 6px 14px; border-radius: 999px; font-size: 15px; }
   #bagBtn { color: #1e3000; text-shadow: none; background: linear-gradient(#e6ff7a, #a8e000); box-shadow: 0 3px 0 var(--lime-dk), 0 0 12px rgba(200, 255, 46, 0.5); }
   #chatBtn { background: linear-gradient(#8ad8ff, #3a8ae0); box-shadow: 0 3px 0 #1a4a8a; }
+  #guildBtn { background: linear-gradient(#ffcf7a, #e08a1a); box-shadow: 0 3px 0 #8a4a08; }
   #soundBtn { background: #241040; box-shadow: 0 3px 0 #12031a; } #soundBtn.off { opacity: 0.6; }
   .toast { top: auto; bottom: 90px; padding: 8px 18px; }
 
@@ -160,6 +161,30 @@
   button.bag-item.on { border-color: var(--lime); box-shadow: 0 0 0 1px var(--lime) inset; }
   button.bag-item.on b { color: var(--lime); }
   button.bag-item.off { opacity: 0.6; } button.bag-item.off b { color: #c8b0d8; }
+  /* Diablo-style gear stash grid */
+  .gear-grid { display: grid; grid-template-columns: repeat(5, 44px); grid-auto-rows: 44px; gap: 2px; background: #07011a; border: 2px solid #2a0a4a; border-radius: 8px; padding: 3px; overflow: hidden; }
+  .gear-cell { background: #150f24; border: 1.5px solid #2a1a3a; border-radius: 4px; display: flex; align-items: center; justify-content: center; cursor: pointer; overflow: hidden; position: relative; }
+  .gear-cell[data-w="2"] { grid-column: span 2; } .gear-cell[data-h="2"] { grid-row: span 2; } .gear-cell[data-h="3"] { grid-row: span 3; }
+  .gear-cell img { width: 60%; height: 60%; object-fit: contain; image-rendering: pixelated; }
+  .gear-cell[data-w="2"] img, .gear-cell[data-h="2"] img { width: 54%; height: 54%; }
+  .gear-cell:hover, .gear-cell:focus-visible { border-color: var(--lime); outline: none; }
+  .gear-cell[data-rarity="uncommon"] { border-color: #3aad4a; }
+  .gear-cell[data-rarity="rare"] { border-color: #5080f0; box-shadow: 0 0 5px rgba(80,128,240,0.35) inset; }
+  .gear-cell[data-rarity="legendary"] { border-color: #e8c46a; box-shadow: 0 0 7px rgba(232,196,106,0.5) inset; }
+  .gear-cell.equipped { outline: 2px solid var(--lime); }
+  .gear-cell.selected { outline: 2px solid #c8d0ff; }
+  .gear-rar { position: absolute; top: 2px; right: 2px; font: 700 8px 'Nunito',sans-serif; }
+  .gear-cell[data-rarity="uncommon"] .gear-rar { color: #3aad4a; }
+  .gear-cell[data-rarity="rare"] .gear-rar { color: #6a9af0; }
+  .gear-cell[data-rarity="legendary"] .gear-rar { color: #e8c46a; }
+  .gear-empty { font: 700 12px/1.4 'Nunito',sans-serif; color: #6a5a7a; padding: 8px 4px; text-align: center; grid-column: 1 / -1; }
+  .bag-count { font: 600 11px 'Nunito',sans-serif; color: #9a8aaa; }
+  /* Gear compare panel */
+  #gearCompare { margin-top: 6px; padding: 8px 10px; background: #07011a; border: 2px solid #2a0a4a; border-radius: 10px; }
+  #gcHead { font: 700 13px/1.3 'Nunito',sans-serif; margin-bottom: 5px; }
+  #gcStats { font: 600 11px/1.6 'Nunito',sans-serif; color: #c8b0d8; }
+  #gcStats .up { color: #6aff8a; } #gcStats .dn { color: #ff6b6b; } #gcStats .eq { color: #9a8aaa; }
+  #gcStats > div { margin-bottom: 1px; }
   button.bag-item:disabled { cursor: default; border-color: #4a1a62; }
   .bag-empty { grid-column: 1 / -1; margin: 0; font: 700 13px/1.3 'Nunito', sans-serif; color: #c8b0d8; }
 
@@ -274,7 +299,7 @@
     .farmbar .seed { width: 76px; flex: none; } .farmbar i { display: none; } .farmbar .h { display: none; }
     #nearChip { top: 196px; max-width: calc(100% - 182px); left: 12px; transform: none; font-size: 13px; white-space: normal; }
     #buildMode { top: 104px; left: auto; right: 150px; transform: none; font-size: 12px; padding: 4px 10px; display: none; }
-    body.building #chat, body.building #chatBtn, body.building #camBtn, body.building #bagBtn { display: none; }
+    body.building #chat, body.building #chatBtn, body.building #camBtn, body.building #bagBtn, body.building #guildBtn { display: none; }
   }
   #crosshair { position: fixed; z-index: 3; left: 50%; top: 50%; width: 22px; height: 22px; margin: -11px 0 0 -11px; pointer-events: none;
     background: linear-gradient(#fff, #fff) center / 2px 100% no-repeat, linear-gradient(#fff, #fff) center / 100% 2px no-repeat; filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.8)); }
@@ -404,6 +429,7 @@ if (!window.SOLO) {
   </div>
   <div class="menus">
     <button id="bagBtn" type="button" tabindex="-1" aria-label="Bag">&#127890;<span class="lbl"> Bag</span><kbd>B</kbd></button>
+    <button id="guildBtn" type="button" tabindex="-1" aria-label="Guild">&#127984;<span class="lbl"> Guild</span><kbd>Y</kbd></button>
     <button id="chatBtn" type="button" tabindex="-1" aria-label="Chat">&#128172;<span class="lbl"> Chat</span><kbd>T</kbd></button>
     <button id="soundBtn" type="button" tabindex="-1" aria-label="Sound" aria-pressed="true">&#128266;<kbd>M</kbd></button>
   </div>
@@ -432,7 +458,7 @@ if (!window.SOLO) {
   </div>
 </div>
 <div id="joyRing" hidden><i></i></div>
-<div class="help" id="helpBar"><b>I</b> hide &middot; <b>WASD</b> move &middot; <b>Drag / Q E</b> look &middot; <b>Z X</b> tilt &middot; <b>Space</b> jump &middot; <b>'</b> / <b>J</b> right hand &middot; <b>;</b> left hand &middot; <b>Shift</b> nitro &middot; <b>C</b> camera &middot; <b>F</b> use &middot; <b>H</b> potion &middot; <b>N</b> smoke &middot; <b>B</b> bag &middot; <b>U</b> sprint toggle &middot; <b>V</b> view &middot; <b>L</b> auto-aim &middot; <b>T</b> chat &middot; <b>M</b> sound &middot; <b>Tab</b> target &middot; <b>/help</b> social</div>
+<div class="help" id="helpBar"><b>I</b> hide &middot; <b>WASD</b> move &middot; <b>Drag / Q E</b> look &middot; <b>Z X</b> tilt &middot; <b>Space</b> jump &middot; <b>'</b> / <b>J</b> right hand &middot; <b>;</b> left hand &middot; <b>Shift</b> nitro &middot; <b>C</b> camera &middot; <b>F</b> use &middot; <b>H</b> potion &middot; <b>N</b> smoke &middot; <b>B</b> bag &middot; <b>U</b> sprint toggle &middot; <b>Y</b> sheathe / draw &middot; <b>V</b> view &middot; <b>L</b> auto-aim &middot; <b>T</b> chat &middot; <b>M</b> sound &middot; <b>Tab</b> target &middot; <b>/help</b> social</div>
 <div id="crosshair" hidden></div>
 <div id="aimRing" hidden></div>
 <div id="aimArc" hidden></div>
@@ -466,7 +492,15 @@ if (!window.SOLO) {
 </div>
 <div class="panel bag" id="bagPanel" hidden>
   <div class="bag-head">Bag <button id="gearBtn" type="button">&#128737; Gear</button><span id="bagGold"></span></div>
-  <div id="outfit" hidden><div class="bag-sub">Outfit</div><div class="bag-grid" id="outfitGrid"></div><div class="bag-sub">Items</div></div>
+  <div id="outfit" hidden><div class="bag-sub">Outfit</div><div class="bag-grid" id="outfitGrid"></div></div>
+  <div class="bag-sub">Gear Stash <span id="gearStashCount" class="bag-count"></span></div>
+  <div class="gear-grid" id="gearStash"></div>
+  <div id="gearCompare" hidden>
+    <div id="gcHead"></div>
+    <div id="gcStats"></div>
+    <div class="btns"><button id="gcEquip" type="button">Equip</button><button id="gcDrop" class="alt" type="button">Discard</button></div>
+  </div>
+  <div class="bag-sub" id="itemsHead">Items</div>
   <div class="bag-grid" id="bagGrid"></div>
 </div>
 <div class="panel" id="arenaBar" hidden><b>ARENA</b><span class="k" id="arenaK"></span><span class="d" id="arenaD"></span><span id="arenaN"></span></div>
@@ -510,12 +544,15 @@ import { sfx } from '/game/lib/sfx.js';
 import { SHOPS, SELL, RECIPES, CONSUMABLES } from './shops.js';
 import { CROPS, BUILDS, ALTAR, FARM_ITEMS } from './farm.js';
 import { BLOCKS, BLOCK_IDS, MAX_H, unpack, pack, standHeight, blockedAt, raycast, canPlace } from './blocks.js';
-import { MONSTER_LOOT, ASSIST_SHARE } from './economy.js';
+import { MONSTER_LOOT, ASSIST_SHARE, GEAR_DROPS, rollGearDrop } from './economy.js';
 import { ARENA_CENTER, ARENA_RADIUS, standY, standBlocked, tomatoArc, TOMATO_GRAVITY, TOMATO_COOLDOWN_MS,
   HAZARDS, TELL_MS, eventsNear, BUFFS, buffAt } from './arena.js';
 import * as arenaMod from './arena.js';
 import { FLOORS, floorMap, BELOW, ABOVE, SHIFT_1F } from './mine.js';
+import { GUILD_ITEMS } from './guild.js';
+import { createGuildView } from './guildview.js';
 for (const id of BLOCK_IDS) FARM_ITEMS['block_' + id] = { name: BLOCKS[id].name, emoji: BLOCKS[id].emoji, info: 'Building block · place it on your plot in build mode (G)' };
+for (const [id, it] of Object.entries(GUILD_ITEMS)) FARM_ITEMS[id] = it; // what Guild expeditions bring home
 
 const AREA = new URLSearchParams(location.search).get('area');
 const PLOT_Q = new URLSearchParams(location.search).get('plot'); // which player's clubhouse you're in
@@ -2541,6 +2578,11 @@ const shopSpots = placed.filter((o) => o.name && SHOPS[o.name]).map((o) => {
   const d = o.h / 2 + 0.7, ry = o.ry || 0;
   return { name: o.name, x: o.tx + o.w / 2 + Math.sin(ry) * d, z: o.ty + o.h / 2 + Math.cos(ry) * d };
 });
+// the Guild: Hero Hall (roster, expeditions, summoning) and the Glowcap Tavern (recruiting)
+const guildSpots = placed.filter((o) => o.name === 'Hero Hall' || o.name === 'Glowcap Tavern').map((o) => {
+  const d = o.h / 2 + 0.7, ry = o.ry || 0;
+  return { name: o.name, tab: o.name === 'Hero Hall' ? 'roster' : 'recruit', x: o.tx + o.w / 2 + Math.sin(ry) * d, z: o.ty + o.h / 2 + Math.cos(ry) * d };
+});
 const craftAt = placed.filter((o) => o.key === 'craft_table').map((o) => ({ x: o.tx + o.w / 2, z: o.ty + o.h + 0.6 }))[0];
 let action = null;
 function currentAction() {
@@ -2552,6 +2594,7 @@ function currentAction() {
       run: () => goTo(`/game/world3d/?area=${l.to}&from=${AREA}`) };
   }
   if (BOARD_AT && Math.hypot(P.x - BOARD_AT.x, P.z - BOARD_AT.z) < 2) return { text: 'Press F to set sail', btn: '⛵ Set sail', run: setSail };
+  for (const s of guildSpots) if (Math.hypot(P.x - s.x, P.z - s.z) < 2.6) return { text: `Press F: ${s.tab === 'recruit' ? 'recruit companions' : 'the Guild'} at ${s.name}`, btn: '\u{1F3F0} Guild', run: () => openGuild(s.tab) };
   for (const s of shopSpots) if (Math.hypot(P.x - s.x, P.z - s.z) < 2.4) return { text: `Press F to shop at ${s.name}`, btn: '\u{1F6D2} Shop', run: () => openShop(s.name) };
   if (craftAt && Math.hypot(P.x - craftAt.x, P.z - craftAt.z) < 2.3) return { text: 'Press F to use the crafting table', btn: '\u{1F528} Craft', run: openCraft };
   return null;
@@ -3062,9 +3105,18 @@ let nitro = 1, nitroLock = false, fainted = false, leaving = false;
 // HP / ATK / DEF / MAG come from the character's class and gear (or a base kit plus gear without one).
 function computeStats3d() {
   const c = charData, eq = Object.assign({}, (c || DEFAULT_CHAR).equipment || {});
-  if (c && typeof GAME !== 'undefined' && GAME.BASE[c.cls]) { const s = GAME.computeStats(c.cls, GAME.migrateEquipment(eq)); return { hp: s.hp, atk: s.atk, def: s.def, mag: s.mag }; }
-  const s = { hp: 100, atk: 10, def: 4, mag: 2 };
-  Object.values(eq).forEach((id) => { const it = typeof GAME !== 'undefined' && GAME.ITEMS[id]; if (it) for (const k in s) s[k] += it.stats[k] || 0; });
+  // map uids → base catalog ids so GAME.computeStats can look them up
+  const baseEq = {}; for (const [slot, id] of Object.entries(eq)) baseEq[slot] = resolveBase(id);
+  let s;
+  if (c && typeof GAME !== 'undefined' && GAME.BASE[c.cls]) {
+    const cs = GAME.computeStats(c.cls, GAME.migrateEquipment(baseEq));
+    s = { hp: cs.hp, atk: cs.atk, def: cs.def, mag: cs.mag, spd: cs.spd || 0 };
+  } else {
+    s = { hp: 100, atk: 10, def: 4, mag: 2, spd: 0 };
+    Object.values(baseEq).forEach((id) => { const it = typeof GAME !== 'undefined' && GAME.ITEMS[id]; if (it) for (const k in s) s[k] += (it.stats[k] || 0); });
+  }
+  // add instance bonus stats on top of catalog base
+  for (const id of Object.values(eq)) { const inst = resolveInst(id); if (inst) for (const [k, v] of Object.entries(inst.bonus)) s[k] = (s[k] || 0) + v; }
   return s;
 }
 const stats = computeStats3d();
@@ -3083,8 +3135,12 @@ let field = null;
 try { field = JSON.parse(localStorage.getItem(FIELD_KEY)); } catch (e) {}
 field = Object.assign({ xp: 0, kills: 0, gold: 0 }, field);
 if (!field.bag || typeof field.bag !== 'object') field.bag = {};
+let gearInv = [];
+try { const _gi = JSON.parse(localStorage.getItem('taproot_gear_inv')); if (Array.isArray(_gi)) gearInv = _gi.filter((g) => g && typeof g.uid === 'string').slice(0, 60); } catch (e) {}
+const saveGear = () => { try { localStorage.setItem('taproot_gear_inv', JSON.stringify(gearInv)); } catch (e) {} };
 if (LOCAL_DEV) field.bag.smoke_bomb = Math.max(field.bag.smoke_bomb || 0, 5); // local testing: always a few to hand (dev accounts get 5 on the server too)
 const saveField = () => { try { localStorage.setItem(FIELD_KEY, JSON.stringify(field)); } catch (e) {} };
+let guildView = null; // the Guild's panel and companions (guildview.js), made once the world is up
 
 // player hitbox: 0.56 x 0.4 tiles at the feet, checked against the tile grid
 function free(x, z) {
@@ -3168,6 +3224,17 @@ function setSprint(on) {
   $('sprintBtn').classList.toggle('on', on);
   toast(on ? 'Sprint on (Shift or U to walk)' : 'Walking');
 }
+// Sheathe: Y puts the weapons away on your back (so they don't flail about while you run) and
+// takes them out again; any attack draws them first. Other players see it too (sh in myState).
+let sheathed = false;
+try { sheathed = localStorage.getItem('taproot3d_sheathed') === '1'; } catch (e) {}
+function setSheathed(on, quiet) {
+  if (sheathed === on) return;
+  if (on && !hero.canSheathe) { if (!quiet) toast('Nothing in hand to put away'); return; }
+  sheathed = on;
+  try { localStorage.setItem('taproot3d_sheathed', on ? '1' : '0'); } catch (e) {}
+  if (!quiet) toast(on ? 'Weapon on your back (Y or attack to draw)' : 'Weapon drawn');
+}
 
 /* ---------- shops, crafting, gear and potions ---------- */
 let owned = [];
@@ -3175,7 +3242,13 @@ try { owned = JSON.parse(localStorage.getItem('taproot_owned')) || []; } catch (
 const saveOwned = () => { try { localStorage.setItem('taproot_owned', JSON.stringify(owned)); } catch (e) {} };
 const ITEM = (id) => (typeof GAME !== 'undefined' && GAME.ITEMS[id]) || null;
 const nameOf = (id) => (ITEM(id) || CONSUMABLES[id] || LOOT[id] || FARM_ITEMS[id] || { name: id }).name;
-const equippedIds = () => Object.values((charData || DEFAULT_CHAR).equipment || {});
+// Gear instances: an equipment slot may hold a catalog id OR a gear-drop uid.
+const resolveBase = (id) => { const g = id && gearInv.find((g) => g.uid === id); return g ? g.base : id; };
+const resolveItem = (id) => ITEM(resolveBase(id));
+const resolveInst = (id) => id && gearInv.find((g) => g.uid === id);
+// RARITY_COLOR mirrors GAME.RARITIES colors (available even before GAME loads)
+const RARITY_COLOR = { common: '#9a95a8', uncommon: '#6ad47a', rare: '#6a9af0', legendary: '#e8c46a' };
+const equippedIds = () => Object.values((charData || DEFAULT_CHAR).equipment || {}).map(resolveBase);
 function iconOf(id) {
   if (CONSUMABLES[id]) return CONSUMABLES[id].emoji;
   if (FARM_ITEMS[id]) return FARM_ITEMS[id].emoji;
@@ -3196,6 +3269,7 @@ function infoOf(id) {
 let modal = null; // { kind: 'shop' | 'craft', name, tab }
 const openShop = (name) => { exitLock(); modal = { kind: 'shop', name, tab: 'buy' }; toggleBag(false); renderModal(); };
 const openCraft = () => { exitLock(); modal = { kind: 'craft' }; toggleBag(false); renderModal(); };
+const openGuild = (tab) => { if (!guildView) return; exitLock(); modal = { kind: 'guild' }; if (tab) guildView.ui.tab = tab; toggleBag(false); renderModal(); };
 function closeModal() { modal = null; $('shopPanel').hidden = true; }
 function gearButton(id) {
   const eq = (charData || DEFAULT_CHAR).equipment || {};
@@ -3211,6 +3285,7 @@ function renderModal() {
   if (!modal) return;
   $('shopPanel').hidden = false;
   $('shopGold').textContent = `\u{1F4B0} ${field.gold} gold`;
+  if (modal.kind === 'guild') return guildView.render({ title: $('shopTitle'), greet: $('shopGreet'), tabs: $('shopTabs'), list: $('shopList'), open: () => !!modal && modal.kind === 'guild' });
   let rows = '';
   if (modal.kind === 'shop') {
     const shop = SHOPS[modal.name];
@@ -3282,18 +3357,23 @@ function shopAct(act, id, extra) {
 }
 // Put an owned item on, save it with the character and rebuild the 3D hero.
 function equip(id, slot) {
-  const it = ITEM(id);
+  const it = resolveItem(id); // handles catalog ids and gear instance uids
   if (!it) return;
-  slot = GAME.fits(it, slot) ? slot : it.slot; // a hand item goes in whichever hand you asked for
+  slot = GAME.fits(it, slot) ? slot : it.slot;
   charData = charData || JSON.parse(JSON.stringify(DEFAULT_CHAR));
   const eq = Object.assign({}, charData.equipment);
-  for (const h of ['rhand', 'lhand']) if (h !== slot && eq[h] === id) delete eq[h]; // one item, one hand
+  for (const h of ['rhand', 'lhand']) if (h !== slot && eq[h] === id) delete eq[h];
   eq[slot] = id;
   charData.equipment = eq;
   try { localStorage.setItem(HAD_CHAR ? 'taproot_character' : 'taproot3d_look', JSON.stringify(charData)); } catch (e) {}
-  if (HAD_CHAR) Ledger.act({ t: 'equip', eq });
+  if (HAD_CHAR) {
+    // server equip uses base catalog ids (instances aren't server-validated yet)
+    const serverEq = Object.fromEntries(Object.entries(eq).map(([s, v]) => [s, resolveBase(v)]));
+    Ledger.act({ t: 'equip', eq: serverEq });
+  }
   dressHero(charData);
-  floatText(P.x, 2, P.z, `Equipped ${it.name}`, '#c8ff2e');
+  const iName = it.name + (resolveInst(id) ? ' ✦' : '');
+  floatText(P.x, 2, P.z, `Equipped ${iName}`, '#c8ff2e');
   sfx.play('equip');
 }
 // rebuild the 3D hero, the stats and the portrait from a look (its equipment, hair, skin...)
@@ -3348,6 +3428,7 @@ function jump() {
 // hand 'R' (J, K or ') or 'L' (;): each hand has its own weapon, swing and cooldown (dual wield)
 function swing(hand = 'R') {
   if (STANDS) { throwTomato(); return; } // a spectator has no fight to swing at
+  if (!fainted && !modal) setSheathed(false, true); // swinging draws the weapon
   if (gear(hand === 'L' ? 'lhand' : 'rhand') === 'mirror_shield') { if (!fainted && !modal) parry(); return; }
   if (fireballs.some((f) => f.boom && f.hand === hand)) return; // the boomerang is still out
   const L = hand === 'L', caster = L ? hero.casterL : hero.caster;
@@ -3771,6 +3852,15 @@ function killMonster(m, quiet) {
   const [g0, g1] = m.cfg.gold, type = m.type; // the server counts the kill itself, from the hits
   spawnDrop({ kind: 'gold', m: type, amount: g0 + Math.floor(Math.random() * (g1 - g0 + 1)) }, m.x, m.z);
   spawnDrop({ kind: 'item', id: m.cfg.drop, amount: 1 }, m.x, m.z);
+  const gd = GEAR_DROPS[type];
+  if (gd && Math.random() < gd.chance) {
+    const ilvlRange = gd.ilvl, ilvl = ilvlRange[0] + Math.floor(Math.random() * (ilvlRange[1] - ilvlRange[0] + 1));
+    const uid = `g_${type}_${Date.now()}_${(Math.random() * 65536) | 0}`;
+    const inst = rollGearDrop(uid, ilvl);
+    spawnGearDrop({ kind: 'gear', m: type, uid, ilvl, inst }, m.x, m.z);
+    // show a rarity-tinted burst
+    burst(m.x, 0.5, m.z, RARITY_COLOR[inst.rarity] || '#fff', inst.rarity === 'legendary' ? 20 : inst.rarity === 'rare' ? 14 : 8);
+  }
   const before = 1 + Math.floor(field.xp / 100);
   field.xp += m.cfg.xp;
   field.kills += 1;
@@ -3867,14 +3957,52 @@ function spawnDrop(d, x, z) {
   Object.assign(d, { mesh, x, z, y: 0.6, vx: Math.cos(a) * 1.2, vz: Math.sin(a) * 1.2, vy: 3.5, born: performance.now(), ready: false, taken: 0 });
   drops.push(d);
 }
+// 2H / tall items (slot height 3 for staves, bows, tridents)
+const BIG_RHAND = new Set(['oak_staff','inferno_staff','thunder_staff','ice_wand','fire_wand','apprentice_wand','hunter_bow','composite_bow','trident']);
+function itemGridSize(id) {
+  const it = resolveItem(id || '');
+  if (!it) return [1, 1];
+  const slot = it.slot;
+  if (slot === 'eyes' || slot === 'pet') return [1, 1];
+  if (slot === 'head' || slot === 'feet') return [2, 2];
+  if (slot === 'body') return [2, 3];
+  if (slot === 'rhand' || slot === 'lhand') return BIG_RHAND.has(resolveBase(id)) ? [1, 3] : [1, 2];
+  return [1, 1];
+}
+function spawnGearDrop(d, x, z) {
+  const col = RARITY_COLOR[d.inst.rarity] || '#fff';
+  const mesh = new THREE.Mesh(GEM_GEO, toon({ color: col, emissive: col, emissiveIntensity: 0.55, flatShading: true }));
+  mesh.castShadow = true;
+  mesh.scale.setScalar(1.4); // larger than material drops so it's readable at a glance
+  mesh.position.set(x, 0.6, z);
+  scene.add(mesh);
+  const a = Math.random() * Math.PI * 2;
+  Object.assign(d, { mesh, x, z, y: 0.6, vx: Math.cos(a) * 1.4, vz: Math.sin(a) * 1.4, vy: 3.8, born: performance.now(), ready: false, taken: 0 });
+  drops.push(d);
+}
 function collect(d) {
   d.taken = 0.001;
+  if (d.kind === 'gear') { collectGear(d); return; }
   Ledger.act(d.kind === 'gold' ? { t: 'pickup', kind: 'gold', m: d.m, n: d.amount } : { t: 'pickup', kind: 'item', id: d.id });
   sfx.play(d.kind === 'gold' ? 'coin' : 'pickup');
   if (d.kind === 'gold') { field.gold += d.amount; floatText(P.x, 1.6, P.z, `+${d.amount} gold`, '#ffd34a'); }
   else { field.bag[d.id] = (field.bag[d.id] || 0) + d.amount; floatText(P.x, 1.6, P.z, `+1 ${LOOT[d.id].name}`, '#ffffff'); }
   saveField();
   updateHud();
+  renderBag();
+  hero.emote('happy', 0.7);
+}
+function collectGear(d) {
+  Ledger.act({ t: 'pickup', kind: 'gear', m: d.m, uid: d.uid, ilvl: d.ilvl });
+  if (!gearInv.some((g) => g.uid === d.uid)) {
+    if (gearInv.length >= 60) gearInv.shift(); // drop oldest if full
+    gearInv.push(d.inst);
+  }
+  const col = RARITY_COLOR[d.inst.rarity] || '#fff';
+  const it = ITEM(d.inst.base);
+  floatText(P.x, 1.6, P.z, it ? it.name + ' ✦' : d.inst.base, col);
+  sfx.play('pickup');
+  saveGear();
   renderBag();
   hero.emote('happy', 0.7);
 }
@@ -4033,8 +4161,73 @@ function toggleWear(id) {
   floatText(P.x, 2, P.z, `${info.name} ${on ? 'off' : 'on'}`, '#c8ff2e');
   sfx.play('equip');
 }
+function renderGearStash() {
+  const eq = (charData || DEFAULT_CHAR).equipment || {};
+  const equippedUids = new Set(Object.values(eq));
+  const n = gearInv.length;
+  $('gearStashCount').textContent = n ? `(${n}/60)` : '';
+  if (!n) {
+    $('gearStash').innerHTML = '<p class="gear-empty">No gear found yet. Defeat monsters to find drops.</p>';
+    $('itemsHead').hidden = false;
+    return;
+  }
+  $('gearStash').innerHTML = gearInv.map((inst) => {
+    const it = ITEM(inst.base);
+    const [w, h] = itemGridSize(inst.base);
+    const equipped = equippedUids.has(inst.uid);
+    return `<button type="button" class="gear-cell${equipped ? ' equipped' : ''}" data-uid="${inst.uid}" data-rarity="${inst.rarity}" data-w="${w}" data-h="${h}" title="${it ? it.name : inst.base} · ${inst.rarity} · ilvl ${inst.ilvl}">`
+      + `<img src="/game/assets/items/${inst.base}.png" alt="${it ? it.name : inst.base}">`
+      + (inst.rarity !== 'common' ? `<span class="gear-rar">${inst.rarity[0].toUpperCase()}</span>` : '')
+      + '</button>';
+  }).join('');
+  $('itemsHead').hidden = false;
+}
+function openGearCompare(uid) {
+  const inst = gearInv.find((g) => g.uid === uid);
+  if (!inst) return;
+  const it = ITEM(inst.base);
+  if (!it) return;
+  const eq = (charData || DEFAULT_CHAR).equipment || {};
+  const col = RARITY_COLOR[inst.rarity] || '#fff';
+  const rarLabel = inst.rarity.charAt(0).toUpperCase() + inst.rarity.slice(1);
+  $('gcHead').innerHTML = `<span style="color:${col}">${it.name}</span> <small style="opacity:0.65">${rarLabel} · ilvl ${inst.ilvl} · ${typeof GAME !== 'undefined' ? GAME.SLOT_LABELS[it.slot] : it.slot}</small>`;
+  const baseHtml = Object.entries(it.stats).map(([k, v]) => `<span class="eq">${v > 0 ? '+' : ''}${v} ${typeof GAME !== 'undefined' ? GAME.STAT_LABELS[k] : k}</span>`).join('  ');
+  const bonusHtml = Object.entries(inst.bonus).map(([k, v]) => `<span class="up">+${v} ${typeof GAME !== 'undefined' ? GAME.STAT_LABELS[k] : k}</span>`).join('  ');
+  const curId = eq[it.slot];
+  let cmpHtml = '';
+  if (curId) {
+    const curInst = resolveInst(curId), curBase = resolveBase(curId), curIt = ITEM(curBase);
+    if (curIt) {
+      const cur = Object.assign({}, curIt.stats); if (curInst) for (const [k, v] of Object.entries(curInst.bonus)) cur[k] = (cur[k] || 0) + v;
+      const nxt = Object.assign({}, it.stats); for (const [k, v] of Object.entries(inst.bonus)) nxt[k] = (nxt[k] || 0) + v;
+      const diff = {}; for (const k of ['hp','atk','def','mag','spd']) { const d = (nxt[k] || 0) - (cur[k] || 0); if (d) diff[k] = d; }
+      if (Object.keys(diff).length) cmpHtml = Object.entries(diff).map(([k, d]) => `<span class="${d > 0 ? 'up' : 'dn'}">${d > 0 ? '+' : ''}${d} ${typeof GAME !== 'undefined' ? GAME.STAT_LABELS[k] : k}</span>`).join('  ');
+    }
+  }
+  $('gcStats').innerHTML = (baseHtml ? `<div>${baseHtml}</div>` : '') + (bonusHtml ? `<div>${bonusHtml}</div>` : '') + (cmpHtml ? `<div>vs equipped: ${cmpHtml}</div>` : '');
+  $('gcEquip').onclick = () => { equip(inst.uid, it.slot); closeGearCompare(); renderBag(); };
+  $('gcDrop').onclick = () => { dropGearInst(uid); closeGearCompare(); renderBag(); };
+  $('gearCompare').hidden = false;
+  $('gearStash').querySelectorAll('[data-uid]').forEach((b) => b.classList.toggle('selected', b.dataset.uid === uid));
+}
+function closeGearCompare() {
+  $('gearCompare').hidden = true;
+  $('gearStash').querySelectorAll('.selected').forEach((b) => b.classList.remove('selected'));
+}
+function dropGearInst(uid) {
+  const idx = gearInv.findIndex((g) => g.uid === uid);
+  if (idx < 0) return;
+  gearInv.splice(idx, 1);
+  Ledger.act({ t: 'gdrop', uid });
+  // un-equip if currently worn
+  const eq = (charData || DEFAULT_CHAR).equipment || {};
+  for (const [slot, id] of Object.entries(eq)) { if (id === uid) { delete eq[slot]; charData.equipment = eq; dressHero(charData); break; } }
+  saveGear();
+  floatText(P.x, 1.8, P.z, 'Discarded', '#9a8aaa');
+}
 function renderBag() {
   renderOutfit();
+  renderGearStash();
   $('bagGold').innerHTML = `<img src="/game/world/assets/loot/gold.png" alt="">${field.gold} gold`;
   const items = Object.entries(field.bag).filter(([id, n]) => (LOOT[id] || CONSUMABLES[id] || FARM_ITEMS[id]) && n > 0);
   $('bagGrid').innerHTML = items.length
@@ -4131,7 +4324,7 @@ function chatLine(name, msg, sys) {
   setTimeout(() => el.remove(), 30000);
 }
 function myState() {
-  return { id: mp.id, name: mp.name, char: GLB_HERO ? { ...charData, wear: GLB_WEAR } : charData, room: MP_ROOM, born: mp.born, map: A.title, lvl: level(field.xp), x: +P.x.toFixed(2), z: +P.z.toFixed(2), y: +P.y.toFixed(2), h: +P.heading.toFixed(2), atk: mp.atk, atkL: mp.atkL, hp, mhp: stats.hp, air: P.y > groundAt(P.x, P.z, P.y) + 0.02, hid: smokedNow() };
+  return { id: mp.id, name: mp.name, char: GLB_HERO ? { ...charData, wear: GLB_WEAR } : charData, room: MP_ROOM, born: mp.born, map: A.title, lvl: level(field.xp), x: +P.x.toFixed(2), z: +P.z.toFixed(2), y: +P.y.toFixed(2), h: +P.heading.toFixed(2), atk: mp.atk, atkL: mp.atkL, hp, mhp: stats.hp, air: P.y > groundAt(P.x, P.z, P.y) + 0.02, hid: smokedNow(), sh: sheathed && hero.canSheathe ? 1 : 0 };
 }
 const wearKey = (c) => (c && Array.isArray(c.wear) ? c.wear.join() : '');
 function addGhost(d) {
@@ -4181,6 +4374,7 @@ function onState(d) {
   if (d.hp !== undefined) { g.hp = d.hp; g.mhp = d.mhp; }
   if (d.atk && d.atk !== g.atkSeen) { g.atkSeen = d.atk; g.atk = 0; }
   if (d.atkL && d.atkL !== g.atkLSeen) { g.atkLSeen = d.atkL; g.atkL = 0; }
+  g.sh = !!d.sh;
 }
 /* ---------- social: parties, whispers, emotes, targets and trading ----------
    A second Realtime channel, shared by every area, carries what has to reach a player wherever
@@ -4788,7 +4982,7 @@ function updateMultiplayer(dt, now) {
        receives it, so this is the game's running cost. Movement goes out at most 4 times a second
        (other players are eased toward each update, so it still looks smooth), only when it has
        moved or turned enough to see, and an attack or a smoke bomb goes out at once. */
-    const acted = !prev || st.atk !== prev.atk || st.atkL !== prev.atkL || st.hid !== prev.hid;
+    const acted = !prev || st.atk !== prev.atk || st.atkL !== prev.atkL || st.hid !== prev.hid || st.sh !== prev.sh;
     const moved = !prev || Math.hypot(st.x - prev.x, st.z - prev.z) > 0.15 || Math.abs(st.y - prev.y) > 0.15 || Math.abs(wrapAngle(st.h - prev.h)) > 0.17;
     if (acted || (moved && now - mp.last > 250)) { mp.channel.send({ type: 'broadcast', event: 'move', payload: st }); mp.sent = st; mp.last = now; }
   }
@@ -4802,7 +4996,7 @@ function updateMultiplayer(dt, now) {
     g.hero.root.rotation.y = g.h;
     g.hero.root.visible = !g.dead && !g.hid; // a smoke bomb hides them, tag and all
     if (g.bar && g.mhp) g.bar.style.width = `${Math.max(0, g.hp / g.mhp) * 100}%`;
-    g.hero.update(dt, { atk: g.atk, atkL: g.atkL, air: g.air });
+    g.hero.update(dt, { atk: g.atk, atkL: g.atkL, air: g.air, sheathed: g.sh });
     const near = !g.dead && !g.hid && Math.hypot(g.x - P.x, g.z - P.z) < 30, pos = near ? toScreen(g.x, HERO_H + 0.35 + g.y, g.z) : null;
     g.tag.hidden = !pos;
     if (pos) g.tag.style.transform = `translate(${pos[0]}px, ${pos[1]}px) translate(-50%, -100%)`;
@@ -5965,8 +6159,9 @@ addEventListener('keydown', (e) => {
   if (e.code === 'Escape' && target) setTarget(null);
   if ((e.code === 'KeyT' || e.code === 'Enter') && !modal) { e.preventDefault(); openChat(); return; }
   keys[e.code] = true;
-  if (modal) { if (e.code === 'Escape' || e.code === 'KeyF') closeModal(); return; } // a shop / crafting panel is open
+  if (modal) { if (e.code === 'Escape' || e.code === 'KeyF' || (e.code === 'KeyY' && modal.kind === 'guild')) closeModal(); return; } // a shop / crafting panel is open
   if (e.code === 'KeyU') setSprint(!sprintOn);
+  if (e.code === 'KeyY') setSheathed(!sheathed);
   else if (sprintOn && (e.code === 'ShiftLeft' || e.code === 'ShiftRight')) { setSprint(false); shiftCancel = true; }
   if (e.code === 'Space') jump();
   if (e.code === 'KeyJ' || e.code === 'KeyK' || e.code === 'Quote') swing('R');
@@ -5974,6 +6169,7 @@ addEventListener('keydown', (e) => {
   if (e.code === 'KeyH') drinkBest();
   if (e.code === 'KeyN') useItem('smoke_bomb');
   if (e.code === 'KeyB') toggleBag();
+  if (e.code === 'KeyY') openGuild();
   if (e.code === 'KeyC') cycleCam();
   if (e.code === 'KeyV') cycleView();
   if (e.code === 'KeyL') setAutoAim(!autoAim);
@@ -6047,15 +6243,17 @@ $('jumpBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); jump()
 $('sprintBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); setSprint(!sprintOn); });
 $('sailBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); if (action) action.run(); });
 $('shopClose').addEventListener('click', closeModal);
-$('shopTabs').addEventListener('click', (e) => { const b = e.target.closest('[data-tab]'); if (b && modal) { modal.tab = b.dataset.tab; renderModal(); } });
+$('shopTabs').addEventListener('click', (e) => { const b = e.target.closest('[data-tab]'); if (b && modal && modal.kind === 'guild') guildView.setTab(b.dataset.tab.slice(2)); else if (b && modal) { modal.tab = b.dataset.tab; renderModal(); } });
 $('shopList').addEventListener('click', (e) => {
   const b = e.target.closest('button[data-act]');
   if (!b) return;
+  if (modal && modal.kind === 'guild') { guildView.click(b); updateHud(); renderBag(); return; }
   shopAct.n = b.dataset.act === 'buy' ? b.dataset.n : undefined; // how many to buy (x5 buttons)
   shopAct(b.dataset.act, b.dataset.id, b.dataset.price || b.dataset.n || b.dataset.slot);
 });
 $('bagGrid').addEventListener('click', (e) => { const b = e.target.closest('[data-use]'); if (b) useItem(b.dataset.use); });
 $('outfitGrid').addEventListener('click', (e) => { const b = e.target.closest('[data-wear]'); if (b && !b.disabled) toggleWear(b.dataset.wear); });
+$('gearStash').addEventListener('click', (e) => { const b = e.target.closest('[data-uid]'); if (b) openGearCompare(b.dataset.uid); });
 $('gearBtn').addEventListener('click', openArmory);
 $('camBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); cycleCam(); });
 // hold to tilt: the same axis Q/E give you sideways, now up and down
@@ -6074,6 +6272,7 @@ $('viewBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); cycleV
 $('aimBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); setAutoAim(!autoAim); });
 $('aimBtn').classList.toggle('on', autoAim);
 $('bagBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); toggleBag(); });
+$('guildBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); if (modal && modal.kind === 'guild') closeModal(); else openGuild(); });
 // Fold open (a near-square touch screen): pull the camera back a little to show more world
 let squareBoost = 0;
 const fitSquare = () => {
@@ -6160,7 +6359,7 @@ function update(dt, now) {
   for (const n of npcs) { const d = Math.hypot(n.x - P.x, n.z - P.z); if (d < Math.min(ld, 4)) { ld = d; look = n; } }
   hero.root.position.set(P.x, P.y, P.z);
   hero.root.rotation.y = P.heading;
-  hero.update(dt, { atk: P.atk, atkL: P.atkL, lookAt: look, air: P.y > groundAt(P.x, P.z, P.y) + 0.001, vy: P.vy, down: fainted });
+  hero.update(dt, { atk: P.atk, atkL: P.atkL, lookAt: look, air: P.y > groundAt(P.x, P.z, P.y) + 0.001, vy: P.vy, down: fainted, sheathed });
   hero.root.visible = !firstPerson && !(ARENA && fainted) && !(inv > 0 && Math.floor(inv / 0.08) % 2);
   if (smokedNow() && (smokePuff -= dt) <= 0) { smokePuff = 0.12; burst(P.x, 0.4 + Math.random() * 1.2, P.z, '#9a9aa8', 3); }
   attackCd -= dt;
@@ -6430,6 +6629,7 @@ function update(dt, now) {
     if (pos) f.el.style.transform = `translate(${pos[0]}px, ${pos[1]}px) translate(-50%, -50%) scale(${1 + Math.max(0, 0.3 - f.age)})`;
     if (f.age >= 1) { f.el.remove(); floats.splice(i, 1); }
   }
+  if (guildView) guildView.tick(dt); // your companions, idling at Hero Hall or at work on an expedition
   // townsfolk turn to face you when you come near, and talk when you are close
   for (const n of npcs) {
     const d = Math.hypot(P.x - n.x, P.z - n.z);
@@ -6493,9 +6693,27 @@ function update(dt, now) {
    Everything above plays out at once in this browser and is sent to the server (Ledger.act).
    The server's answer is the account's real state: take it in, so if the browser ever got
    ahead of the rules (or another device played since), this corrects it. */
+guildView = createGuildView({
+  field, minute: 60000 / FAST, labelsEl, heroH: HERO_H, player: P, sfx,
+  anchors: (() => { // where companions stand on this map: idle ones by Hero Hall, the rest where they were sent
+    const at = {}, hall = guildSpots.find((s) => s.name === 'Hero Hall');
+    if (hall) at.hall = { x: hall.x, z: hall.z + 1.5 };
+    for (const [k, title] of [['fields', 'Taproot Fields'], ['woods', 'Taproot Woods'], ['docks', 'Taproot Docks']]) {
+      const part = (A.parts || []).find((p) => p.a.title === title);
+      if (part) at[k] = { x: part.a.start.x + part.ox + 0.5, z: part.a.start.y + part.oy + 0.5 };
+    }
+    if (AREA === 'cave') at.cave = { x: START.x + 0.5, z: START.y + 0.5 };
+    return at;
+  })(),
+  online: () => !SOLO && !!sessionKey(), serverNow: () => Date.now() + (Ledger.status.offset || 0),
+  act: (a) => Ledger.act(a), save: saveField, refresh: () => { updateHud(); renderBag(); }, toast,
+  makeHero: (look) => makeHero(look), toScreen, free,
+});
+setInterval(() => { if (modal && modal.kind === 'guild') renderModal(); }, 1000); // countdowns
 Ledger.on('state', (st) => {
   const e = st.econ;
   Object.assign(field, { gold: e.gold, xp: e.xp, kills: e.kills, bag: { ...e.bag } });
+  if (e.guild) guildView.sync(e.guild);
   owned.splice(0, owned.length, ...st.owned);
   const had = myFarm;
   myFarm = st.farm;
@@ -6512,6 +6730,7 @@ const REFUSED = {
 };
 const QUIET = new Set(['hit', 'spawn', 'area', 'pickup', 'down']); // combat bookkeeping: the server's state answer is enough
 Ledger.on('rejected', (all) => {
+  guildView.rejected();
   const bad = all.filter(([a]) => !QUIET.has(a.t));
   if (!bad.length) return;
   const why = bad.map(([, w]) => w).find((w) => REFUSED[w]) || bad[0][1];
@@ -6526,13 +6745,13 @@ Ledger.load();
 
 SPAWN_LIST.forEach((entry, i) => spawnMonster(entry, i));
 // debug hook for tests and screenshots: __world3d.tp(x, z) teleports, .P is the player state
-window.__world3d = { sfx, P, ghosts, arena, social, party: () => party, trade: () => trade, target: () => target, ladders: LADDERS, action: () => action && action.text, runAction: () => action && action.run(),
+window.__world3d = { sfx, P, ghosts, guild: () => guildView, openGuild, arena, social, party: () => party, trade: () => trade, target: () => target, ladders: LADDERS, action: () => action && action.text, runAction: () => action && action.run(),
   // can you walk (4-way, over the collision grid) from one tile to another?
   walkable: (x0, y0, x1, y1) => { const seen = new Set([`${x0},${y0}`]), q = [[x0, y0]]; while (q.length) { const [x, y] = q.pop(); if (x === x1 && y === y1) return true;
     for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = x + dx, ny = y + dy, k = `${nx},${ny}`; if (!seen.has(k) && blocked[ny] && blocked[ny][nx] === false) { seen.add(k); q.push([nx, ny]); } } } return false; },
   bossBars: () => [...document.querySelectorAll('#bosses .boss')].map((b) => b.textContent), floorBadge: () => !$('floorBadge').hidden && $('floorBadge').textContent, farms, updateIndoor, aimPoint, spectating: () => STANDS, tomatoes, throwTomato,
   arenaMod, buff: () => buffNow(), free,
-  wear: () => GLB_WEAR, toggleWear, equip: (id, slot) => equip(id, slot), gearOf: (slot) => gear(slot), parrying: () => parrying(),
+  wear: () => GLB_WEAR, toggleWear, gearInv: () => gearInv, equip: (id, slot) => equip(id, slot), gearOf: (slot) => gear(slot), parrying: () => parrying(),
   view: viewName, autoAim: () => autoAim, setAutoAim: (on) => setAutoAim(on), camYaw: () => camYaw, setCamYaw: (v) => { camYaw = v; }, nitro: () => nitro, setNitro: (v) => { nitro = v; nitroLock = false; }, jump,
   killMonster, hitMonster, collect, shopAct, claimPlot, plant, harvest, owned: () => owned, // economy tests
   spawn: (type, x, z) => { spawnMonster(type); const m = monsters[monsters.length - 1]; m.x = x; m.z = z; m.t = 99; m.vx = m.vz = 0; return monsters.length - 1; },

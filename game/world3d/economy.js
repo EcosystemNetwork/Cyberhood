@@ -14,6 +14,7 @@
 import { SHOPS, SELL, RECIPES, CONSUMABLES } from './shops.js';
 import { CROPS, BUILDS, ALTAR } from './farm.js';
 import { BLOCKS, unpack, pack, canPlace } from './blocks.js';
+import { GUILD_ITEMS, newGuild, normGuild, guildAction } from './guild.js';
 
 // Each monster's HP and walking speed (tiles a second), and what it pays out: XP on the kill,
 // then a gold drop and an item drop to pick up. (Damage and the rest of how it fights are in
@@ -30,6 +31,65 @@ export const MONSTER_LOOT = {
   golem_crystal: { hp: 1000, speed: 0.9, xp: 400, gold: [120, 160], drop: 'golem_core' },
   spider_queen:  { hp: 800,  speed: 2.0, dash: 5.4, xp: 350, gold: [100, 140], drop: 'queen_silk' },
 };
+// ---- Gear (Diablo-style) drops ------------------------------------------------
+// Each monster has a chance to drop a randomly-rolled gear piece when killed.
+// chance: probability per kill. ilvl: [min, max] item level (1–10).
+export const GEAR_DROPS = {
+  slime:        { chance: 0.05, ilvl: [1, 2] },
+  shroom:       { chance: 0.06, ilvl: [1, 2] },
+  bat:          { chance: 0.05, ilvl: [1, 2] },
+  goblin:       { chance: 0.14, ilvl: [3, 5] },
+  king:         { chance: 0.80, ilvl: [5, 7] },
+  gladiator:    { chance: 0.70, ilvl: [4, 7] },
+  golem_crystal:{ chance: 1.00, ilvl: [8, 10] },
+  spider_queen: { chance: 1.00, ilvl: [8, 10] },
+};
+// All catalog items grouped by slot → [common[], uncommon[], rare[], legendary[]].
+const GEAR_BY_SLOT = {
+  head:  [['iron_helm','wizard_hat','ranger_hood','rogue_hood'],['chain_coif','pirate_tricorn'],['gold_crown','horned_helm'],['dragon_crown']],
+  eyes:  [['round_specs','eyepatch'],['shadow_visor','sun_goggles'],['mystic_monocle'],['dragons_gaze']],
+  body:  [['steel_armor','mage_robe','ranger_tunic','rogue_tunic'],['leather_vest','chainmail'],['pirate_coat'],['phoenix_plate']],
+  rhand: [['iron_sword','oak_staff','hunter_bow','shadow_dagger','apprentice_wand'],['composite_bow','cutlass','boomerang','fire_wand','ice_wand'],['ember_blade','trident','thunder_staff'],['void_blade','inferno_staff']],
+  lhand: [['wooden_shield','iron_buckler','tome_of_sparks','lantern'],['tower_shield','ships_compass'],['crystal_orb','captains_hook','mirror_shield'],['aegis']],
+  feet:  [['leather_boots','sea_boots'],['swift_sandals','iron_greaves'],['winged_boots','shadow_treads','hermes_sandals','windrunner_boots'],['dragons_stride']],
+};
+const GEAR_SLOTS = Object.keys(GEAR_BY_SLOT);
+// Max bonus per stat (at ilvl 10, legendary). Scales down with ilvl and rarity.
+const BONUS_MAX = { hp: 20, atk: 8, def: 6, mag: 8, spd: 4 };
+// Rarity weights [common, uncommon, rare, legendary] for ilvl 1–10.
+const RAR_W = [
+  [0.90,0.09,0.01,0.00],[0.80,0.16,0.04,0.00],[0.65,0.25,0.09,0.01],[0.50,0.33,0.14,0.03],
+  [0.35,0.38,0.20,0.07],[0.22,0.38,0.28,0.12],[0.12,0.35,0.35,0.18],[0.05,0.28,0.42,0.25],
+  [0.02,0.18,0.45,0.35],[0.00,0.10,0.45,0.45],
+];
+function hashStr(s) {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+  return h;
+}
+// Roll a gear instance deterministically from a uid and ilvl.
+// Called on the client when a drop lands; re-called on the server on pickup — same uid → same item.
+export function rollGearDrop(uid, ilvl) {
+  const r = rng(hashStr(uid));
+  const li = Math.max(0, Math.min(9, (ilvl | 0) - 1));
+  const w = RAR_W[li], rv = r();
+  const ri = rv < w[3] ? 3 : rv < w[3]+w[2] ? 2 : rv < w[3]+w[2]+w[1] ? 1 : 0;
+  const rarity = ['common','uncommon','rare','legendary'][ri];
+  const slot = GEAR_SLOTS[Math.floor(r() * GEAR_SLOTS.length)];
+  const pool = GEAR_BY_SLOT[slot][ri] || GEAR_BY_SLOT[slot][0];
+  const base = pool[Math.floor(r() * pool.length)];
+  const nBonus = ri + 1; // 1 for common, up to 4 for legendary
+  const mult = [1, 1.5, 2.5, 4][ri];
+  const stats = ['hp','atk','def','mag','spd'];
+  for (let i = stats.length-1; i > 0; i--) { const j = Math.floor(r()*(i+1)); [stats[i],stats[j]]=[stats[j],stats[i]]; }
+  const bonus = {};
+  for (let i = 0; i < nBonus; i++) {
+    bonus[stats[i]] = Math.max(1, Math.round(r() * BONUS_MAX[stats[i]] * mult * (0.5 + (li+1)*0.08)));
+  }
+  return { uid, base, rarity, bonus, ilvl };
+}
+// -------------------------------------------------------------------------------
+
 
 /* ---- combat ----
    The server can't see the fight, but it checks every hit: the monster must exist (the game
@@ -185,11 +245,12 @@ export const BAG_ITEMS = new Set([
   ...Object.keys(CONSUMABLES),
   ...Object.keys(CROPS), ...Object.keys(CROPS).map((k) => k + '_seed'),
   ...Object.keys(BLOCKS).map((k) => 'block_' + k),
+  ...Object.keys(GUILD_ITEMS),
 ]);
 
 export function newEcon() {
-  return { gold: 0, xp: 0, kills: 0, bag: {}, loot: [], pending: { gold: {}, item: {} }, rl: {}, imported: false, foes: {}, hands: {}, clock: null,
-    sea: { gen: {}, back: {}, last: null } };
+  return { gold: 0, xp: 0, kills: 0, bag: {}, loot: [], gearInv: [], pending: { gold: {}, item: {} }, rl: {}, imported: false, foes: {}, hands: {}, clock: null,
+    sea: { gen: {}, back: {}, last: null }, guild: newGuild() };
 }
 // Fills in anything missing from a saved economy (older rows, new fields).
 export function normEcon(e) {
@@ -199,12 +260,14 @@ export function normEcon(e) {
     ...n, ...e,
     bag: { ...(e.bag || {}) },
     loot: Array.isArray(e.loot) ? [...e.loot] : [],
+    gearInv: Array.isArray(e.gearInv) ? e.gearInv.filter((g) => g && typeof g.uid === 'string').slice(0, 60) : [],
     pending: { gold: { ...((e.pending && e.pending.gold) || {}) }, item: { ...((e.pending && e.pending.item) || {}) } },
     rl: { ...(e.rl || {}) },
     foes: { ...(e.foes || {}) },
     hands: { ...(e.hands || {}) },
     sea: { gen: { ...((e.sea && e.sea.gen) || {}) }, back: { ...((e.sea && e.sea.back) || {}) }, last: (e.sea && e.sea.last) || null },
     pos: Array.isArray(e.pos) ? [...e.pos] : null,
+    guild: normGuild(e.guild),
   };
 }
 
@@ -243,6 +306,11 @@ function credit(e, type, now) {
   e.xp += m.xp; e.kills += 1;
   e.pending.gold[type] = Math.min(MAX_PENDING, (e.pending.gold[type] || 0) + 1);
   e.pending.item[m.drop] = Math.min(MAX_PENDING, (e.pending.item[m.drop] || 0) + 1);
+  const gd = GEAR_DROPS[type];
+  if (gd && Math.random() < gd.chance) {
+    if (!e.pending.gear) e.pending.gear = {};
+    e.pending.gear[type] = Math.min(5, (e.pending.gear[type] || 0) + 1);
+  }
   return '';
 }
 
@@ -404,6 +472,18 @@ export function applyAction(s, a, ctx) {
         e.pending.item[a.id] -= 1; add(e.bag, a.id, 1);
         return '';
       }
+      if (a.kind === 'gear') {
+        const mt = String(a.m || '');
+        if (!(e.pending.gear && e.pending.gear[mt] > 0)) return 'nothing to pick up';
+        e.pending.gear[mt] -= 1;
+        if (!e.pending.gear[mt]) delete e.pending.gear[mt];
+        const uid = typeof a.uid === 'string' && a.uid.length <= 64 ? a.uid : `g_${mt}_${now}`;
+        const ilvl = typeof a.ilvl === 'number' ? Math.max(1, Math.min(10, a.ilvl | 0)) : ((GEAR_DROPS[mt] || {}).ilvl || [3])[0];
+        if (!e.gearInv) e.gearInv = [];
+        if (e.gearInv.length >= 60) return 'inventory full';
+        if (!e.gearInv.some((g) => g.uid === uid)) e.gearInv.push(rollGearDrop(uid, ilvl));
+        return '';
+      }
       return 'bad pickup';
     }
     case 'buy': { // { shop: sign name, id, n }
@@ -437,6 +517,13 @@ export function applyAction(s, a, ctx) {
       for (const [k, n] of Object.entries(r.needs)) add(e.bag, k, -n);
       e.gold -= r.gold || 0;
       if (gear) s.owned.push(r.id); else add(e.bag, r.id, r.qty || 1);
+      return '';
+    }
+    case 'gdrop': { // discard a gear instance from the stash by uid
+      if (!e.gearInv) return 'empty';
+      const idx = e.gearInv.findIndex((g) => g.uid === a.uid);
+      if (idx < 0) return 'not found';
+      e.gearInv.splice(idx, 1);
       return '';
     }
     case 'use': { // drink a potion, eat an apple, throw a smoke bomb
@@ -598,6 +685,7 @@ export function applyAction(s, a, ctx) {
       return '';
     }
   }
+  if (a.t.startsWith('g_')) return guildAction(e.guild, e, a, { now, minute, rand: ctx.rand }, add, has); // the Guild (guild.js)
   return 'unknown action';
 }
 
@@ -635,4 +723,4 @@ export function swapTerms(e, give, get) {
   for (const [id, n] of Object.entries(get.items)) add(e.bag, id, n);
 }
 
-export const publicEcon = (e) => ({ gold: e.gold, xp: e.xp, kills: e.kills, bag: e.bag, loot: e.loot, imported: e.imported, barrels: (e.sea && e.sea.gen) || {} });
+export const publicEcon = (e) => ({ gold: e.gold, xp: e.xp, kills: e.kills, bag: e.bag, loot: e.loot, gearInv: e.gearInv || [], imported: e.imported, barrels: (e.sea && e.sea.gen) || {}, guild: e.guild || newGuild() });
