@@ -7,8 +7,9 @@
      each frame: hero.update(dt, { atk, atkL, lookAt, air, vy, down })   (down: knocked out / fainted)
      hero.hurt();  hero.emote('happy' | 'wave' | 'victory' | 'cheer' | 'bow');  hero.fidget('look')
 
-   Gear: skinned clothing made for the same skeleton (tools/blender/cloak_gear.py) is attached by
-   bone name; its cloth strands join the hero's and are simulated like a cape.
+   Gear: skinned clothing made for the same skeleton (tools/blender/cloak_game.py, wear_fit.py) is
+   attached by bone name; its cloth strands join the hero's and are simulated like a cape, and the
+   body's triangles it covers are left undrawn.
      await loadGlbGear();                       // every id in GEAR_URL
      makeGlbHero({ ...look, wear: ['green_cloak'] })   // or equip an item listed in GEAR_FOR_ITEM
 
@@ -87,9 +88,12 @@ const CARRY = { out: 0.42, fwd: 0.3, up: 0.2, in: 0.18 };
 // damp: velocity kept per 1/60 s (air drag); flutter: m of side-to-side ripple per m/s of speed.
 // hang: how much each segment aims straight down rather than along the (leaning) torso;
 // swing: max degrees a segment may swing off that aim (top → bottom of a strand).
-const CAPE = { stiff: [0.5, 0.14], damp: 0.93, gravity: 9.8, flutter: 0.002, hang: 0.25, swing: [14, 60],
-  colliders: [['Hips', null, 0.12], ['Spine1', null, 0.12], ['Spine2', null, 0.13], ['LeftUpLeg', 'LeftLeg', 0.06], ['RightUpLeg', 'RightLeg', 0.06],
-    ['LeftArm', 'LeftForeArm', 0.065], ['RightArm', 'RightForeArm', 0.065], ['LeftForeArm', 'LeftHand', 0.045], ['RightForeArm', 'RightHand', 0.045]] };
+// wind: how far back (per m/s of running, at the hem) each segment aims, so the cloak streams
+// behind the runner instead of hanging into his striding legs.
+const CAPE = { stiff: [0.5, 0.14], damp: 0.93, gravity: 9.8, flutter: 0.002, hang: 0.25, swing: [14, 60], wind: 0.16,
+  colliders: [['Hips', null, 0.13], ['Spine1', null, 0.12], ['Spine2', null, 0.13], ['LeftUpLeg', 'LeftLeg', 0.085], ['RightUpLeg', 'RightLeg', 0.085],
+    ['LeftLeg', 'LeftFoot', 0.06], ['RightLeg', 'RightFoot', 0.06],
+    ['LeftArm', 'LeftForeArm', 0.08], ['RightArm', 'RightForeArm', 0.08], ['LeftForeArm', 'LeftHand', 0.06], ['RightForeArm', 'RightHand', 0.06]] };
 
 // The world is lit for toon materials (shadow side floors at ~30-40%), but Tripo exports
 // MeshStandardMaterial, whose shadow side falls to near black, so the face vanishes whenever it
@@ -137,10 +141,24 @@ export function loadGlbHero(which) {
 }
 
 // ---- gear: 3D clothing files, and which inventory items show them
-export const GEAR_URL = { green_cloak: '/game/assets/3ditems/green_cloak.glb' };
-export const GEAR_FOR_ITEM = { ranger_hood: 'green_cloak', ranger_tunic: 'green_cloak' };
+// (the pants, boots and tunic are fitted from Tripo sculpts by tools/blender/wear_fit.py)
+export const GEAR_URL = {
+  green_cloak: '/game/assets/3ditems/green_cloak.glb',
+  leather_pants: '/game/assets/3ditems/leather_pants_game.glb',
+  leather_boots: '/game/assets/3ditems/leather_boots_game.glb',
+  medieval_tunic: '/game/assets/3ditems/medieval_tunic_game.glb',
+};
+export const GEAR_FOR_ITEM = { ranger_hood: 'green_cloak', ranger_tunic: 'green_cloak', leather_boots: 'leather_boots' };
+// The wardrobe (the Outfit rows in the world's bag): each piece's name and the part of the body it
+// goes on. One piece per part: putting one on takes off whatever was there.
+export const GEAR_INFO = {
+  green_cloak: { name: 'Hooded Cloak', part: 'cloak', emoji: '\u{1F9E5}' },
+  medieval_tunic: { name: 'Tunic', part: 'top', emoji: '\u{1F455}' },
+  leather_pants: { name: 'Leather Pants', part: 'legs', emoji: '\u{1F456}' },
+  leather_boots: { name: 'Leather Boots', part: 'feet', emoji: '\u{1F97E}' },
+};
 // What each hero starts out wearing (by its ?hero= name); ?wear=none strips it, ?wear=a,b replaces it
-export const START_WEAR = { human: ['green_cloak'] };
+export const START_WEAR = { human: ['leather_pants', 'leather_boots', 'medieval_tunic', 'green_cloak'] };
 export const wearFor = (hero, param) => param === 'none' ? [] : param ? param.split(',').filter(Boolean) : (START_WEAR[hero] || []);
 const GEAR = {};
 export async function loadGlbGear(ids = Object.keys(GEAR_URL)) {
@@ -151,13 +169,16 @@ export async function loadGlbGear(ids = Object.keys(GEAR_URL)) {
   })));
 }
 // Re-bind a gear file's skinned meshes to the hero's bones (by name). Bones the hero lacks (cloth
-// strands) move into the hero's skeleton under their parent, keeping their rest offsets.
-function attachGear(model, gltf) {
+// strands) move into the hero's skeleton under their parent, keeping their rest offsets. Adds the
+// body vertices the gear covers (its hide_body extra, for a body of hide_body_of vertices) to `hide`.
+function attachGear(model, gltf, hide) {
   const g = SkeletonUtils.clone(gltf.scene);
   const find = (n) => { let r = null; model.traverse((o) => { if (!r && o.isBone && o.name === n) r = o; }); return r; };
   const meshes = [];
   g.traverse((o) => { if (o.isSkinnedMesh) meshes.push(o); });
   for (const sm of meshes) {
+    const { hide_body: covered, hide_body_of: of } = sm.userData;
+    if (covered && of) for (const i of covered) (hide[of] = hide[of] || new Set()).add(i);
     const src = sm.skeleton.bones;
     const mine = src.map((b) => find(b.name));
     src.forEach((b, i) => {
@@ -173,6 +194,28 @@ function attachGear(model, gltf) {
     sm.frustumCulled = false;
   }
   return meshes.length;
+}
+
+// Leave the body's triangles under worn clothing undrawn (all three corners covered), so skin can't
+// show through where cloth runs close (inner thighs, armpits, feet in boots). The body keeps its
+// shared vertex data; only this hero's copy gets a shorter index.
+function hideUnder(bodies, hide) {
+  for (const o of bodies) {
+    const src = o.geometry, n = src.attributes.position.count, cut = hide[n];
+    if (!cut || !src.index || src.groups.length > 1) continue;
+    const idx = src.index.array, keep = [];
+    for (let i = 0; i < idx.length; i += 3) {
+      if (!(cut.has(idx[i]) && cut.has(idx[i + 1]) && cut.has(idx[i + 2]))) keep.push(idx[i], idx[i + 1], idx[i + 2]);
+    }
+    const g = new THREE.BufferGeometry();
+    for (const k in src.attributes) g.setAttribute(k, src.attributes[k]);
+    g.morphAttributes = src.morphAttributes;
+    g.morphTargetsRelative = src.morphTargetsRelative;
+    g.setIndex(keep);
+    g.boundingBox = src.boundingBox;
+    g.boundingSphere = src.boundingSphere;
+    o.geometry = g;
+  }
 }
 
 const damp = (a, b, k, dt) => a + (b - a) * (1 - Math.exp(-k * dt));
@@ -207,8 +250,12 @@ export function makeGlbHero(look = {}) {
   model.position.y = -box.min.y * (HEIGHT / h);
 
   // gear: what's asked for plus what the equipped items show
-  const wear = [...new Set([...(look.wear || START_WEAR[look.body] || []), ...Object.values(eq).map((i) => GEAR_FOR_ITEM[i])])].filter((id) => GEAR[id]);
-  for (const id of wear) attachGear(model, GEAR[id]);
+  const wear = [...new Set([...(Array.isArray(look.wear) ? look.wear : START_WEAR[look.body] || []), ...Object.values(eq).map((i) => GEAR_FOR_ITEM[i])])].filter((id) => GEAR[id]);
+  const bodies = [];
+  model.traverse((o) => { if (o.isSkinnedMesh) bodies.push(o); });
+  const hide = {};
+  for (const id of wear) attachGear(model, GEAR[id], hide);
+  hideUnder(bodies, hide);
 
   const bone = (n) => model.getObjectByName('mixamorig' + n) || model.getObjectByName('mixamorig:' + n);
   const B = { handR: bone('RightHand'), handL: bone('LeftHand') };
@@ -348,6 +395,7 @@ export function makeGlbHero(look = {}) {
     root.updateWorldMatrix(true, true);
     root.getWorldQuaternion(_rq);
     const side = _n.set(1, 0, 0).applyQuaternion(_rq).clone();
+    const back = _n.set(0, 0, -1).applyQuaternion(_rq).clone();
     for (const chain of capeChains) {
       for (const s of chain) s.b.quaternion.copy(s.rest);
       chain[0].b.updateMatrixWorld(true);
@@ -356,7 +404,7 @@ export function makeGlbHero(look = {}) {
         s.child.getWorldPosition(_t); // where the animated (rest-relative) pose would put this tail
         const animDir = _c1.subVectors(_t, _h).normalize().clone();
         // aim partly straight down, so a leaning torso doesn't tip the cape out behind
-        const aim = _c2.copy(animDir).lerp(_n.set(0, -1, 0), CAPE.hang).normalize().clone();
+        const aim = _c2.copy(animDir).lerp(_n.set(0, -1, 0), CAPE.hang).addScaledVector(back, CAPE.wind * speed * (0.25 + 0.75 * s.k)).normalize().clone();
         const tgt = _d.copy(_h).addScaledVector(aim, _h.distanceTo(_t)).clone();
         if (!capeReady || s.p.distanceToSquared(_t) > 4) { s.p.copy(tgt); s.pp.copy(tgt); s.len = _h.distanceTo(_t); }
         const stiff = 1 - Math.pow(1 - (CAPE.stiff[0] + (CAPE.stiff[1] - CAPE.stiff[0]) * s.k), f);
@@ -377,6 +425,10 @@ export function makeGlbHero(look = {}) {
           _q.slerpQuaternions(_wq.identity(), _q, maxA / ang);
           dir.copy(aim).applyQuaternion(_q);
         }
+        s.p.copy(_h).addScaledVector(dir, s.len);
+        // the limits can put it back inside a leg or arm: push out once more, then restore the length
+        pushOut(s.p);
+        dir.subVectors(s.p, _h).normalize();
         s.p.copy(_h).addScaledVector(dir, s.len);
         // turn the bone so its tail lands on the particle
         const from = animDir, to = dir;
