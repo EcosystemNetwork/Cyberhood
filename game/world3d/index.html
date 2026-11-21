@@ -3472,6 +3472,21 @@ function hitMonster(m, power = statNow('atk'), kind = 'swing', hand = 'R', att =
   floatText(m.x, m.cfg.tag || (m.cfg.big ? 2.2 : 1.3), m.z, String(dmg), '#ffffff');
   if (m.hp <= 0) killMonster(m);
 }
+// Your companion's hit (guildview.js): same as yours on screen, sent as 'ahit' so the server checks it
+// against the companion's own stats (guild.js allyKit).
+function allyHitMonster(m, dmg, from, heroId) {
+  if (m.dead) return;
+  m.hp -= dmg;
+  m.mine += dmg;
+  if (m.sid) Ledger.act({ t: 'ahit', id: m.sid, hero: heroId, at: clientMs(), dmg, mx: +m.x.toFixed(2), mz: +m.z.toFixed(2) });
+  m.flash = 0.09;
+  const dx = m.x - from.x, dz = m.z - from.z, d = Math.hypot(dx, dz) || 1, push = m.cfg.giant ? 0 : m.cfg.big ? 3 : 6;
+  sfx.play('hit');
+  m.kb = 0.14; m.kbx = dx / d * push; m.kbz = dz / d * push;
+  if (!mobHost() && mp.live) mp.channel.send({ type: 'broadcast', event: 'mobhit', payload: { id: m.sid, dmg, kbx: +m.kbx.toFixed(2), kbz: +m.kbz.toFixed(2) } });
+  floatText(m.x, m.cfg.tag || (m.cfg.big ? 2.2 : 1.3), m.z, String(dmg), '#9ae8ff');
+  if (m.hp <= 0) killMonster(m);
+}
 // Magic balls from wands and staffs: fly straight ahead from the tip, hit the first monster
 // (staffs with `aoe` also splash nearby ones), and burst on trees, walls and buildings.
 const fireballs = [], blasts = [];
@@ -6710,6 +6725,7 @@ guildView = createGuildView({
   online: () => !SOLO && !!sessionKey(), serverNow: () => Date.now() + (Ledger.status.offset || 0),
   act: (a) => Ledger.act(a), save: saveField, refresh: () => { updateHud(); renderBag(); }, toast,
   makeHero: (look) => makeHero(look), toScreen, free,
+  monsters: () => monsters, canFight: () => !ARENA && !STANDS && !fainted, hitMonster: allyHitMonster, burst,
 });
 setInterval(() => { if (modal && modal.kind === 'guild') renderModal(); }, 1000); // countdowns
 Ledger.on('state', (st) => {
@@ -6730,7 +6746,7 @@ const REFUSED = {
   'not ripe': 'That crop isn\'t ripe yet.',
   'too fast': 'Easy there: that reward was too fast to count.',
 };
-const QUIET = new Set(['hit', 'spawn', 'area', 'pickup', 'down']); // combat bookkeeping: the server's state answer is enough
+const QUIET = new Set(['hit', 'ahit', 'spawn', 'area', 'pickup', 'down']); // combat bookkeeping: the server's state answer is enough
 Ledger.on('rejected', (all) => {
   guildView.rejected();
   const bad = all.filter(([a]) => !QUIET.has(a.t));

@@ -99,10 +99,24 @@ export const summonGold = (a, b) => 60 + 30 * (a.sums + b.sums);
 export const summonDew = (a, b) => 1 + Math.max(a.gen, b.gen);
 export const summonRestMinutes = (h) => 60 * (1 + h.sums);     // a parent rests before summoning again
 
+/* ---- a companion at your side ----
+   One companion can follow you (g_follow) everywhere and fight: it walks after you and attacks
+   monsters near you. Its hits go to the server as 'ahit' (economy.js), which checks it really is
+   your follower, the cooldown, the damage cap below, and that the monster was near you. */
+export const ALLY = { leash: 7, aggro: 7 }; // tiles from you it will go to fight / looks for monsters
+export const ALLY_CD_SLACK = 0.85; // a hit may come this fraction of its cooldown early (frame timing)
+const MELEE = { range: 1.4, cd: 1.0 }, RANGED = { range: 7, cd: 1.3 };
+export function allyKit(h) {
+  const c = CLASSES[h.cls], ranged = ['ranger', 'sage', 'oracle'].includes(h.cls);
+  const power = c.main.reduce((n, k) => n + h.stats[k], 0) / 2; // the class's two main stats
+  return { ...(ranged ? RANGED : MELEE), ranged, dmg: Math.round(3 + power * 0.6 + h.lv * 1.5) }; // dmg: the most one hit can do
+}
+export const allyHit = (h, roll) => Math.max(1, Math.round(allyKit(h).dmg * (0.75 + 0.25 * roll)));
+
 const NAMES_A = ['Bram', 'Tess', 'Odo', 'Fenna', 'Rook', 'Lio', 'Maeve', 'Garr', 'Sable', 'Wick', 'Hazel', 'Quill', 'Juno', 'Pell', 'Rusk', 'Ivy', 'Corin', 'Nell', 'Tamsin', 'Barley'];
 const NAMES_B = ['Thorn', 'Brook', 'Ashby', 'Moss', 'Fernley', 'Holt', 'Marrow', 'Reed', 'Stone', 'Briar', 'Dale', 'Wren', 'Hollow', 'Cole', 'Burrow'];
 
-export function newGuild() { return { heroes: [], next: 1, quests: [], qnext: 1, log: [] }; }
+export function newGuild() { return { heroes: [], next: 1, quests: [], qnext: 1, log: [], follow: 0 }; }
 export function normGuild(g) {
   const n = newGuild();
   if (!g || typeof g !== 'object') return n;
@@ -112,6 +126,7 @@ export function normGuild(g) {
     quests: Array.isArray(g.quests) ? g.quests.map((q) => ({ ...q, party: [...q.party] })) : [],
     qnext: Number.isInteger(g.qnext) ? g.qnext : 1,
     log: Array.isArray(g.log) ? g.log.map((l) => ({ ...l })) : [],
+    follow: Number.isInteger(g.follow) ? g.follow : 0,
   };
 }
 
@@ -184,6 +199,7 @@ export function guildAction(g, e, a, ctx, add, has) {
       if (!h) return 'no such hero';
       if (heroBusy(g, h.id)) return 'hero busy';
       g.heroes = g.heroes.filter((x) => x !== h);
+      if (g.follow === h.id) g.follow = 0;
       return '';
     }
     case 'g_quest': { // { where, party: [hero ids], n: attempts }
@@ -197,6 +213,7 @@ export function guildAction(g, e, a, ctx, add, has) {
       if (ids.some((id) => heroBusy(g, id))) return 'hero busy';
       if (party.some((h) => staminaOf(h, now, minute) < X.stamina * n)) return 'too tired';
       party.forEach((h) => spendStamina(h, X.stamina * n, now, minute));
+      if (ids.includes(g.follow)) g.follow = 0; // your companion leaves your side for the expedition
       const fast = party.every((h) => h.prof === X.prof);
       const ms = Math.round(n * X.minutes * minute * (fast ? PROF_SPEED : 1));
       g.quests.push({ id: g.qnext++, where: a.where, party: ids, n, start: now, end: now + ms });
@@ -222,6 +239,14 @@ export function guildAction(g, e, a, ctx, add, has) {
       e.gold += gold;
       g.quests = g.quests.filter((x) => x !== q);
       log(g, { k: 'quest', at: now, where: q.where, party: q.party, loot, gold });
+      return '';
+    }
+    case 'g_follow': { // { hero }: this companion comes with you (0: nobody)
+      if (a.hero === 0) { g.follow = 0; return ''; }
+      const h = heroById(g, a.hero);
+      if (!h) return 'no such hero';
+      if (heroBusy(g, h.id)) return 'hero busy';
+      g.follow = h.id;
       return '';
     }
     case 'g_train': { // { hero, stat }: level up at the trainer, picking one stat to push

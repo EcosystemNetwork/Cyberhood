@@ -72,6 +72,30 @@ try {
   assert.equal(g.heroes[4].gen, 1);
   await A.shot('guild-summon.png');
 
+  // a companion at your side: bring one into the fields and it kills a slime by itself
+  await A.ev(`__world3d.guild().setTab('roster'); 1`);
+  const ally = g.heroes[3].id;
+  assert.ok(await click(`[data-act="g_follow"][data-id="${ally}"]`), 'bring button works');
+  assert.equal((await G()).follow, ally);
+  await load(A, `${BASE}/game/world3d/?area=fields&hour=13&nomp=1&farmfast=1`);
+  await A.ev('__world3d.monsters.forEach((m) => { m.dead = true; }); 1');
+  await A.ev(`__world3d.tp(120, 101, 0); __world3d.cam(9, 0.5); 1`);
+  await sleep(1500);
+  assert.ok(await A.ev(`[...__world3d.guild().views.values()].some((v) => v.side)`), 'the companion came along');
+  const i = await A.ev(`__world3d.spawn('slime', 121.5, 102)`);
+  await sleep(2500);
+  await A.ev(`__world3d.cam(6, 0.45); __world3d.tp(120, 99.5, Math.PI * 0.85); 1`);
+  await sleep(1500);
+  await A.shot('guild-ally.png');
+  await A.ev(`__world3d.monsters[${i}].hp = 6; 1`); // one hit: headless Chrome renders a frame or two a second
+  let dead = false;
+  for (let t = 0; t < 80 && !dead; t++) {
+    await sleep(500);
+    dead = await A.ev(`__world3d.monsters[${i}].dead || __world3d.monsters[${i}].hp <= 0`);
+  }
+  assert.ok(dead, 'the companion killed the slime');
+  await load(A, `${BASE}/game/world3d/?area=city&hour=13&nomp=1&farmfast=1`);
+
   // the guild is saved with the field: still there after a reload
   await load(A, `${BASE}/game/world3d/?area=city&hour=13&nomp=1&farmfast=1`);
   assert.equal((await G()).heroes.length, 5);

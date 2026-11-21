@@ -59,3 +59,31 @@ test('expedition loot is sellable bag stuff', () => {
   const s = { econ: newEcon(), owned: [], farm: null };
   assert.equal(run(s, { t: 'g_recruit' }, 0), 'not enough gold');
 });
+
+test('a companion at your side: follow, fight, and the server checks its hits', async () => {
+  const { allyKit } = await import('../game/world3d/guild.js');
+  const s = { econ: newEcon(), owned: [], farm: null };
+  s.econ.gold = 500;
+  const ctx = { now: 5e9, minute: MIN, rand, isGear: () => false, sent: undefined };
+  const go = (a, dt = 0) => { ctx.now += dt; return applyAction(s, a, ctx); };
+  go({ t: 'g_recruit' }); go({ t: 'g_recruit' });
+  const [h, other] = s.econ.guild.heroes;
+  go({ t: 'spawn', id: 'mon1', m: 'slime' });
+  const hit = (extra = {}) => go({ t: 'ahit', id: 'mon1', hero: h.id, at: ctx.now, dmg: 999, mx: 0, mz: 0, ...extra });
+  assert.equal(hit(), 'no companion', 'nobody is following yet');
+  assert.equal(go({ t: 'g_follow', hero: h.id }), '');
+  assert.equal(hit({ hero: other.id }), 'no companion', 'only your follower');
+  const hp = s.econ.foes.mon1.hp;
+  assert.equal(hit(), '');
+  assert.equal(hp - s.econ.foes.mon1.hp, allyKit(h).dmg, 'damage is capped by its stats');
+  assert.equal(hit(), 'too fast', 'cooldown');
+  // keeps hitting until the slime dies: the kill pays you, and the companion learns
+  let r = '';
+  for (let i = 0; i < 40 && s.econ.foes.mon1; i++) { ctx.now += 1100; r = hit(); }
+  assert.equal(r, '');
+  assert.equal(s.econ.kills, 1);
+  assert.ok(h.xp > 0);
+  // sent on an expedition, it stops following
+  assert.equal(go({ t: 'g_quest', where: 'woods', party: [h.id], n: 1 }), '');
+  assert.equal(s.econ.guild.follow, 0);
+});

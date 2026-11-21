@@ -14,7 +14,7 @@
 import { SHOPS, SELL, RECIPES, CONSUMABLES } from './shops.js';
 import { CROPS, BUILDS, ALTAR } from './farm.js';
 import { BLOCKS, unpack, pack, canPlace } from './blocks.js';
-import { GUILD_ITEMS, newGuild, normGuild, guildAction } from './guild.js';
+import { GUILD_ITEMS, newGuild, normGuild, guildAction, heroById, heroBusy, allyKit, ALLY, ALLY_CD_SLACK } from './guild.js';
 
 // Each monster's HP and walking speed (tiles a second), and what it pays out: XP on the kill,
 // then a gold drop and an item drop to pick up. (Damage and the rest of how it fights are in
@@ -444,6 +444,31 @@ export function applyAction(s, a, ctx) {
       foe.dealt = (foe.dealt || 0) + dmg;
       if (foe.hp > 0) return '';
       delete e.foes[a.id];
+      return credit(e, foe.m, now);
+    }
+    case 'ahit': { // { id, hero, at, dmg, mx, mz }: your companion's hit (guild.js ALLY)
+      const foe = e.foes[a.id], g = e.guild;
+      if (!foe) return 'no such monster';
+      const h = g.follow && heroById(g, g.follow);
+      if (!h || h.id !== a.hero || heroBusy(g, h.id)) return 'no companion';
+      const at = Number(a.at), mx = Number(a.mx), mz = Number(a.mz);
+      if (![at, mx, mz].every(Number.isFinite)) return 'bad hit';
+      if (!clockOk(e, at, now, ctx.sent)) return 'too fast';
+      const kit = allyKit(h);
+      if (!ctx.dev) {
+        if (!couldReach(foe.pos, mx, mz, at, MONSTER_LOOT[foe.m].speed, MONSTER_LOOT[foe.m].dash)) return 'monster moved too fast';
+        if (!couldReach(e.pos, mx, mz, at, PLAYER_SPEED, ALLY.leash + kit.range)) return 'out of reach'; // it fights near you
+      }
+      if (!foe.pos || at >= foe.pos[2]) foe.pos = [mx, mz, at];
+      const last = e.hands.A || -Infinity;
+      if (at - last < kit.cd * 1000 * ALLY_CD_SLACK) return 'too fast';
+      e.hands.A = at;
+      const dmg = Math.min(Math.max(1, Math.floor(Number(a.dmg)) || 1), kit.dmg);
+      foe.hp -= dmg;
+      foe.dealt = (foe.dealt || 0) + dmg;
+      if (foe.hp > 0) return '';
+      delete e.foes[a.id];
+      h.xp += MONSTER_LOOT[foe.m].xp; // the companion learns from its kills too
       return credit(e, foe.m, now);
     }
     case 'down': { // { id }: a monster this player helped fight was finished off by someone else

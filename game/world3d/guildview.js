@@ -14,7 +14,7 @@ import {
   CLASSES, PROFS, RARITY, EXPEDITIONS, GUILD_ITEMS, STATS, STAT_NAMES, MUTATE,
   ROSTER_MAX, PARTY_MAX, ATTEMPTS_MAX, STAMINA_MAX, RECRUIT_GOLD, PROF_SPEED,
   normGuild, guildAction, staminaOf, heroBusy, heroById, heroLook, levelXp, levelGold,
-  maxSummons, summonGold, summonDew,
+  maxSummons, summonGold, summonDew, ALLY, allyKit, allyHit,
 } from './guild.js';
 
 const ROLLED = new Set(['g_recruit', 'g_claim', 'g_train', 'g_summon']);
@@ -23,7 +23,8 @@ const SHOWN_MAX = 8;
 export function createGuildView(d) {
   /* d = { field, minute, online(), serverNow(), act(a), save(), refresh(), toast(msg),
            makeHero(look), toScreen(x, y, z), labelsEl, free(x, z), heroH, player: P, sfx,
-           anchors: { hall, fields, woods, docks, cave: {x, z} } — where on this map each place is (missing: not on this map) } */
+           anchors: { hall, fields, woods, docks, cave: {x, z} } — where on this map each place is (missing: not on this map),
+           monsters(), canFight(), hitMonster(m, dmg, from, heroId), burst(x, y, z, color, n) — for the companion at your side } */
   d.field.guild = normGuild(d.field.guild);
   const G = () => d.field.guild;
   let pending = false, seenLog = topKey(G()), ui = { tab: 'roster', sel: [], where: 'mine', n: 1, train: null };
@@ -114,7 +115,9 @@ export function createGuildView(d) {
           + `<div style="display:flex;flex-wrap:wrap;gap:4px;width:100%">${btns}<button class="alt" data-act="g_untrain">Cancel</button></div></div>`;
       }
       const canTrain = h.xp >= levelXp(h.lv) && !heroBusy(g, h.id);
-      const btn = `<button data-act="g_pick_train" data-id="${h.id}" ${dis(canTrain && d.field.gold >= levelGold(h.lv))}>Train</button>`;
+      const side = g.follow === h.id;
+      const btn = `<button data-act="g_follow" data-id="${side ? 0 : h.id}" class="${side ? '' : 'alt'}" ${dis(side || !heroBusy(g, h.id))} title="Fights at your side">${side ? '\u{2714} With you' : 'Bring'}</button>`
+        + `<button data-act="g_pick_train" data-id="${h.id}" ${dis(canTrain && d.field.gold >= levelGold(h.lv))}>Train</button>`;
       return row(clsOf(h).emoji, heroName(h), `${heroLine(h)}<br>${statLine(h)}${status(h)}`, btn);
     }).join('');
   }
@@ -198,6 +201,7 @@ export function createGuildView(d) {
     else if (k === 'g_quest') act({ t: 'g_quest', where: ui.where, party: [...ui.sel], n: ui.n });
     else if (k === 'g_summon') { const [a, c] = ui.sel; ui.sel = []; act({ t: 'g_summon', a, b: c }); }
     else if (k === 'g_recruit') act({ t: 'g_recruit' });
+    else if (k === 'g_follow') act({ t: 'g_follow', hero: +id });
     render();
   }
   const setTab = (t) => { ui.tab = t; ui.sel = []; ui.train = null; render(); };
@@ -217,6 +221,7 @@ export function createGuildView(d) {
     const g = G(), out = [];
     for (const h of g.heroes) {
       const q = g.quests.find((x) => x.party.includes(h.id));
+      if (!q && h.id === g.follow) { out.unshift({ h, q, anchor: d.player, side: true }); continue; } // at your side, wherever you are
       const anchor = d.anchors[q ? EXPEDITIONS[q.where].area : 'hall'];
       if (anchor) out.push({ h, q, anchor });
     }
@@ -230,20 +235,64 @@ export function createGuildView(d) {
     }
     return { x: a.x, z: a.z };
   }
+  // The companion at your side: keeps up with you, and fights whatever comes near you.
+  function fight(h, v, dt) {
+    const p = d.player, kit = allyKit(h);
+    v.cd = Math.max(0, v.cd - dt);
+    if (Math.hypot(p.x - v.x, p.z - v.z) > 14) { v.x = p.x - Math.sin(p.heading) * 1.5; v.z = p.z - Math.cos(p.heading) * 1.5; } // fell far behind: catch up
+    let foe = null, best = ALLY.aggro;
+    if (d.canFight()) for (const m of d.monsters()) {
+      if (m.dead || m.hp <= 0) continue;
+      const dm = Math.hypot(m.x - p.x, m.z - p.z);
+      if (dm < best) { best = dm; foe = m; }
+    }
+    let tx, tz, stop;
+    if (foe) { tx = foe.x; tz = foe.z; stop = kit.range * 0.85; }
+    else { tx = p.x - Math.sin(p.heading) * 1.6 + Math.cos(p.heading) * 0.9; tz = p.z - Math.cos(p.heading) * 1.6 - Math.sin(p.heading) * 0.9; stop = 0.3; }
+    const dx = tx - v.x, dz = tz - v.z, dist = Math.hypot(dx, dz);
+    if (dist > stop) {
+      const speed = foe ? 4.5 : Math.min(7, 1.5 + dist * 2.2); // hurries when it falls behind
+      const step = Math.min(dist - stop, speed * dt);
+      v.x += (dx / dist) * step; v.z += (dz / dist) * step;
+      v.heading = Math.atan2(dx, dz);
+    } else if (foe) v.heading = Math.atan2(dx, dz);
+    else v.heading += ((p.heading - v.heading + Math.PI * 3) % (Math.PI * 2) - Math.PI) * Math.min(1, dt * 3);
+    // attack: in range and off cooldown
+    if (foe && dist <= kit.range + 0.3 && v.cd <= 0) {
+      v.cd = kit.cd; v.atk = 0;
+      const m = foe, dmg = allyHit(h, Math.random());
+      setTimeout(() => {
+        if (m.dead) return;
+        if (kit.ranged) d.burst(m.x, 0.8, m.z, h.cls === 'ranger' ? '#c8823a' : '#9ae8ff', 8);
+        d.hitMonster(m, dmg, v, h.id);
+      }, kit.ranged ? 260 : 160);
+    }
+    if (v.atk >= 0) { v.atk += dt / 0.35; if (v.atk >= 1) v.atk = -1; }
+    v.hero.root.position.set(v.x, 0, v.z);
+    v.hero.root.rotation.y = v.heading;
+    v.hero.update(dt, { atk: v.atk, lookAt: foe || null });
+    const pos = d.toScreen(v.x, d.heroH + 0.3, v.z);
+    v.el.hidden = !pos;
+    if (pos) v.el.style.transform = `translate(${pos[0]}px, ${pos[1]}px) translate(-50%, -100%)`;
+    const say = `Lv ${h.lv} ${clsOf(h).name} · ${foe ? '\u{2694}️ fighting' : 'with you'}`;
+    if (v.small.textContent !== say) v.small.textContent = say;
+  }
   function tick(dt) {
     const want = wanted(), ids = new Set(want.map((w) => w.h.id));
     for (const [id, v] of views) if (!ids.has(id)) { v.hero.root.removeFromParent(); v.el.remove(); views.delete(id); }
-    for (const { h, q, anchor } of want) {
+    for (const { h, q, anchor, side } of want) {
       let v = views.get(h.id);
+      if (v && v.side !== !!side) { v.hero.root.removeFromParent(); v.el.remove(); views.delete(h.id); v = null; } // changed role: start afresh
       if (!v) {
         const at = spotNear(anchor, 3);
         const el = document.createElement('div');
         el.className = 'tag';
         el.innerHTML = `<span style="color:${rar(h).color}">\u{25C6}</span> ${h.name}<small></small>`;
         d.labelsEl.appendChild(el);
-        v = { hero: d.makeHero(heroLook(h)), el, small: el.querySelector('small'), x: at.x, z: at.z, tx: at.x, tz: at.z, wait: Math.random() * 3, anchor, heading: 0 };
+        v = { hero: d.makeHero(heroLook(h)), el, small: el.querySelector('small'), x: at.x, z: at.z, tx: at.x, tz: at.z, wait: Math.random() * 3, anchor, heading: 0, side: !!side, cd: 0, atk: -1 };
         views.set(h.id, v);
       }
+      if (side) { fight(h, v, dt); continue; }
       // amble between spots near the anchor; working companions stop to work
       const dx = v.tx - v.x, dz = v.tz - v.z, dist = Math.hypot(dx, dz);
       if (dist > 0.1) {
