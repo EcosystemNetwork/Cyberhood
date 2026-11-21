@@ -61,4 +61,6 @@ export const RECIPES = [
   { id: 'big_potion', needs: { royal_jelly: 1, slime_gel: 3 }, gold: 10 },
   { id: 'apprentice_wand', needs: { slime_gel: 3, bat_fang: 1 }, gold: 0 },
   { id: 'fire_wand', needs: { spore_cap: 3, bat_fang: 2, goblin_ear: 1 }, gold: 20 },
+  // the Dragon Staff: forged from the two giants of the Hollow (Mine B2) and a King Slime's jelly
+  { id: 'dragon_staff', needs: { golem_core: 1, queen_silk: 1, royal_jelly: 2 }, gold: 300 },
 ];

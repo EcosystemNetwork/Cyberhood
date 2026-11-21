@@ -127,6 +127,23 @@ test('hits: weapon kinds, damage caps, cooldowns and target limits', () => {
   assert.equal(hit({ id: 'king1', k: 'shot', a: 'a3', at: T0 + 2000, dmg: 5 }, 1200), 'no such monster'); // a new map
 });
 
+test("the Inferno's fire pillar and the Dragon Staff's big fireball", () => {
+  const { s, ctx, run } = player();
+  ctx.stats = { atk: 10, mag: 20 };
+  ctx.hands = { R: 'inferno_staff', L: 'dragon_staff' };
+  for (const id of ['kin1', 'kin2']) run({ t: 'spawn', id, m: 'king' });
+  const shot = 10 * 0.6 + 20 * 1.4; // 34
+  const hit = (o) => run({ t: 'hit', ...NEAR, ...o });
+  assert.equal(hit({ hand: 'R', id: 'kin1', k: 'shot', a: 'p1', at: T0, dmg: 5 }), 'wrong weapon'); // the inferno only makes pillars
+  assert.equal(hit({ hand: 'R', id: 'kin1', k: 'pillar', a: 'p1', at: T0, dmg: 999 }), '');
+  assert.equal(s.econ.foes.kin1.hp, 200 - Math.round(shot * 1.8 + 4));
+  assert.equal(hit({ hand: 'R', id: 'kin2', k: 'pillar', a: 'p1', at: T0, dmg: 1 }), '');           // the column burns everyone in it
+  assert.equal(hit({ hand: 'R', id: 'kin1', k: 'pillar', a: 'p2', at: T0 + 800, dmg: 1 }), 'too fast'); // 1.2 s cooldown
+  assert.equal(hit({ hand: 'L', id: 'kin2', k: 'aoe', a: 'd1', at: T0, dmg: 999 }), '');            // the dragon's splash hits 3x
+  assert.equal(s.econ.foes.kin2.hp, 200 - 1 - Math.round((10 * 0.5 + 20 * 0.8) * 3 + 4));
+  assert.equal(hit({ hand: 'L', id: 'kin2', k: 'shot', a: 'd2', at: T0 + 3000, dmg: 1 }), 'too fast'); // 4 s cooldown
+});
+
 test('the gladiator can be hit as hard as the arena buffs allow', () => {
   const { s, ctx, run } = player();
   ctx.stats = { atk: 20, mag: 2 };
@@ -202,6 +219,7 @@ test('caster numbers match the weapons in /game/lib/hero3d.js', async () => {
     assert.equal(+((/aoe: ([\d.]+)/.exec(cast) || [])[1] || 0), c.aoe || 0, id + ' splash');
     assert.equal(+((/chain: (\d+)/.exec(cast) || [])[1] || 0), c.chain || 0, id + ' chain');
     assert.equal(/boomerang: true/.test(cast), !!c.boomerang, id + ' boomerang');
+    assert.equal(+((/dmg: ([\d.]+)/.exec(cast) || [])[1] || 1), c.dmg || 1, id + ' damage');
   }
 });
 

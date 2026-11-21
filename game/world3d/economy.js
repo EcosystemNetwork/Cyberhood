@@ -42,7 +42,8 @@ export const CASTERS = {
   oak_staff:       { cd: 0.55, range: 14 },
   apprentice_wand: { cd: 0.4,  range: 12 },
   fire_wand:       { cd: 0.45, range: 14 },
-  inferno_staff:   { cd: 0.6,  range: 16, aoe: 1.8 },
+  inferno_staff:   { cd: 1.2,  range: 14, aoe: 1.8, pillar: true }, // its fire column hits as 'pillar'
+  dragon_staff:    { cd: 4,    range: 18, aoe: 2.4, dmg: 3 }, // dmg: hits that much harder
   ice_wand:        { cd: 0.5,  range: 15 },
   thunder_staff:   { cd: 0.8,  range: 16, chain: 2 },
   boomerang:       { cd: 1.1,  range: 9, boomerang: true },
@@ -63,7 +64,7 @@ export function reachOf(kind, item) {
   const c = CASTERS[item] || {};
   if (kind === 'swing') return SWING_REACH;
   if (kind === 'mirror') return MIRROR_RANGE + SHOT_EXTRA;
-  if (kind === 'aoe') return (c.range || 0) + (c.aoe || 0) + SHOT_EXTRA;
+  if (kind === 'aoe' || kind === 'pillar') return (c.range || 0) + (c.aoe || 0) + SHOT_EXTRA;
   if (kind === 'chain') return (c.range || 0) + CHAIN_HOP * 2 + SHOT_EXTRA;
   return (c.range || 0) + SHOT_EXTRA; // shot, boom
 }
@@ -87,17 +88,18 @@ export const MAX_FOES = 40;
    below still apply: helping out can never pay faster than killing alone. */
 export const ASSIST_SHARE = 0.1;
 // Most targets one attack of each kind can hit.
-export const MAX_TARGETS = { swing: 3, shot: 1, aoe: 8, chain: 2, boom: 6, mirror: 1 };
+export const MAX_TARGETS = { swing: 3, shot: 1, aoe: 8, chain: 2, boom: 6, mirror: 1, pillar: 8 };
 // How hard each kind of hit is, from the player's attack and magic (the game's own formulas).
 export const POWER = {
   swing: (s) => s.atk,
   shot: (s) => s.atk * 0.6 + s.mag * 1.4,
   mirror: (s) => s.atk * 0.6 + s.mag * 1.4,
   aoe: (s) => s.atk * 0.5 + s.mag * 0.8,
+  pillar: (s) => (s.atk * 0.6 + s.mag * 1.4) * 1.8,
   chain: (s) => (s.atk * 0.6 + s.mag * 1.4) * 0.6,
   boom: (s) => s.atk * 1.1 + 4,
 };
-export const maxHit = (kind, stats, foe) => Math.round(POWER[kind](stats) * (foe === 'gladiator' ? ARENA_BUFF : 1) + HIT_RAND);
+export const maxHit = (kind, stats, foe, item) => Math.round(POWER[kind](stats) * (kind !== 'swing' && kind !== 'mirror' && CASTERS[item] && CASTERS[item].dmg || 1) * (foe === 'gladiator' ? ARENA_BUFF : 1) + HIT_RAND);
 
 // Sea chests (one per island, once per player) and floating barrels.
 export const SEA_TREASURE = { wreck: 40, lonely: 25, gull: 25, doubloon: 30 };
@@ -251,8 +253,9 @@ function handAllows(kind, item, other) {
   const c = CASTERS[item];
   if (kind === 'mirror') return item === 'mirror_shield' || other === 'mirror_shield';
   if (kind === 'swing') return !c && item !== 'mirror_shield';
-  if (kind === 'shot') return !!c && !c.boomerang;
-  if (kind === 'aoe') return !!(c && c.aoe);
+  if (kind === 'shot') return !!c && !c.boomerang && !c.pillar;
+  if (kind === 'pillar') return !!(c && c.pillar);
+  if (kind === 'aoe') return !!(c && c.aoe && !c.pillar);
   if (kind === 'chain') return !!(c && c.chain);
   if (kind === 'boom') return !!(c && c.boomerang);
   return false;
@@ -371,7 +374,7 @@ export function applyAction(s, a, ctx) {
       const limit = a.k === 'chain' ? (CASTERS[item] && CASTERS[item].chain) || 0 : MAX_TARGETS[a.k];
       if ((cur.n[a.k] || 0) >= limit) return 'too many targets';
       cur.n[a.k] = (cur.n[a.k] || 0) + 1;
-      const dmg = Math.min(Math.max(1, Math.floor(Number(a.dmg)) || 1), maxHit(a.k, ctx.stats || { atk: 10, mag: 2 }, foe.m));
+      const dmg = Math.min(Math.max(1, Math.floor(Number(a.dmg)) || 1), maxHit(a.k, ctx.stats || { atk: 10, mag: 2 }, foe.m, item));
       foe.hp -= dmg;
       foe.dealt = (foe.dealt || 0) + dmg;
       if (foe.hp > 0) return '';

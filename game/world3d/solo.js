@@ -24,6 +24,8 @@
     link.rel = 'manifest'; link.href = '/game/solo.webmanifest';
     document.head.appendChild(link);
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('/game/solo-sw.js', { scope: '/game/' }).catch(() => {});
+    // plain links (e.g. the boat's Leave) stay in solo too
+    addEventListener('click', (e) => { const a = e.target.closest && e.target.closest('a[href^="/game/"]'); if (a) a.href = withSolo(a.getAttribute('href')); }, true);
     // our own Install button: Chrome's menu entry is easy to miss. It shows only once Chrome
     // says the game can be installed, and goes away once it is.
     addEventListener('beforeinstallprompt', (e) => {

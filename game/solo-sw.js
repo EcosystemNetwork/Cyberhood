@@ -25,7 +25,7 @@ async function handle(e) {
   const cache = await caches.open(CACHE);
   const hit = await cache.match(req, { ignoreSearch: new URL(req.url).origin === location.origin });
   const fresh = fetch(req).then((res) => {
-    if (res.ok || res.type === 'opaque') cache.put(req.mode === 'navigate' ? '/game/world3d/' : req, res.clone());
+    if (res.ok || res.type === 'opaque') cache.put(req.mode === 'navigate' ? new URL(req.url).pathname : req, res.clone()); // pages: one copy per page, any query
     return res;
   });
   if (hit) { e.waitUntil(fresh.catch(() => {})); return hit; }

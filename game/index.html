@@ -380,6 +380,7 @@
 
 <script src="/game/lib/ledger.js"></script>
 <script>Ledger.init();</script>
+<script src="/game/world3d/solo.js"></script>
 <script src="/game/items.js"></script>
 <script src="/game/sprite.js"></script>
 <script>
@@ -535,6 +536,13 @@
   function openAuth() { setMode('login'); $('auth').hidden = false; $('u').focus(); }
 
   $('enter').addEventListener('click', async () => {
+    if (window.SOLO) { // solo: no account, the character lives on this device
+      await null; // let the rest of this script set up first (online waits on the server anyway)
+      let c = null;
+      try { c = JSON.parse(localStorage.getItem('taproot_character')); } catch (e) {}
+      enterGame({ username: 'Solo', inventory: [], character: c || { ...S, name: 'Wanderer' } });
+      return;
+    }
     if (getKey()) {
       try { enterGame(await api('me')); return; } catch (e) { if (e.status === 401) setKey(null); }
     }
@@ -634,6 +642,7 @@
   let saveQueue = Promise.resolve();
   function persistArmory() {
     try { localStorage.setItem('taproot_character', JSON.stringify(S)); } catch (e) {}
+    if (window.SOLO) { $('armSaved').textContent = 'Saved'; armDirty = false; return; }
     $('armSaved').textContent = 'Saving...';
     saveQueue = saveQueue
       .then(() => api('save', { character: S }))

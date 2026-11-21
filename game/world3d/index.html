@@ -27,6 +27,13 @@
   .title { font: 400 19px/1.1 'Lilita One', system-ui, sans-serif; color: #fff; text-shadow: 0 2px 0 rgba(0, 0, 0, 0.5); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .hp { position: relative; margin-top: 6px; height: 18px; border-radius: 10px; background: #1a0624; border: 2px solid #12031a; overflow: hidden; }
   #hpFill { height: 100%; width: 100%; background: linear-gradient(#e2ff7a, #8ad400); box-shadow: 0 0 10px rgba(200, 255, 46, 0.7); transition: width 0.2s; }
+  #wardIcon { position: absolute; right: 12px; top: 8px; font-size: 18px; filter: drop-shadow(0 0 6px #ffcf3a); animation: wardPulse 1.4s ease-in-out infinite; }
+  @keyframes wardPulse { 50% { transform: scale(1.15); } }
+  .hp.mp { height: 14px; margin-top: 4px; }
+  .hp.mp.empty { animation: mpFlash 0.45s; }
+  @keyframes mpFlash { 0%, 100% { box-shadow: none; } 40% { box-shadow: 0 0 0 2px #ff5a5a, 0 0 14px #ff5a5a; } }
+  #manaFill { height: 100%; width: 100%; background: linear-gradient(#9ad8ff, #3a8ae0); box-shadow: 0 0 10px rgba(90, 180, 255, 0.7); transition: width 0.2s; }
+  #manaText { position: absolute; inset: 0; z-index: 1; display: grid; place-items: center; font: 400 11px/1 'Lilita One', sans-serif; color: #fff; text-shadow: 0 1px 2px #000; }
   #hpText { position: absolute; inset: 0; display: grid; place-items: center; font: 400 12px/1 'Lilita One', sans-serif; text-shadow: 0 1px 2px #000; }
   .links { margin-top: 6px; font: 800 12px/1.2 'Nunito', sans-serif; color: #e7c9f2; }
   .links a { color: #fff; text-decoration: none; border-bottom: 1px dashed rgba(255, 255, 255, 0.5); }
@@ -277,8 +284,8 @@
   #aimRing.lob { border-color: #ffd23a; }
   #aimArc { position: fixed; inset: 0; z-index: 3; pointer-events: none; }
   #aimArc i { position: absolute; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: #ffd23a; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5); }
-
-
+  .menus #ctrlBtn { font-size: 14px; background: #241040; box-shadow: 0 3px 0 #12031a; }
+  @media (pointer: coarse) { #ctrlBtn { display: none; } }
   .actions .touch { background: linear-gradient(#ffd27a, #e89a2a); box-shadow: 0 3px 0 #8a4a10; }
   .actions .touch.on { background: linear-gradient(#ff8a8a, #e04a4a); box-shadow: 0 3px 0 #8a1a1a; }
   /* phones: a visible joystick under the left thumb, jump + attack side by side under the right */
@@ -309,7 +316,21 @@
     #nearChip { left: 12px; top: 96px; transform: none; }
     .farmbar { left: 12px; transform: none; }
   }
-  body.solo #chat, body.solo #chatBtn, body.solo .links, body.solo #gearBtn { display: none !important; }
+  body.solo #chat, body.solo #chatBtn, body.solo .links { display: none !important; }
+  #loader { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; transition: opacity 0.4s;
+    background: radial-gradient(ellipse at 50% 30%, #9a2aa8, #4a0e5e 60%, #24062e); }
+  #loader.gone { opacity: 0; pointer-events: none; }
+  .ld-card { width: min(420px, 86vw); text-align: center; }
+  .ld-logo { font: 64px/1 'Lilita One', system-ui, sans-serif; color: var(--lime); letter-spacing: 1px; text-shadow: 0 5px 0 #2a0a3a, 0 0 28px rgba(200, 255, 46, 0.45); }
+  .ld-where { margin-top: 8px; font: 20px 'Lilita One', system-ui, sans-serif; color: #fff; opacity: 0.9; }
+  .ld-sprout { margin: 26px auto 18px; width: 34px; height: 44px; animation: ldHop 0.7s ease-in-out infinite alternate; }
+  .ld-sprout i { display: block; width: 34px; height: 44px; background: linear-gradient(#d8ff7a, #8ad400); border-radius: 50% 50% 50% 50% / 62% 62% 38% 38%; clip-path: polygon(50% 0, 100% 45%, 100% 100%, 0 100%, 0 45%); box-shadow: inset -6px -6px 0 rgba(0, 0, 0, 0.12); }
+  @keyframes ldHop { from { transform: translateY(0) scaleY(0.94); } to { transform: translateY(-12px) scaleY(1.04); } }
+  .ld-bar { height: 18px; border-radius: 10px; background: #1a0624; border: 3px solid #12031a; overflow: hidden; box-shadow: 0 0 0 2px var(--rim); }
+  #ldFill { width: 4%; height: 100%; background: linear-gradient(#e6ff7a, #8ad400); box-shadow: 0 0 12px rgba(200, 255, 46, 0.7); transition: width 0.25s; }
+  .ld-step { margin-top: 10px; font: 800 15px 'Nunito', system-ui, sans-serif; color: #f0e0ff; }
+  .ld-step.bad { color: #ffb0b0; }
+  .ld-tip { margin-top: 22px; font: 700 14px/1.4 'Nunito', system-ui, sans-serif; color: #c8b0d8; }
   #fade { position: fixed; inset: 0; z-index: 9; background: #000; opacity: 0; pointer-events: none; transition: opacity 0.7s; }
 
   @media (max-width: 640px) {
@@ -372,6 +393,58 @@ if (!window.SOLO) {
 </script>
 </head>
 <body>
+<div id="loader">
+  <div class="ld-card">
+    <div class="ld-logo">Taproot</div>
+    <div class="ld-where" id="ldWhere"></div>
+    <div class="ld-sprout"><i></i></div>
+    <div class="ld-bar"><div id="ldFill"></div></div>
+    <div class="ld-step" id="ldStep">Loading&hellip;</div>
+    <div class="ld-tip" id="ldTip"></div>
+  </div>
+</div>
+<script>
+// The loading screen: on screen from the first paint, filled in as the world is built
+// (LOAD.step), and faded out after the first frame is drawn (LOAD.done).
+(() => {
+  const AREA_NAMES = { arena: 'Taproot Arena', stands: 'Arena Stands', cave: 'Taproot Mine', cave_b1: 'Crystal Tunnels', cave_b2: 'The Hollow', workshop: 'The Workshop', clubhouse: 'Clubhouse' };
+  const TIPS = ['Press B for your bag, and Gear inside it to change your outfit.', 'Shift (or Nitro) gives you a burst of speed.', 'The colosseum is at the east end of the main street.',
+    'Claim a plot in the Avenues and grow your own crops.', 'Sail from the end of the docks pier.', 'Press V to switch between third person, over the shoulder and first person.',
+    'Press O on a laptop for Minecraft-style controls.', 'The Mine goes three floors deep. Two giants wait at the bottom.'];
+  const a = new URLSearchParams(location.search).get('area');
+  document.getElementById('ldWhere').textContent = AREA_NAMES[a] || 'The Overworld';
+  document.getElementById('ldTip').textContent = 'Tip: ' + TIPS[Math.floor(Math.random() * TIPS.length)];
+  const t0 = performance.now(), times = [];
+  let last = t0, lastLabel = 'start';
+  window.LOAD = {
+    times,
+    step(label, pct) {
+      const now = performance.now(); times.push([lastLabel, Math.round(now - last)]); last = now; lastLabel = label;
+      document.getElementById('ldFill').style.width = pct + '%';
+      document.getElementById('ldStep').textContent = label + '\u2026';
+      // let the browser paint the bar before the next (blocking) chunk of work
+      return new Promise((r) => { requestAnimationFrame(() => setTimeout(r, 0)); setTimeout(r, 100); });
+    },
+    tick(pct) { // mid-stage progress: move the bar, and let it paint every so often
+      document.getElementById('ldFill').style.width = pct + '%';
+      if (performance.now() - (this.yielded || 0) < 120) return;
+      this.yielded = performance.now();
+      return new Promise((r) => { requestAnimationFrame(() => setTimeout(r, 0)); setTimeout(r, 100); });
+    },
+    done() {
+      if (!document.getElementById('loader')) return;
+      times.push([lastLabel, Math.round(performance.now() - last)], ['total', Math.round(performance.now() - t0)]);
+      document.getElementById('ldFill').style.width = '100%';
+      const el = document.getElementById('loader');
+      el.classList.add('gone');
+      setTimeout(() => el.remove(), 450);
+    },
+    fail(msg) { const st = document.getElementById('ldStep'); if (st) { st.textContent = 'Something went wrong: ' + msg + ' (try reloading)'; st.classList.add('bad'); } },
+  };
+  addEventListener('error', (e) => window.LOAD.fail(e.message || 'error'));
+  addEventListener('unhandledrejection', (e) => window.LOAD.fail((e.reason && e.reason.message) || 'error'));
+})();
+</script>
 <canvas id="scene"></canvas>
 <div id="labels"></div>
 
@@ -379,7 +452,9 @@ if (!window.SOLO) {
   <div class="avatar" aria-hidden="true"></div>
   <div class="tl-body">
     <div class="title" id="areaTitle">Taproot Fields</div>
+    <div id="wardIcon" title="Phoenix Ward: your next hit is blocked" hidden>&#128293;</div>
     <div class="hp"><div id="hpFill"></div><span id="hpText"></span></div>
+    <div class="hp mp"><div id="manaFill"></div><span id="manaText">MP 100 / 100</span></div>
     <div class="links"><a href="/game/">Back</a></div>
   </div>
 </div>
@@ -398,6 +473,7 @@ if (!window.SOLO) {
     <button id="bagBtn" type="button" tabindex="-1" aria-label="Bag">&#127890;<span class="lbl"> Bag</span><kbd>B</kbd></button>
     <button id="chatBtn" type="button" tabindex="-1" aria-label="Chat">&#128172;<span class="lbl"> Chat</span><kbd>T</kbd></button>
     <button id="soundBtn" type="button" tabindex="-1" aria-label="Sound" aria-pressed="true">&#128266;<kbd>M</kbd></button>
+    <button id="ctrlBtn" type="button" tabindex="-1" aria-label="Controls">Classic<kbd>O</kbd></button>
   </div>
 </div>
 
@@ -424,7 +500,7 @@ if (!window.SOLO) {
   </div>
 </div>
 <div id="joyRing" hidden><i></i></div>
-<div class="help" id="helpBar"><b>I</b> hide &middot; <b>WASD</b> move &middot; <b>Drag / Q E</b> look &middot; <b>Z X</b> tilt &middot; <b>Space</b> jump &middot; <b>'</b> / <b>J</b> right hand &middot; <b>;</b> left hand &middot; <b>Shift</b> nitro &middot; <b>C</b> camera &middot; <b>F</b> use &middot; <b>H</b> potion &middot; <b>N</b> smoke &middot; <b>B</b> bag &middot; <b>U</b> sprint toggle &middot; <b>V</b> view &middot; <b>L</b> auto-aim &middot; <b>T</b> chat &middot; <b>M</b> sound &middot; <b>Tab</b> target &middot; <b>/help</b> social</div>
+<div class="help" id="helpBar"><b>I</b> hide &middot; <span id="lookHelp"><b>WASD</b> move &middot; <b>Drag / Q E</b> look &middot; <b>Z X</b> tilt &middot;</span> <b>Space</b> jump &middot; <b>'</b> / <b>J</b> right hand &middot; <b>;</b> left hand &middot; <b>Shift</b> nitro &middot; <b>C</b> camera &middot; <b>F</b> use &middot; <b>H</b> potion &middot; <b>N</b> smoke &middot; <b>B</b> bag &middot; <b>U</b> sprint toggle &middot; <b>V</b> view &middot; <b>L</b> auto-aim &middot; <b>T</b> chat &middot; <b>M</b> sound &middot; <b>O</b> controls &middot; <b>Tab</b> target &middot; <b>/help</b> social</div>
 <div id="crosshair" hidden></div>
 <div id="aimRing" hidden></div>
 <div id="aimArc" hidden></div>
@@ -506,6 +582,9 @@ import { ARENA_CENTER, ARENA_RADIUS, standY, standBlocked, tomatoArc, TOMATO_GRA
   HAZARDS, TELL_MS, eventsNear, BUFFS, buffAt } from './arena.js';
 import * as arenaMod from './arena.js';
 import { FLOORS, floorMap, BELOW, ABOVE, SHIFT_1F } from './mine.js';
+import { makePortal, makeSprout } from './portal.js';
+import { makeSafeCamp } from './safe.js';
+import { openFossilDig } from './fossil.js';
 for (const id of BLOCK_IDS) FARM_ITEMS['block_' + id] = { name: BLOCKS[id].name, emoji: BLOCKS[id].emoji, info: 'Building block · place it on your plot in build mode (G)' };
 
 const AREA = new URLSearchParams(location.search).get('area');
@@ -513,6 +592,7 @@ const PLOT_Q = new URLSearchParams(location.search).get('plot'); // which player
 const T = 16;
 const MINI = 4; // minimap pixels per tile
 
+await LOAD.step('Reading the map', 15);
 /* ---------- areas (copied from /game/world/, exits point at the 3D pages) ---------- */
 const borderTrees = (edges, W = 48, H = 36) => {
   const t = [];
@@ -695,6 +775,7 @@ const AREAS = {
     ],
     npcs: [['Tilda', 'the tinker', 3.6, 3.4, { skin: 1, hc: 2, hs: 'long', equipment: { eyes: 'round_specs', body: 'leather_vest', lhand: 'lantern' } },
       'Bring me monster parts and gold, and the crafting table can make wands and potions!']],
+    hatch: { x: 10, y: 3 }, // a trapdoor in the floor: the Fossil Dig mini game (fossil.js)
     start: { x: 6, y: 7 },
     exits: [{ edge: 's', range: [6, 7], href: '/game/world3d/?area=city&from=workshop', name: 'Taproot City' }],
     arrive: { city: { x: 6, y: 7 } },
@@ -760,6 +841,7 @@ const AREAS = {
       objects: [
         ['house_b', 12, 2, 4, 3], ['shop', 17, 2, 4, 3, 'Seed Shop'], ['house_a', 28, 1, 5, 4], ['house_b', 34, 2, 4, 3],
         ['tavern', 44, 2, 5, 3, 'Harvest Inn'], ['house_a', 50, 1, 4, 4],
+        ['agent_house', 30, 22, 4, 3, 'Agent Heights'],
         ['barn', 14, 45, 6, 4, "Bo's Barn"], ['shop', 46, 45, 5, 3, "Builder's Yard", Math.PI],
         ...lamps,
       ],
@@ -782,6 +864,8 @@ const AREAS = {
           'Plots out here are up for grabs. Somebody has to farm them!'],
       ],
       exits: [{ edge: 's', range: [22, 26], href: '/game/world3d/?area=city&from=avenues', name: 'Taproot City' }],
+      portal: { x: 24.5, y: 24.5, href: 'https://sendy.gg/#world', name: 'Sendy' }, // the middle of the big plot
+      link: { x: 32, y: 25.9, href: 'https://agentheights.com/app', name: 'Agent Heights' }, // the door of the Agent Heights house, east of the portal
       // back from a clubhouse: just outside that plot's gate
       arrive: { city: { x: 23.5, y: 44 }, ...Object.fromEntries(farmPlots.map(([x1, y1, x2, y2, , id, side]) => [`plot${id}`, { x: Math.floor((x1 + x2) / 2), y: side === 's' ? y2 + 1 : y1 - 2 }])) },
       spawn: [],
@@ -827,6 +911,7 @@ const AREAS = {
     start: { x: 22, y: 31 },
     exits: [{ edge: 's', range: [20, 24], href: '/game/world3d/?from=cave', name: 'Taproot Fields' }],
     arrive: { fields: { x: 22, y: 31 } },
+    safe: { x: 18.5, y: 29.8, r: 2.2 }, // a camp in the entrance room: monsters can't come in
     spawn: ['bat', 'bat', 'bat', 'bat', 'bat', 'slime', 'slime', 'shroom', 'shroom', 'shroom', 'goblin', 'goblin'],
   },
 
@@ -874,6 +959,7 @@ const AREAS = {
   c.lights.forEach((l) => { l[1] += s; });
   c.start.y += s;
   c.arrive.fields.y += s;
+  c.safe.y += s;
   c.objects.push(['crystal_blue', 20, 6, 2, 1], ['crystal_purple', 55, 9, 2, 1], ['node_gold', 26, 10, 2, 1], ['node_iron', 49, 7, 2, 1],
     ['stalagmite_big', 17, 9, 1, 1], ['boulders', 59, 14, 2, 1], ['crystal_blue', 64, 33, 2, 1], ['node_crystal', 57, 35, 2, 1],
     ['stalagmite_small', 62, 37, 1, 1], ['barrel', 60, 24, 1, 1], ['crate', 61, 24, 1, 1]);
@@ -901,6 +987,8 @@ function stitch(title, size, parts) {
     S.planks.push(...(a.planks || []).map(rect));
     Object.entries(a.decor || {}).forEach(([key, count]) => S.decorList.push({ key, count, box }));
     if (a.sailing) Object.assign(S, { sailing: true, fish: a.fish, harbour: [ox, oy] });
+    if (a.portal) S.portal = { ...a.portal, x: a.portal.x + ox, y: a.portal.y + oy };
+    if (a.link) S.link = { ...a.link, x: a.link.x + ox, y: a.link.y + oy };
     S.paths.push(...a.paths.map(rect));
     S.ponds.push(...a.ponds.map((p) => ({ ...p, cx: p.cx + ox, cy: p.cy + oy })));
     for (const k of ['tall', 'plots', 'fenceRects']) S[k].push(...(a[k] || []).map(rect));
@@ -1162,6 +1250,8 @@ const addObject = (key, tx, ty, w, h, name, ry) => { block(tx, ty, w, h); placed
 for (let y = 0; y < MAP_H; y++) for (let x = 0; x < MAP_W; x++) if (isWaterCell(x, y)) blocked[y][x] = true;
 if (CAVE) CAVE.forEach((row, y) => [...row].forEach((ch, x) => { if (ch !== '.') blocked[y][x] = true; }));
 LADDERS.forEach((l) => { blocked[l.y][l.x] = true; });
+const HATCHES = A.hatch ? [{ x: A.hatch.x, y: A.hatch.y, dir: 'down' }] : []; // a hole in a room's floor that opens the Fossil Dig
+HATCHES.forEach((l) => { blocked[l.y][l.x] = true; });
 PLANKS.forEach(([x1, , x2, y2, kind]) => {
   if (kind !== 'quay') return;
   for (let x = x1; x <= x2; x++) if (!PLANKS.some(([a, b, c, d, k]) => k === 'dock' && x >= a && x <= c && y2 >= b && y2 <= d)) blocked[y2][x] = true;
@@ -1226,12 +1316,49 @@ const tallType = (cx, cy) => {
   return null;
 };
 
+await LOAD.step('Painting the ground', 28);
 /* ---------- ground texture: painted once from the world queries, 32 px per tile ----------
    Painted in 1024 px chunks (one texture each), so the big stitched map stays fast to paint and
    within GPU texture limits; each chunk only checks the paths that come near it. */
 const S = 2, CH = 1024, GW = MAP_W * T * S, GH = MAP_H * T * S;
 const groundChunks = []; // { canvas, glow, x, y } in texture pixels
-{
+/* Painting the ground is most of the load time (seconds for the big map), and it comes out the same
+   every time until the page or the map changes. So the finished chunks are kept in the browser's
+   cache under a fingerprint of this page and the map, and the next load (leaving the arena, a
+   reload) just draws them back. Any change to the page or map makes a new fingerprint and a repaint. */
+const GROUND_CACHE = 'taproot-ground', GROUND_AREA = `/__ground/${AREA || 'world'}`;
+const fingerprint = (str) => { let h = 2166136261; for (let i = 0; i < str.length; i++) h = Math.imul(h ^ str.charCodeAt(i), 16777619); return (h >>> 0).toString(36); };
+const GROUND_KEY = await (async () => {
+  try { return fingerprint((await (await fetch(location.pathname)).text()) + JSON.stringify(MINE) + `${MAP_W}x${MAP_H}|${S}`); } catch (e) { return null; }
+})();
+async function loadGround() {
+  try {
+    const c = await caches.open(GROUND_CACHE), meta = await c.match(`${GROUND_AREA}/meta`);
+    if (!meta || !GROUND_KEY) return null;
+    const m = await meta.json();
+    if (m.key !== GROUND_KEY) return null;
+    const draw = async (url, w, h) => {
+      const r = await c.match(url);
+      if (!r) throw new Error('missing chunk');
+      const bmp = await createImageBitmap(await r.blob()), cv = canvasOf(w, h);
+      cv.getContext('2d').drawImage(bmp, 0, 0); bmp.close();
+      return cv;
+    };
+    return await Promise.all(m.chunks.map(async (ch, i) => ({ x: ch.x, y: ch.y,
+      canvas: await draw(`${GROUND_AREA}/${i}`, ch.w, ch.h), glow: ch.glow ? await draw(`${GROUND_AREA}/${i}g`, ch.w, ch.h) : null })));
+  } catch (e) { return null; }
+}
+async function saveGround() { // after the first frame, in the background
+  try {
+    if (!GROUND_KEY) return;
+    const c = await caches.open(GROUND_CACHE), put = (url, cv) => new Promise((r) => cv.toBlob((b) => r(b && c.put(url, new Response(b))), 'image/webp', 0.92)); // near-lossless, and far quicker to encode than PNG
+    for (const [i, ch] of groundChunks.entries()) { await put(`${GROUND_AREA}/${i}`, ch.canvas); if (ch.glow) await put(`${GROUND_AREA}/${i}g`, ch.glow); }
+    await c.put(`${GROUND_AREA}/meta`, new Response(JSON.stringify({ key: GROUND_KEY, chunks: groundChunks.map((ch) => ({ x: ch.x, y: ch.y, w: ch.canvas.width, h: ch.canvas.height, glow: !!ch.glow })) })));
+  } catch (e) {}
+}
+const cachedGround = await loadGround();
+if (cachedGround) groundChunks.push(...cachedGround);
+else {
   const GRASS = { grass: [rgb('#7cba4c'), rgb('#62a03e')], town: [rgb('#78b04a'), rgb('#5f9a3c')], forest: [rgb('#4f9a3a'), rgb('#3f8530')] };
   const PATH = [rgb('#d8b48a'), rgb('#c8a074')], PATH_LIP = rgb('#a8805a');
   const BEACH = [rgb('#f4dca4'), rgb('#e6c98c')], SAND = rgb('#eed39a');
@@ -1270,7 +1397,9 @@ const groundChunks = []; // { canvas, glow, x, y } in texture pixels
     farT[ty * MAP_W + tx] = all;
   }
   const tileOf = (px, py) => Math.min(MAP_H - 1, Math.max(0, Math.floor(py / T))) * MAP_W + Math.min(MAP_W - 1, Math.max(0, Math.floor(px / T)));
+  const chunkCount = Math.ceil(GH / CH) * Math.ceil(GW / CH);
   for (let cy0 = 0; cy0 < GH; cy0 += CH) for (let cx0 = 0; cx0 < GW; cx0 += CH) {
+    await LOAD.tick(28 + 22 * groundChunks.length / chunkCount); // keep the bar moving through the long paint
     const w = Math.min(CH, GW - cx0), h = Math.min(CH, GH - cy0), PW = w + PAD * 2, PH = h + PAD * 2;
     const bx1 = cx0 / S / T - 1, by1 = cy0 / S / T - 1, bx2 = (cx0 + w) / S / T + 1, by2 = (cy0 + h) / S / T + 1;
     pathList = PATHS.filter(([x1, y1, x2, y2, r]) => Math.max(x1, x2) + r + 1 > bx1 && Math.min(x1, x2) - r - 1 < bx2 && Math.max(y1, y2) + r + 1 > by1 && Math.min(y1, y2) - r - 1 < by2);
@@ -1353,6 +1482,7 @@ const groundChunks = []; // { canvas, glow, x, y } in texture pixels
   pathList = PATHS;
 }
 
+await LOAD.step('Lighting the world', 50);
 /* ---------- renderer, scene, lights ---------- */
 const canvas = document.getElementById('scene');
 // Phones (touch screens) get a lighter frame: fewer pixels, no glow pass, cheaper shadows and
@@ -1774,6 +1904,14 @@ const TOWN_BUILD = {
       put('toon', 'box', '#7aaee0', k * (W / 2 + 0.04), 1.6, 0, 0.05, 0.52, 0.52);
     }
   },
+  agent_house(r, w, d) { // Agent Heights: a navy-roofed cottage with a glowing door (A.link takes you to the app)
+    TOWN_BUILD.cottage(w, d, '#2e3f78', false);
+    const f = (d - 0.7) / 2 + 0.01;
+    put('glow', 'box', '#7fd8ff', 0, 0.92, f + 0.09, 0.62, 1.2, 0.03);
+    put('glow', 'box', '#d8f4ff', 0, 0.92, f + 0.11, 0.38, 1.0, 0.02);
+    put('toon', 'box', '#6a4426', 0, 2.0, f + 0.18, 1.5, 0.3, 0.06); // the sign board over the door
+    put('glow', 'box', '#7fd8ff', 0, 2.0, f + 0.22, 1.3, 0.04, 0.02);
+  },
   house_a(r, w, d) { TOWN_BUILD.cottage(w, d, ROOFS[Math.floor(r * 4)], false); },
   house_b(r, w, d) { TOWN_BUILD.cottage(w, d, ROOFS[(Math.floor(r * 4) + 1) % 4], r > 0.5); },
   tavern(r, w, d) {
@@ -1927,6 +2065,7 @@ const PROPS = {
   },
 };
 
+await LOAD.step('Building houses and trees', 60);
 /* ---------- build the world ---------- */
 // ground: a thick slab, with each painted chunk laid on top as its own textured plane
 const seaMat = DAY ? toon({ color: '#3f86d8', emissive: '#0a2850' }) : toon({ color: '#4a2ac0', emissive: '#1a0a50' });
@@ -2171,6 +2310,14 @@ if (INDOOR) {
   put('toon', 'cyl', '#2a2420', 0, 3.25, 0, 0.02, 0.5, 0.02);
   put('glow', 'sph', '#ffe8b0', 0, 2.92, 0, 0.16);
   put('toon', 'cone', '#3a3438', 0, 3.05, 0, 0.26, 0.18, 0.26);
+  HATCHES.forEach((h) => { // a trapdoor in the floor: a dark shaft in a timber collar, the top of a ladder, and the lid propped open against the wall
+    at(h.x + 0.5, h.y + 0.5);
+    put('flat', 'box', '#000000', 0, 0.015, 0, 1.3, 0.02, 1.3);
+    for (const [x, z, w, d] of [[0, -0.72, 1.6, 0.16], [0, 0.72, 1.6, 0.16], [-0.72, 0, 0.16, 1.28], [0.72, 0, 0.16, 1.28]]) put('toon', 'box', '#7a4a28', x, 0.07, z, w, 0.14, d);
+    for (const sx of [-0.28, 0.28]) put('toon', 'box', '#a06e46', sx, 0.15, -0.25, 0.08, 0.9, 0.08);
+    for (let i = 0; i < 3; i++) put('toon', 'box', '#a06e46', 0, -0.05 + i * 0.28, -0.25, 0.56, 0.06, 0.07);
+    put('toon', 'box', '#8a5a30', 0, 0.74, -0.44, 1.4, 0.07, 1.3, -1.2);
+  });
 }
 
 // arena: stone pit wall, three tiers of stands with a crowd, a gatehouse on the south side,
@@ -2523,6 +2670,20 @@ if (A.sailing) {
   // your own sloop, moored at the end of the west pier: walk up and press F to set sail
   boats.push({ g: buildGroup(() => BUILD.sloop(0, 3, 2)), x: 20.5 + HX, y: 0, z: 33.6 + HZ, ph: 0.7, mine: true });
 }
+// a portal out to sendy.gg (the Avenues' big plot), with its little sprout standing beside it
+const LINK = A.link || null; // a door out to another site: stand at it and press F
+const PORTAL = A.portal ? { ...A.portal, ring: makePortal(), sprout: makeSprout() } : null;
+if (PORTAL) {
+  PORTAL.ring.position.set(PORTAL.x, 0, PORTAL.y);
+  PORTAL.sprout.position.set(PORTAL.x + 1.7, 0, PORTAL.y + 0.3);
+  PORTAL.sprout.rotation.y = -0.35; // turned a little toward you as you walk up from the gate
+  scene.add(PORTAL.ring, PORTAL.sprout);
+  gates.push({ x: PORTAL.x, z: PORTAL.y, y: 3.2, name: `${PORTAL.name} portal`, hint: 'Press F to try it' });
+}
+const SAFE = A.safe ? { ...A.safe, camp: makeSafeCamp(A.safe.r) } : null;
+if (SAFE) { SAFE.camp.position.set(SAFE.x, 0, SAFE.y); scene.add(SAFE.camp); }
+// inside the camp ring (pad > 0 keeps things a little further out)
+const inSafe = (x, z, pad = 0) => !!SAFE && Math.hypot(x - SAFE.x, z - SAFE.y) < SAFE.r + pad;
 const BOARD_AT = A.sailing ? { x: 20.5 + HX, z: 31.4 + HZ } : null;
 // shop counters (buildings named in shops.js) and the crafting table: stand in front and press F
 const shopSpots = placed.filter((o) => o.name && SHOPS[o.name]).map((o) => {
@@ -2532,6 +2693,8 @@ const shopSpots = placed.filter((o) => o.name && SHOPS[o.name]).map((o) => {
 const craftAt = placed.filter((o) => o.key === 'craft_table').map((o) => ({ x: o.tx + o.w / 2, z: o.ty + o.h + 0.6 }))[0];
 let action = null;
 function currentAction() {
+  if (PORTAL && Math.hypot(P.x - PORTAL.x, P.z - PORTAL.y) < 2) return { text: `Press F to go through the portal to ${PORTAL.name}`, btn: '\u{1F300} Portal', run: () => { location.href = PORTAL.href; } };
+  if (LINK && Math.hypot(P.x - LINK.x, P.z - LINK.y) < 1.6) return { text: `Press F to enter ${LINK.name}`, btn: '\u{1F6AA} Enter', run: () => { location.href = LINK.href; } };
   const fa = farmAction();
   if (fa) return fa;
   for (const l of LADDERS) if (Math.hypot(P.x - (l.x + 0.5), P.z - (l.y + 0.5)) < 1.7) {
@@ -2539,6 +2702,7 @@ function currentAction() {
     return { text: `${l.dir === 'down' ? '\u25BC' : '\u25B2'} Press F to ${verb.toLowerCase()} \u00B7 to ${l.floor.code} ${l.floor.name}`, btn: `${l.dir === 'down' ? '\u25BC' : '\u25B2'} ${verb}`,
       run: () => goTo(`/game/world3d/?area=${l.to}&from=${AREA}`) };
   }
+  for (const h of HATCHES) if (Math.hypot(P.x - (h.x + 0.5), P.z - (h.y + 0.5)) < 1.7) return { text: '\u25BC Press F to climb down the hatch \u00B7 Fossil Dig', btn: '\u26CF Dig', run: openDig };
   if (BOARD_AT && Math.hypot(P.x - BOARD_AT.x, P.z - BOARD_AT.z) < 2) return { text: 'Press F to set sail', btn: '⛵ Set sail', run: setSail };
   for (const s of shopSpots) if (Math.hypot(P.x - s.x, P.z - s.z) < 2.4) return { text: `Press F to shop at ${s.name}`, btn: '\u{1F6D2} Shop', run: () => openShop(s.name) };
   if (craftAt && Math.hypot(P.x - craftAt.x, P.z - craftAt.z) < 2.3) return { text: 'Press F to use the crafting table', btn: '\u{1F528} Craft', run: openCraft };
@@ -2546,10 +2710,9 @@ function currentAction() {
 }
 function setSail() {
   if (!BOARD_AT || leaving || Math.hypot(P.x - BOARD_AT.x, P.z - BOARD_AT.z) > 2) return;
-  if (SOLO) { toast("Sailing isn't in solo yet"); return; }
   leaving = true;
   $('fade').style.opacity = 1;
-  setTimeout(() => { location.href = '/game/sea3d/?from=docks'; }, 450);
+  setTimeout(() => { location.href = withSolo('/game/sea3d/?from=docks'); }, 450);
 }
 boats.forEach((b) => { b.g.position.set(b.x, b.y, b.z); scene.add(b.g); });
 
@@ -2701,6 +2864,7 @@ function updateSky() {
   stars.position.copy(camera.position);
 }
 
+await LOAD.step('Growing the grass', 78);
 /* ---------- grass: instanced blades that sway and part around the player ---------- */
 const U = { time: { value: 0 }, player: { value: new THREE.Vector3() } };
 function grassMesh(spots, height, width, baseCol, tipCol) {
@@ -2761,6 +2925,7 @@ function grassMesh(spots, height, width, baseCol, tipCol) {
   grassMesh(tuftSpots, 0.45, 0.045, '#1f7a24', '#3aa83a');
 }
 
+await LOAD.step('Waking the townsfolk', 86);
 /* ---------- characters ---------- */
 const SPH = new THREE.SphereGeometry(1, 20, 14);
 function part(geo, mat, parent, x = 0, y = 0, z = 0, sx = 1, sy = sx, sz = sx) {
@@ -2963,7 +3128,7 @@ function floatText(x, y, z, msg, color) {
 gates.forEach((g) => {
   g.el = document.createElement('div');
   g.el.className = 'tag gate';
-  g.el.innerHTML = `${g.name}<small>Walk through to travel</small>`;
+  g.el.innerHTML = `${g.name}<small>${g.hint || "Walk through to travel"}</small>`;
   labelsEl.appendChild(g.el);
 });
 signs.forEach((s) => {
@@ -2975,7 +3140,7 @@ signs.forEach((s) => {
 
 /* ---------- game state ---------- */
 const from = new URLSearchParams(location.search).get('from');
-const spawnAt = A.arrive[from] || START;
+const spawnAt = A.arrive[from] || (!from && A.arrive.respawn) || START; // a fresh start begins in the town square, by the fountain
 // Camera views (C or the camera button): drag / scroll still fine-tune any of them; the pick is remembered.
 const CAM_MODES = [
   { name: 'Chase', dist: 6, pitch: 0.34, follow: true },
@@ -2994,14 +3159,24 @@ let fov = 58, shake = 0, lastDrag = -1e9;
 let firstPerson = false, shoulder = false, fpPitch = 0, camGround = 0;
 try { const v = localStorage.getItem('taproot3d_fp'); firstPerson = v === '1'; shoulder = v === 'shoulder'; } catch (e) {}
 const mouseLook = () => firstPerson || shoulder;
+// Controls (M or the button): Classic is the original set; Laptop is Minecraft-style for a trackpad —
+// WASD walks, the arrow keys look, and after one click the trackpad steers the camera in every view.
+let laptop = false;
+try { laptop = localStorage.getItem('taproot3d_ctrl') === 'laptop'; } catch (e) {}
 const viewName = () => (firstPerson ? 'first' : shoulder ? 'shoulder' : 'third');
 const exitLock = () => { if (document.pointerLockElement) document.exitPointerLock(); };
+// Laptop controls: grab the mouse so it steers the view like the arrow keys. Browsers allow this
+// only from a key press or click, so any game key (or a click) grabs it; Esc lets it go.
+const grabMouse = () => {
+  if (!laptop || document.pointerLockElement || modal || chatOpen || (building && !mouseLook())) return;
+  try { const p = canvas.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (err) {}
+};
 function setView(v) {
   firstPerson = v === 'first';
   shoulder = v === 'shoulder';
   fpPitch = 0;
   try { localStorage.setItem('taproot3d_fp', firstPerson ? '1' : shoulder ? 'shoulder' : '0'); } catch (e) {}
-  if (!mouseLook()) exitLock();
+  if (!mouseLook() && !laptop) exitLock();
   toast(shoulder ? 'Over the shoulder: click to aim with the mouse (V for first person)'
     : firstPerson ? 'First person (V for third person)' : `Third person: ${CAM_MODES[camMode].name} (V for over the shoulder)`);
 }
@@ -3123,6 +3298,7 @@ function addMonster(type, entry, ei, sid, x, z, hp, face) {
 }
 function monsterFree(m, x, z) {
   if (x < 0.5 || z < 0.6 || x > MAP_W - 0.5 || z > MAP_H - 0.25) return false;
+  if (inSafe(x, z, 0.35)) return false; // no monster sets foot (or wing) inside the safe camp
   if (m.cfg.fly) return true;
   const r = m.cfg.giant ? m.cfg.size * 0.6 : m.cfg.big ? 0.56 : 0.31;
   return [[-r, 0], [r, 0], [-r, -0.25], [r, -0.25]].every(([ox, oz]) => !blocked[Math.floor(z + oz)][Math.floor(x + ox)]);
@@ -3183,6 +3359,7 @@ function infoOf(id) {
 }
 let modal = null; // { kind: 'shop' | 'craft', name, tab }
 const openShop = (name) => { exitLock(); modal = { kind: 'shop', name, tab: 'buy' }; toggleBag(false); renderModal(); };
+const openDig = () => { exitLock(); modal = { kind: 'fossil' }; toggleBag(false); openFossilDig(() => { modal = null; }); }; // the overlay swallows keys itself
 const openCraft = () => { exitLock(); modal = { kind: 'craft' }; toggleBag(false); renderModal(); };
 function closeModal() { modal = null; $('shopPanel').hidden = true; }
 function gearButton(id) {
@@ -3333,6 +3510,25 @@ function jump() {
 }
 
 // hand 'R' (J, K or ') or 'L' (;): each hand has its own weapon, swing and cooldown (dual wield)
+/* Mana: staffs and wands spend it, everything else is free. It refills on its own like nitro
+   (empty to full in 8 s, twice as fast in the safe camp). */
+const MANA_MAX = 100;
+const MANA_COST = { apprentice_wand: 10, oak_staff: 12, fire_wand: 15, ice_wand: 15, inferno_staff: 20, thunder_staff: 25, dragon_staff: 40 };
+const endlessMana = () => gear('head') === 'archmage_hat'; // the Archmage's Hat: casting is free
+let mana = MANA_MAX, manaShown = -1, manaWarned = 0, regen = 0;
+const manaCost = (hand, caster) => (caster.boomerang || endlessMana() ? 0 : MANA_COST[gear(hand === 'L' ? 'lhand' : 'rhand')] ?? 12);
+function drawMana() {
+  const v = endlessMana() ? -2 : Math.floor(mana);
+  if (v === manaShown) return;
+  manaShown = v;
+  $('manaFill').style.width = v < 0 ? '100%' : `${(mana / MANA_MAX) * 100}%`;
+  $('manaText').textContent = v < 0 ? 'MP \u221E' : `MP ${v} / ${MANA_MAX}`;
+}
+function outOfMana() {
+  const bar = $('manaFill').parentElement;
+  bar.classList.remove('empty'); void bar.offsetWidth; bar.classList.add('empty'); // flash the bar
+  if (performance.now() - manaWarned > 1200) { manaWarned = performance.now(); floatText(P.x, 2, P.z, 'Out of mana', '#9ad8ff'); }
+}
 function swing(hand = 'R') {
   if (STANDS) { throwTomato(); return; } // a spectator has no fight to swing at
   if (gear(hand === 'L' ? 'lhand' : 'rhand') === 'mirror_shield') { if (!fainted && !modal) parry(); return; }
@@ -3341,7 +3537,13 @@ function swing(hand = 'R') {
   if (fainted || modal || (L ? attackCdL : attackCd) > 0) return;
   if (L) { attackCdL = caster ? caster.cd : 0.36; P.atkL = 0; mp.atkL = Math.round(performance.now()); }
   else { attackCd = caster ? caster.cd : 0.36; P.atk = 0; mp.atk = Math.round(performance.now()); } // stamp the swing so other players see it once
-  if (caster) { setTimeout(() => castBall(hand), 120); return; } // wands and staffs shoot instead
+  if (caster) { // wands and staffs shoot instead, if there's the mana for it
+    const cost = manaCost(hand, caster.cast || caster);
+    if (mana < cost) { outOfMana(); return; }
+    mana -= cost; drawMana();
+    setTimeout(() => castBall(hand), 120);
+    return;
+  }
   sfx.play('swing');
   const att = newAttack();
   // auto-aim: a swing turns onto anything within reach in front of you
@@ -3402,9 +3604,80 @@ function castBall(hand = 'R') {
     x = camera.position.x + SEG.x * 0.6 - SEG.z * side; y = camera.position.y - 0.2 + SEG.y * 0.6; z = camera.position.z + SEG.z * 0.6 + SEG.x * side;
     dx = SEG.x; dy = SEG.y; dz = SEG.z;
   }
+  if (c.pillar) { spawnPillar(pillarSpot(c), c, hand); return; }
   const lock = assistTarget(x, z, dx, dz, c.range);
   if (lock) { const L = Math.hypot(lock.x - x, lock.y - y, lock.z - z) || 1; dx = (lock.x - x) / L; dy = (lock.y - y) / L; dz = (lock.z - z) / L; }
   spawnShot(x, y, z, dx, dy, dz, c, hand);
+}
+/* The Inferno Staff's pillar of flame: a spot on the floor (what auto-aim is on, where the
+   crosshair meets the ground, or where the aim ring sits) glows and blinks for a second, then a
+   column of fire erupts there and burns everything standing in it. */
+const pillars = [];
+function pillarSpot(c) {
+  const fx = Math.sin(P.heading), fz = Math.cos(P.heading);
+  const lock = assistTarget(P.x, P.z, fx, fz, c.range);
+  if (lock) return { x: lock.x, z: lock.z };
+  if (mouseLook()) {
+    camera.getWorldDirection(SEG);
+    const flat = Math.hypot(SEG.x, SEG.z) || 1;
+    let d = c.range * 0.6;
+    if (SEG.y < -0.02) d = Math.min(c.range, Math.hypot(SEG.x, SEG.z) * (camera.position.y / -SEG.y));
+    const ox = camera.position.x - P.x, oz = camera.position.z - P.z; // the camera sits at (or just behind) you
+    return { x: P.x + ox + (SEG.x / flat) * d, z: P.z + oz + (SEG.z / flat) * d };
+  }
+  const a = aimPoint();
+  if (a) return { x: a.x, z: a.z };
+  return { x: P.x + fx * 7, z: P.z + fz * 7 };
+}
+function spawnPillar(at, c, hand) {
+  const r = c.aoe, g = new THREE.Group(), y0 = groundAt(at.x, at.z, 0) + 0.05;
+  const mark = new THREE.MeshBasicMaterial({ color: '#ff3a1a', transparent: true, opacity: 0.35, depthWrite: false, side: THREE.DoubleSide });
+  const disc = new THREE.Mesh(new THREE.CircleGeometry(r, 40), mark);
+  const ring = new THREE.Mesh(new THREE.RingGeometry(r - 0.1, r, 48), new THREE.MeshBasicMaterial({ color: '#ffb03a', transparent: true, opacity: 0.95, side: THREE.DoubleSide }));
+  for (const m of [disc, ring]) { m.rotation.x = -Math.PI / 2; g.add(m); }
+  g.position.set(at.x, y0, at.z);
+  scene.add(g);
+  pillars.push({ g, disc, ring, x: at.x, z: at.z, r, c, hand, att: newAttack(), age: 0, fired: false, col: null });
+}
+function updatePillars(dt) {
+  for (let i = pillars.length - 1; i >= 0; i--) {
+    const p = pillars[i];
+    p.age += dt;
+    if (!p.fired) { // the warning: blink faster as it gets close
+      const on = Math.sin(p.age * (8 + p.age * 18)) > 0;
+      p.disc.material.opacity = on ? 0.5 : 0.18;
+      p.ring.scale.setScalar(1 + (1 - p.age) * 0.15);
+      if (p.age >= 1) {
+        p.fired = true;
+        const col = new THREE.Group();
+        const outer = new THREE.Mesh(new THREE.CylinderGeometry(p.r * 0.85, p.r, 6, 28, 1, true),
+          new THREE.MeshBasicMaterial({ color: '#ff5a1a', transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+        const inner = new THREE.Mesh(new THREE.CylinderGeometry(p.r * 0.45, p.r * 0.6, 6, 20, 1, true),
+          new THREE.MeshBasicMaterial({ color: '#ffe08a', transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+        outer.position.y = inner.position.y = 3;
+        col.add(outer, inner);
+        col.position.set(p.x, p.g.position.y, p.z);
+        col.scale.y = 0.1;
+        scene.add(col);
+        p.col = col;
+        for (let k = 0; k < 6; k++) burst(p.x + (Math.random() - 0.5) * p.r, 0.3 + k * 0.6, p.z + (Math.random() - 0.5) * p.r, k % 2 ? '#ffe08a' : '#ff5a1a', 6);
+        shake = Math.max(shake, 0.25);
+        const power = (statNow('atk') * 0.6 + statNow('mag') * 1.4) * 1.8;
+        for (const m of monsters) if (!m.dead && Math.hypot(m.x - p.x, m.z - p.z) < p.r + (m.cfg.giant ? 1 : 0.3)) hitMonster(m, power, 'pillar', p.hand, p.att);
+        if (ARENA) { for (const gh of ghosts.values()) if (!gh.dead && !gh.hid && Math.hypot(gh.x - p.x, gh.z - p.z) < p.r) hitPlayer(gh, power, p.hand, true); smashCrate(p.x, p.z); }
+      }
+    } else { // the column shoots up, then fades
+      const t = (p.age - 1) / 0.55;
+      p.col.scale.y = Math.min(1, 0.1 + t * 3);
+      p.col.children.forEach((m, j) => { m.material.opacity = (j ? 0.9 : 0.8) * (1 - t); m.rotation.y += dt * (j ? -6 : 4); });
+      p.disc.material.opacity = 0.5 * (1 - t);
+      p.ring.material.opacity = 0.95 * (1 - t);
+      if (t >= 1) {
+        for (const o of [p.g, p.col]) { scene.remove(o); o.traverse((m) => { if (m.material) m.material.dispose(); if (m.geometry) m.geometry.dispose(); }); }
+        pillars.splice(i, 1);
+      }
+    }
+  }
 }
 /* Auto-aim: when you're already roughly facing something (within about 23 degrees) and it's in
    range, your shot bends onto it, and a sword swing turns onto anything within reach. Toggled with
@@ -3457,8 +3730,20 @@ function spawnShot(x, y, z, dx, dy, dz, c, hand) {
     halo = new THREE.Mesh(FB_GEO, new THREE.MeshBasicMaterial({ color: c.color, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false }));
     halo.scale.setScalar(0.38 * s);
     g.add(core, shell, halo);
+    if (c.dragon) { // a dragon's head leads the ball: snout, horns and two burning eyes
+      const red = new THREE.MeshBasicMaterial({ color: '#c8281e' }), bone = new THREE.MeshBasicMaterial({ color: '#efe2c0' });
+      const snout = new THREE.Mesh(new THREE.ConeGeometry(0.16 * s, 0.42 * s, 8), red);
+      snout.rotation.x = Math.PI / 2; snout.position.z = 0.32 * s; g.add(snout);
+      for (const sx of [-1, 1]) {
+        const horn = new THREE.Mesh(new THREE.ConeGeometry(0.035 * s, 0.26 * s, 6), bone);
+        horn.position.set(sx * 0.11 * s, 0.17 * s, -0.04 * s); horn.rotation.set(-0.9, 0, sx * -0.35); g.add(horn);
+        const eye = new THREE.Mesh(FB_GEO, new THREE.MeshBasicMaterial({ color: '#ffe23a' }));
+        eye.scale.setScalar(0.035 * s); eye.position.set(sx * 0.09 * s, 0.08 * s, 0.17 * s); g.add(eye);
+      }
+    }
   }
   g.position.set(x, y, z);
+  if (c.dragon) g.lookAt(x + dx, y + dy, z + dz);
   scene.add(g);
   const light = c.boomerang ? null : FB_LIGHTS.find((l) => !l.userData.busy);
   if (light) { light.userData.busy = true; light.color.set(c.color); light.intensity = 6; }
@@ -3678,13 +3963,16 @@ function explode(fb) {
   scene.add(b);
   blasts.push({ m: b, age: 0, r: 0.6 + c.aoe * 0.6 });
   if (ARENA) smashCrate(x, z);
-  if (c.aoe) for (const m of monsters) if (!m.dead && Math.hypot(m.x - x, m.z - z) < c.aoe) hitMonster(m, statNow('atk') * 0.5 + statNow('mag') * 0.8, 'aoe', fb.hand, fb.att);
-  if (c.aoe && ARENA) for (const g of ghosts.values()) if (g !== fb.foe && Math.hypot(g.x - x, g.z - z) < c.aoe) hitPlayer(g, statNow('atk') * 0.5 + statNow('mag') * 0.8, fb.hand, true);
+  const splash = (statNow('atk') * 0.5 + statNow('mag') * 0.8) * (c.dmg || 1);
+  if (c.dragon) { burst(x, y, z, '#ffcf3a', 24); shake = Math.max(shake, 0.3); }
+  if (c.aoe) for (const m of monsters) if (!m.dead && Math.hypot(m.x - x, m.z - z) < c.aoe) hitMonster(m, splash, 'aoe', fb.hand, fb.att);
+  if (c.aoe && ARENA) for (const g of ghosts.values()) if (g !== fb.foe && Math.hypot(g.x - x, g.z - z) < c.aoe) hitPlayer(g, splash, fb.hand, true);
   scene.remove(fb.g);
   fb.g.traverse((o) => o.material && o.material.dispose());
   if (fb.light) { fb.light.userData.busy = false; fb.light.intensity = 0; }
 }
 function updateFireballs(dt, t) {
+  updatePillars(dt);
   for (let i = fireballs.length - 1; i >= 0; i--) {
     const fb = fireballs[i], step = (fb.c.speed || 15) * dt;
     if (fb.boom) { if (updateBoomerang(fb, dt)) { dropShot(fb); fireballs.splice(i, 1); } continue; }
@@ -3693,7 +3981,7 @@ function updateFireballs(dt, t) {
     fb.halo.scale.setScalar(0.38 * fb.c.size * (1 + Math.sin(t * 40) * 0.12));
     if (fb.light) fb.light.position.copy(fb.g.position);
     fb.trailT += dt;
-    if (fb.trailT > 0.03) { fb.trailT = 0; burst(fb.x, fb.y, fb.z, fb.c.color, 1); }
+    if (fb.trailT > 0.03) { fb.trailT = 0; burst(fb.x, fb.y, fb.z, fb.c.color, fb.c.dragon ? 3 : 1); }
     let hit = null;
     for (const m of monsters) {
       if (m.dead) continue;
@@ -3704,7 +3992,7 @@ function updateFireballs(dt, t) {
     const wall = cx < 0 || cz < 0 || cx >= MAP_W || cz >= MAP_H || (blocked[cz][cx] && waterAt(fb.x * T, fb.z * T) < 0)
       || circles.some(([x, z, r]) => Math.hypot(fb.x - x, fb.z - z) < r);
     if (ARENA) for (const g of ghosts.values()) if (!g.dead && !g.hid && Math.hypot(g.x - fb.x, g.z - fb.z) < 0.7 && fb.y > g.y && fb.y < g.y + 1.8) { fb.foe = g; break; }
-    const power = statNow('atk') * 0.6 + statNow('mag') * 1.4;
+    const power = (statNow('atk') * 0.6 + statNow('mag') * 1.4) * (fb.c.dmg || 1);
     if (hit) { hitMonster(hit, power, fb.c === MIRROR_SHOT ? 'mirror' : 'shot', fb.hand, fb.att); chillMonster(hit, fb.c); chainFrom(fb, hit, power); }
     if (fb.foe) { hitPlayer(fb.foe, power, fb.hand, true, fb.c.slow); chainFrom(fb, fb.foe, power); }
     const landed = fb.y <= 0.05 || fb.y <= groundAt(fb.x, fb.z, fb.y) + 0.05 || blockCellAt(fb.x, fb.y, fb.z);
@@ -3812,7 +4100,35 @@ function queenMoves(mo, v, dt, dx, dz, dist, tt) {
   v.body.position.y = -crouch * 0.35 + (moving ? Math.abs(Math.sin(tt * 9)) * 0.06 : 0);
   v.legs.forEach((l) => { l.hip.rotation.y = l.base + (moving ? Math.sin(tt * (mo.dash > 0 ? 22 : 11) + l.i * 1.6 + (l.s > 0 ? Math.PI : 0)) * 0.3 : 0); });
 }
+/* Phoenix Ward (Phoenix Plate): the first hit you take after 10 seconds without being hit does
+   nothing. A golden ring circles you while it's ready; any hit, warded or not, restarts the clock. */
+const WARD_MS = 10000;
+let wardReady = true, lastHitAt = -1e9;
+const hasWard = () => gear('body') === 'phoenix_plate';
+const wardRing = new THREE.Mesh(new THREE.TorusGeometry(0.62, 0.035, 8, 40),
+  new THREE.MeshBasicMaterial({ color: '#ffcf3a', transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false }));
+wardRing.rotation.x = Math.PI / 2;
+scene.add(wardRing);
+function wardBlocks() { // call when a hit lands on you: true if the ward ate it
+  const ready = hasWard() && wardReady;
+  lastHitAt = performance.now();
+  if (!ready) return false;
+  wardReady = false;
+  floatText(P.x, 2, P.z, 'Warded!', '#ffcf3a');
+  burst(P.x, 1.1, P.z, '#ffcf3a', 18);
+  burst(P.x, 1.1, P.z, '#ff7a1a', 8);
+  return true;
+}
+function updateWard(t) {
+  const on = hasWard();
+  if (on && !wardReady && performance.now() - lastHitAt > WARD_MS) { wardReady = true; burst(P.x, 0.6, P.z, '#ffcf3a', 8); }
+  wardRing.visible = on && wardReady && !fainted;
+  if (wardRing.visible) { wardRing.position.set(P.x, P.y + 0.75 + Math.sin(t * 2.5) * 0.08, P.z); wardRing.rotation.z = t * 1.5; wardRing.material.opacity = 0.5 + Math.sin(t * 4) * 0.2; }
+  $('wardIcon').hidden = !(on && wardReady);
+}
 function hurtPlayer(m, dx, dz, dist) {
+  if (inSafe(P.x, P.z)) return; // nothing reaches you in the safe camp
+  if (wardBlocks()) { inv = 0.9; return; }
   const dmg = Math.max(1, Math.round(m.cfg.dmg * 50 / (50 + stats.def)));
   hp = Math.max(0, hp - dmg);
   inv = 0.9;
@@ -3916,7 +4232,7 @@ function openArmory() {
   toggleBag(false);
   const wrap = document.createElement('div');
   wrap.id = 'armoryOverlay';
-  wrap.innerHTML = '<div id="armoryBox"><iframe id="armoryFrame" title="Gear" src="/game/?armory=1&embed=1"></iframe><button id="armoryClose" type="button">Done</button></div>';
+  wrap.innerHTML = `<div id="armoryBox"><iframe id="armoryFrame" title="Gear" src="${withSolo('/game/?armory=1&embed=1')}"></iframe><button id="armoryClose" type="button">Done</button></div>`;
   document.body.appendChild(wrap);
   // Done goes through the Armory's own Back, so it saves to your account the same way
   const done = armoryDone;
@@ -4859,7 +5175,8 @@ function useItem(id) {
 }
 
 function hazardHurt(power, weapon) {
-  if (fainted || performance.now() < safeUntil) return;
+  if (fainted || performance.now() < safeUntil || inSafe(P.x, P.z)) return;
+  if (wardBlocks()) return;
   const dmg = Math.max(1, Math.round(power * 50 / (50 + statNow('def'))));
   hp = Math.max(0, hp - dmg);
   hero.hurt();
@@ -5095,7 +5412,7 @@ function updateFoeBalls(dt) {
     if (b.trailT > 0.03) { b.trailT = 0; burst(b.x, b.y, b.z, '#ff5a2a', 1); }
     const cx = Math.floor(b.x), cz = Math.floor(b.z);
     const wall = cx < 0 || cz < 0 || cx >= MAP_W || cz >= MAP_H || blocked[cz][cx]
-      || circles.some(([x, z, r]) => Math.hypot(b.x - x, b.z - z) < r);
+      || circles.some(([x, z, r]) => Math.hypot(b.x - x, b.z - z) < r) || inSafe(b.x, b.z); // spells fizzle on the camp's ring
     const onMe = !fainted && Math.hypot(P.x - b.x, P.z - b.z) < 0.75 && P.y < 1.8;
     if (onMe && parrying()) { // the mirror shield sends it straight back at whoever threw it
       floatText(P.x, 2, P.z, 'Reflected!', '#cfefff');
@@ -5158,6 +5475,7 @@ function onHit(d) {
     sfx.play('parry');
     return;
   }
+  if (wardBlocks()) return; // Phoenix Ward works in the arena too
   if (d.slow) chill(d.slow);
   const dmg = Math.max(1, Math.round(d.dmg * 50 / (50 + statNow('def'))));
   hp = Math.max(0, hp - dmg);
@@ -5540,6 +5858,7 @@ function setBuilding(on) {
   building = on ? { k: (building && building.k) || BAR[0], r: (building && building.r) || (plotOf(myFarm.id).side === 's' ? 0 : 2), ghost: null } : null;
   $('buildBar').hidden = $('buildMode').hidden = !building;
   document.body.classList.toggle('building', !!building);
+  if (building && !mouseLook()) exitLock();
   if (building) renderBuildBar();
 }
 function farmKey(code) {
@@ -5913,6 +6232,7 @@ addEventListener('keydown', (e) => {
   if (e.code === 'Escape' && trade && !trade.waiting) { cancelTrade(); return; }
   if (e.code === 'Escape' && target) setTarget(null);
   if ((e.code === 'KeyT' || e.code === 'Enter') && !modal) { e.preventDefault(); openChat(); return; }
+  if (e.code !== 'Escape' && e.code !== 'KeyM' && e.code !== 'KeyB') grabMouse();
   keys[e.code] = true;
   if (modal) { if (e.code === 'Escape' || e.code === 'KeyF') closeModal(); return; } // a shop / crafting panel is open
   if (e.code === 'KeyU') setSprint(!sprintOn);
@@ -5928,6 +6248,7 @@ addEventListener('keydown', (e) => {
   if (e.code === 'KeyL') setAutoAim(!autoAim);
   if (e.code === 'KeyI') toggleHelp();
   if (e.code === 'KeyM') setSound(sfx.muted);
+  if (e.code === 'KeyO') setControls(!laptop, true);
   if (e.code === 'KeyF' && action) action.run();
   if (e.code === 'Escape') toggleBag(false);
   farmKey(e.code);
@@ -5959,12 +6280,15 @@ canvas.addEventListener('pointerdown', (e) => {
   canvas.classList.add('drag');
 });
 canvas.addEventListener('pointerdown', (e) => {
-  if (mouseLook() && e.pointerType === 'mouse' && !document.pointerLockElement && !modal && !chatOpen) try { canvas.requestPointerLock(); } catch (err) {}
+  // Laptop: click the game and the trackpad (or mouse) steers the camera in every view — but not
+  // while building in third person, where you point at the soil with the cursor
+  if ((mouseLook() || (laptop && !building)) && e.pointerType === 'mouse' && !document.pointerLockElement && !modal && !chatOpen) try { canvas.requestPointerLock(); } catch (err) {}
 });
 document.addEventListener('mousemove', (e) => {
   if (document.pointerLockElement !== canvas) return;
   camYaw -= e.movementX * 0.0025;
-  fpPitch = clamp(fpPitch - e.movementY * 0.0025, -1.3, 1.3);
+  if (mouseLook()) fpPitch = clamp(fpPitch - e.movementY * 0.0025, -1.3, 1.3);
+  else camPitchT = clamp(camPitchT + e.movementY * 0.003, 0.05, 1.35); // third person: tilt the chase camera
 });
 canvas.addEventListener('pointermove', (e) => {
   if (touches.has(e.pointerId)) touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -6021,6 +6345,18 @@ for (const [id, dir] of [['camUpBtn', 1], ['camDownBtn', -1]]) {
 $('viewBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); cycleView(); });
 $('aimBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); setAutoAim(!autoAim); });
 $('aimBtn').classList.toggle('on', autoAim);
+const LOOK_HELP = { classic: $('lookHelp').innerHTML, laptop: '<b>WASD</b> move &middot; <b>Arrows / mouse</b> look &middot; <b>Esc</b> frees the mouse &middot;' };
+function setControls(on, say) {
+  laptop = on;
+  try { localStorage.setItem('taproot3d_ctrl', on ? 'laptop' : 'classic'); } catch (e) {}
+  $('ctrlBtn').firstChild.textContent = on ? 'Laptop' : 'Classic';
+  $('lookHelp').innerHTML = LOOK_HELP[on ? 'laptop' : 'classic'];
+  if (!on && !mouseLook()) exitLock();
+  if (on && say) grabMouse();
+  if (say) toast(on ? 'Laptop controls: WASD walk, arrows or mouse look, Esc frees the mouse (O to switch back)' : 'Classic controls (O for laptop controls)');
+}
+setControls(laptop, false);
+$('ctrlBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); setControls(!laptop, true); });
 $('bagBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); toggleBag(); });
 // Fold open (a near-square touch screen): pull the camera back a little to show more world
 let squareBoost = 0;
@@ -6037,6 +6373,7 @@ addEventListener('resize', () => {
   composer.setSize(innerWidth, innerHeight);
 });
 
+await LOAD.step('Almost there', 95);
 /* ---------- main loop ---------- */
 const clock = new THREE.Clock();
 const camPos = new THREE.Vector3(), lookAt = new THREE.Vector3();
@@ -6048,15 +6385,26 @@ function update(dt, now) {
 
   // movement relative to the camera
   const k = (c) => (keys[c] ? 1 : 0);
-  let fy = fainted || modal ? 0 : k('KeyW') + k('ArrowUp') - k('KeyS') - k('ArrowDown');
-  let fx = fainted || modal ? 0 : k('KeyD') + k('ArrowRight') - k('KeyA') - k('ArrowLeft');
+  const arrows = laptop ? 0 : 1; // Classic: the arrows walk too
+  let fy = fainted || modal ? 0 : k('KeyW') - k('KeyS') + arrows * (k('ArrowUp') - k('ArrowDown'));
+  let fx = fainted || modal ? 0 : k('KeyD') - k('KeyA') + arrows * (k('ArrowRight') - k('ArrowLeft'));
   if (joy && !fainted) { fx += joy.fx; fy += joy.fy; }
-  camYaw += (k('KeyQ') - k('KeyE')) * 2.2 * dt;
-  if (!building) camPitchT = clamp(camPitchT + (k('KeyZ') - k('KeyX')) * 1.7 * dt, 0.05, 1.35); // tilt up / down
+  // Laptop: the arrow keys are the camera, like Q E (turn) and Z X (tilt)
+  const arrowLook = laptop ? 1 : 0;
+  camYaw += (k('KeyQ') - k('KeyE') + arrowLook * (k('ArrowLeft') - k('ArrowRight'))) * 2.2 * dt;
+  if (laptop && mouseLook()) fpPitch = clamp(fpPitch + (k('ArrowUp') - k('ArrowDown')) * 1.5 * dt, -1.3, 1.3);
+  if (!building) camPitchT = clamp(camPitchT + (k('KeyZ') - k('KeyX') + (laptop && !mouseLook() ? k('ArrowDown') - k('ArrowUp') : 0)) * 1.7 * dt, 0.05, 1.35); // tilt up / down
   const moving = Math.hypot(fx, fy) > 0.15;
   const boosting = moving && (sprintOn || ((keys.ShiftLeft || keys.ShiftRight) && !shiftCancel)) && !nitroLock && nitro > 0;
   if (boosting) { if (gear('feet') !== 'windrunner_boots') nitro -= dt * 0.12; if (nitro <= 0) { nitro = 0; nitroLock = true; } } // windrunner boots never tire
   else { nitro = Math.min(1, nitro + dt * 0.3); if (nitroLock && nitro > 0.25) nitroLock = false; }
+  updateWard(t);
+  const camping = inSafe(P.x, P.z);
+  mana = Math.min(MANA_MAX, mana + dt * (MANA_MAX / 8) * (camping ? 2 : 1)); drawMana();
+  if (camping && !fainted && hp < stats.hp) { // resting by the fire: about 6% of your health a second
+    regen += dt * stats.hp * 0.06;
+    if (regen >= 1) { hp = Math.min(stats.hp, hp + Math.floor(regen)); regen -= Math.floor(regen); updateHud(); }
+  }
   // Smoothing is frame-rate independent: damp(k, dt) is the fraction of the way to close
   // this frame for a time constant 1/k, where a bare `dt * k` would snap at low frame rates
   // and crawl at high ones. That difference is most of what reads as jerk.
@@ -6132,7 +6480,7 @@ function update(dt, now) {
     }
     const dx = P.x - mo.x, dz = P.z - mo.z, dist = Math.hypot(dx, dz) || 1;
     // the host's monsters go after whoever is closest; ghosts stand in for the other players
-    let prey = !fainted && !smokedNow() ? P : null, pd = prey ? dist : Infinity;
+    let prey = !fainted && !smokedNow() && !inSafe(P.x, P.z) ? P : null, pd = prey ? dist : Infinity;
     if (host) for (const g of ghosts.values()) {
       if (g.dead || g.hid || g.map !== A.title) continue;
       const d = Math.hypot(g.x - mo.x, g.z - mo.z);
@@ -6484,7 +6832,7 @@ window.__world3d = { sfx, P, ghosts, arena, social, party: () => party, trade: (
   view: viewName, autoAim: () => autoAim, setAutoAim: (on) => setAutoAim(on), camYaw: () => camYaw, setCamYaw: (v) => { camYaw = v; }, nitro: () => nitro, setNitro: (v) => { nitro = v; nitroLock = false; }, jump,
   killMonster, hitMonster, collect, shopAct, claimPlot, plant, harvest, owned: () => owned, // economy tests
   spawn: (type, x, z) => { spawnMonster(type); const m = monsters[monsters.length - 1]; m.x = x; m.z = z; m.t = 99; m.vx = m.vz = 0; return monsters.length - 1; },
-  foeCast: (i) => castFoeBall(monsters[i]), chilled, smoked: () => Math.max(0, (smokeUntil - performance.now()) / 1000), colosseum: () => COLO && { arena: [A.doors.find((d) => /area=arena/.test(d.href)).x + 0.5, A.doors.find((d) => /area=arena/.test(d.href)).y + 0.5], stands: [A.doors.find((d) => /area=stands/.test(d.href)).x + 0.5, A.doors.find((d) => /area=stands/.test(d.href)).y + 0.5] }, hazardNow, clockOffset: () => HAZ.offset, hazards: () => [...HAZ.views.values()], hazardClock: (ms) => { HAZ.pinned = ms === undefined || ms === null ? null : ms; }, slowed, setHp: (n) => { hp = n; updateHud(); }, drawnBlocks: (id) => ((plotViews.get(id) || {}).blockMeshes || []).reduce((n, m) => n + m.count, 0), getPitch: () => fpPitch, camDistT: () => camDistT, getYaw: () => camYaw, firstPerson: () => firstPerson, setPitch: (v) => { fpPitch = v; }, openShop, hiddenBlocks, doorAngle: (id, i, j, k) => { const v = plotViews.get(id); return (v && v.doorAng && v.doorAng.get(`${i},${j},${k}`)) || 0; }, shopSpots, aimBlock, mouse, camera, building: () => building, toScreen, groundAt, solidAt, setBlocks, plots: PLOTS, placed, decorCrops, myFarm: () => myFarm, farmTile: () => farmTile(), hp: () => hp, mp, monsters, drops, field: () => field, hero: () => hero, fireballs, tp: (x, z, yaw) => { P.x = x; P.z = z; P.vx = P.vz = 0; if (yaw !== undefined) camYaw = yaw; }, cam: (dist, pitch) => { camDistT = camDist = dist; camPitchT = camPitch = pitch; }, size: [MAP_W, MAP_H], info: () => { // one full frame's draw calls and triangles (all passes, shadows included)
+  foeCast: (i) => castFoeBall(monsters[i]), chilled, smoked: () => Math.max(0, (smokeUntil - performance.now()) / 1000), colosseum: () => COLO && { arena: [A.doors.find((d) => /area=arena/.test(d.href)).x + 0.5, A.doors.find((d) => /area=arena/.test(d.href)).y + 0.5], stands: [A.doors.find((d) => /area=stands/.test(d.href)).x + 0.5, A.doors.find((d) => /area=stands/.test(d.href)).y + 0.5] }, hazardNow, clockOffset: () => HAZ.offset, hazards: () => [...HAZ.views.values()], hazardClock: (ms) => { HAZ.pinned = ms === undefined || ms === null ? null : ms; }, slowed, setHp: (n) => { hp = n; updateHud(); }, drawnBlocks: (id) => ((plotViews.get(id) || {}).blockMeshes || []).reduce((n, m) => n + m.count, 0), getPitch: () => fpPitch, mana: () => mana, wardReady: () => wardReady, pillars, inSafe: () => inSafe(P.x, P.z), safe: () => SAFE && { x: SAFE.x, y: SAFE.y, r: SAFE.r }, camDistT: () => camDistT, getYaw: () => camYaw, firstPerson: () => firstPerson, setPitch: (v) => { fpPitch = v; }, openShop, hiddenBlocks, doorAngle: (id, i, j, k) => { const v = plotViews.get(id); return (v && v.doorAng && v.doorAng.get(`${i},${j},${k}`)) || 0; }, shopSpots, aimBlock, mouse, camera, building: () => building, toScreen, groundAt, solidAt, setBlocks, plots: PLOTS, placed, decorCrops, myFarm: () => myFarm, farmTile: () => farmTile(), hp: () => hp, mp, monsters, drops, field: () => field, hero: () => hero, fireballs, tp: (x, z, yaw) => { P.x = x; P.z = z; P.vx = P.vz = 0; if (yaw !== undefined) camYaw = yaw; }, cam: (dist, pitch) => { camDistT = camDist = dist; camPitchT = camPitch = pitch; }, size: [MAP_W, MAP_H], info: () => { // one full frame's draw calls and triangles (all passes, shadows included)
   renderer.info.autoReset = false; renderer.info.reset(); composer.render();
   const r = { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles };
   renderer.info.autoReset = true; return r;
@@ -6494,7 +6842,10 @@ renderBag();
 (function frame() {
   const dt = Math.min(clock.getDelta(), 0.05);
   update(dt, performance.now());
+  if (PORTAL) { PORTAL.ring.tick(performance.now()); PORTAL.sprout.tick(performance.now()); }
+  if (SAFE) SAFE.camp.tick(performance.now());
   if (PHONE) renderer.render(scene, camera); else composer.render(); // the glow pass costs a phone more than it shows
+  if (!frame.shown) { frame.shown = true; LOAD.done(); if (!cachedGround) setTimeout(saveGround, 1500); } // the first frame is drawn: lift the loading screen
   requestAnimationFrame(frame);
 })();
 </script>

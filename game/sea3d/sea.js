@@ -310,7 +310,7 @@ function dock() {
   leaving = true;
   B.level = 0;
   $('fade').style.opacity = 1;
-  setTimeout(() => { location.href = '/game/world3d/?area=docks&from=sea'; }, 650);
+  setTimeout(() => { location.href = (window.withSolo || ((h) => h))('/game/world3d/?area=docks&from=sea'); }, 650);
 }
 function loot(I) {
   scene.remove(I.chest);
