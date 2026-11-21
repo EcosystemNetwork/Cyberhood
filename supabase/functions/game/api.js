@@ -10,14 +10,16 @@
    they ever differ from the game's.
 
    Routes (the last path segment is the action):
-     GET  config, farms               public
+     GET  config, farms, pools        public
      POST signup, login               public
      GET  me, state                   signed in (Authorization: Bearer <session key>)
-     POST act, save, logout           signed in */
+     POST act, save, logout, pool     signed in */
 import crypto from 'node:crypto';
 import { Buffer } from 'node:buffer';
 import './rules/items.js'; // sets globalThis.GAME
 import * as E from './rules/economy.js';
+import * as L from './rules/pools.js';
+import { makeWallet, NotReady } from './wallet.js';
 
 const G = globalThis.GAME;
 const STYLES = ['short', 'long', 'bald'];
@@ -32,12 +34,16 @@ const RATE = {
   login: [30, 600],           // log-in attempts per IP
   loginFail: [5, 900],        // wrong passwords per IP + username
   loginFailUser: [50, 3600],  // wrong passwords per username, from anywhere
+  siwe: [1, 3600],            // each wallet sign-in nonce works once (wallet.js)
+  withdraw: [20, 3600],       // on-chain withdrawals per account
+  pool: [600, 3600],          // Old Fenn's pools: swaps and deposits per account
+  mpticket: [60, 3600],       // multiplayer tickets per IP (one per tab, renewed hourly)
 };
 const SESSION_MS = 30 * 24 * 60 * 60 * 1000;
 const DUMMY_HASH = '00'.repeat(16) + ':' + '00'.repeat(64);
 const MAX_ACTIONS = 60; // per request
 const ROW = 'id,username,character,inventory,econ,econ_rev,farm,farm_plot';
-const GETS = ['me', 'state', 'farms', 'config', 'handle'];
+const GETS = ['me', 'state', 'farms', 'config', 'handle', 'pools'];
 
 const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');
 const scrypt = (pw, salt) => new Promise((ok, no) => crypto.scrypt(pw, salt, 64, (e, k) => (e ? no(e) : ok(k))));
@@ -61,7 +67,9 @@ const notMigrated = (r) => r.status === 400 && /econ|farm/.test(JSON.stringify(r
      url:        the Supabase project URL (SUPABASE_URL)
      serviceKey: its service-role key (server only, never sent to the browser)
      anonKey:    its public anon key, handed to the browser for Realtime multiplayer
-     dev:        local testing: every account owns every item, ?farmfast works }
+     dev:        local testing: every account owns every item, ?farmfast works
+     chain:      Robinhood Chain settings for wallet.js (makeWallet's cfg); chain features are off
+                 until it has a bridge address and a signer key }
    Returns handle({ method, action, headers, body, ip }) -> { status, body }. */
 export function makeGameApi(env) {
   const BASE_URL = env.url || 'https://rxplfcuhsdvqposhpzyp.supabase.co';
@@ -301,11 +309,97 @@ export function makeGameApi(env) {
     return [409, { error: 'Busy, try again' }];
   }
 
+  /* Old Fenn's liquidity pools (rules/pools.js). A pool is shared by everyone, so it has its own
+     row in game_pools with its own rev; game_pool() saves the pool and the player together, each
+     compare-and-swap on its rev, so a swap can never take from one side without giving to the
+     other, and two players trading at once just retry. */
+  const rpc = (name, args) => fetch(BASE_URL + '/rest/v1/rpc/' + name, {
+    method: 'POST',
+    headers: { apikey: SERVICE_KEY, Authorization: 'Bearer ' + SERVICE_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify(args),
+  });
+  async function poolRows(id) {
+    const r = await fetch(BASE_URL + '/rest/v1/game_pools?select=id,gold,res,shares,rev' + (id ? '&id=eq.' + id : ''), {
+      headers: { apikey: SERVICE_KEY, Authorization: 'Bearer ' + SERVICE_KEY },
+    });
+    if (r.status === 404) throw new NotMigrated(); // no game_pools table yet
+    if (!r.ok) throw new Error('pools read failed: ' + r.status);
+    return r.json();
+  }
+  // refusals that depend on the player's or the pool's state (409); the rest are bad requests (400)
+  const POOL_REFUSED = { 'not enough gold': 409, 'not enough': 409, 'not enough shares': 409, 'price moved': 409, 'bag full': 409, 'pool empty': 409, 'too big': 409 };
+  async function pool(user, body) {
+    const a = { t: body.op, id: body.id, side: body.side, n: body.n, min: body.min, gold: body.gold, res: body.res, shares: body.shares };
+    if (!['swap', 'add', 'remove'].includes(a.t) || !L.isPool(a.id)) return [400, { error: 'Invalid pool action' }];
+    if (!(await within('pool', String(user.id)))) return [429, { error: 'Easy there. Old Fenn needs a breather' }];
+    for (let attempt = 0; attempt < 6; attempt++) {
+      if (attempt) {
+        const fresh = await db(`?id=eq.${user.id}&select=${ROW}`);
+        user = fresh.data && fresh.data[0];
+        if (!user) throw new Error('account vanished');
+      }
+      const row = (await poolRows(a.id))[0];
+      const p = L.normPool(row), prev = row ? row.rev : 0;
+      const econ = E.normEcon(user.econ), rev = user.econ_rev || 0, out = {};
+      const free = E.freeGold(econ);
+      const why = L.poolAction(econ, p, a, out)
+        || (E.normEcon(user.econ).gold - econ.gold > free ? 'not enough gold' : ''); // imported (bound) gold stays out of the pools
+      if (why) return [POOL_REFUSED[why] || 400, { error: why, pool: { id: a.id, ...p } }];
+      const r = await rpc('game_pool', { p_id: user.id, p_rev: rev, p_econ: econ, pool_id: a.id, pool_rev: prev, pool: p });
+      if (r.status === 404) throw new NotMigrated();
+      if (!r.ok) throw new Error('pool write failed: ' + r.status);
+      if ((await r.json()) === true) return [200, { done: out, pool: { id: a.id, ...p }, state: stateOf({ ...user, econ }) }];
+      // the pool or the account moved on: go again from fresh rows
+    }
+    return [409, { error: 'Busy, try again' }];
+  }
+
+  /* Multiplayer tickets. Players talk to each other over Supabase Realtime broadcast, which anyone
+     with the public anon key can join, so nothing there proves who sent a message. A ticket does:
+     the server signs (Ed25519) { s: session id, n: display name, g: guest, k: the tab's own public
+     key, e: expiry }, and the tab signs every message it broadcasts with its key. Other players
+     check both (game/lib/mpauth.js), so nobody can speak or act as someone else. Signed-in players
+     get their character's name; guests get '<name> (guest)', so they can't pass as an account.
+     The signing key is derived from the service key, so it needs no setup of its own. */
+  const MP_TICKET_MS = 60 * 60 * 1000;
+  const b64u = (bytes) => Buffer.from(bytes).toString('base64url');
+  let mpKeys = null;
+  function mpKeyPair() {
+    mpKeys ||= (async () => {
+      const seed = crypto.createHash('sha256').update('mp-ticket\0' + SERVICE_KEY).digest();
+      const pkcs8 = Buffer.concat([Buffer.from('302e020100300506032b657004220420', 'hex'), seed]);
+      const priv = await globalThis.crypto.subtle.importKey('pkcs8', pkcs8, { name: 'Ed25519' }, true, ['sign']);
+      const jwk = await globalThis.crypto.subtle.exportKey('jwk', priv);
+      return { priv, pub: jwk.x };
+    })();
+    return mpKeys;
+  }
+  async function makeTicket(pk, name, guest) {
+    const { priv, pub } = await mpKeyPair();
+    // the session id follows from the tab's key, so a renewed ticket keeps the same one
+    const sid = crypto.createHash('sha256').update('mp-sid\0' + SERVICE_KEY + '\0' + pk).digest('hex').slice(0, 12);
+    const exp = Date.now() + MP_TICKET_MS;
+    const t = JSON.stringify({ s: sid, n: name, g: guest ? 1 : 0, k: pk, e: exp });
+    const sig = await globalThis.crypto.subtle.sign({ name: 'Ed25519' }, priv, Buffer.from(t));
+    return { ticket: b64u(Buffer.from(t)) + '.' + b64u(sig), key: pub, sid, name, guest: !!guest, exp };
+  }
+
   // headers: lower-case names. ip: the caller's address (for rate limits).
+  // A fresh session for an account (password or wallet sign-in) and what the game needs on sign-in.
+  async function loginAs(user) {
+    const s = newSession();
+    await patch(user.id, s.fields);
+    return { key: s.key, username: user.username, character: user.character, inventory: ownedItems(user), state: stateOf(user) };
+  }
+
+  // Robinhood Chain: linked wallets, withdrawals, deposits (./wallet.js)
+  const wallet = makeWallet(env.chain || {}, { G, E, DEV, BASE_URL, SERVICE_KEY, ROW, within, ownedItems, cleanCharacter, stateOf, loginAs });
+  const ALL_GETS = [...GETS, ...wallet.GETS];
+
   return async function handle({ method, action, headers = {}, body = {}, ip = 'unknown' }) {
     const send = (status, b) => ({ status, body: b });
     if (!SERVICE_KEY) return send(500, { error: 'Server is not set up yet' });
-    if (method !== (GETS.includes(action) ? 'GET' : 'POST')) return send(405, { error: 'Method not allowed' });
+    if (method !== (ALL_GETS.includes(action) ? 'GET' : 'POST')) return send(405, { error: 'Method not allowed' });
 
     body = typeof body === 'object' && body ? body : {};
     const username = String(body.username ?? '').trim().toLowerCase();
@@ -313,6 +407,8 @@ export function makeGameApi(env) {
 
     try {
       /* ---- public ---- */
+      const pub = await wallet.public(action, { body, headers, ip });
+      if (pub) return send(...pub);
       if (action === 'config') {
         return send(200, { realtime: ANON_KEY ? { url: BASE_URL, key: ANON_KEY } : null });
       }
@@ -321,6 +417,12 @@ export function makeGameApi(env) {
         if (notMigrated(r)) throw new NotMigrated();
         if (r.status >= 300) throw new Error('farms read failed: ' + r.status);
         return send(200, { farms: (r.data || []).map((row) => row.farm).filter(Boolean), now: Date.now() });
+      }
+
+      if (action === 'pools') {
+        const rows = await poolRows();
+        const by = Object.fromEntries(rows.map((r) => [r.id, r]));
+        return send(200, { pools: L.POOL_IDS.map((id) => ({ id, ...L.normPool(by[id]) })), fee: L.FEE_BPS });
       }
 
       if (action === 'signup') {
@@ -356,14 +458,25 @@ export function makeGameApi(env) {
           await within('loginFailUser', username);
           return send(401, { error: 'Wrong username or password' });
         }
-        const s = newSession();
-        await patch(user.id, s.fields);
-        return send(200, { key: s.key, username: user.username, character: user.character, inventory: ownedItems(user), state: stateOf(user) });
+        return send(200, await loginAs(user));
+      }
+
+      if (action === 'mpticket') { // a signed ticket for multiplayer (see makeTicket)
+        if (!(await within('mpticket', ip))) return send(429, TOO_MANY);
+        const pk = String(body.pk || '');
+        if (!/^[A-Za-z0-9_-]{43}$/.test(pk)) return send(400, { error: 'Invalid key' });
+        const who = await sessionUser(headers);
+        const name = who ? (who.character && String(who.character.name || '').trim().slice(0, 16)) || who.username
+          : (String(body.name ?? '').replace(/[^\p{L}\p{N} _'-]/gu, '').trim().slice(0, 16) || 'Wanderer') + ' (guest)';
+        return send(200, await makeTicket(pk, name, !who));
       }
 
       /* ---- signed in ---- */
       const user = await sessionUser(headers);
       if (!user) return send(401, { error: 'Please sign in again' });
+
+      const own = await wallet.user(action, user, { body, headers });
+      if (own) return send(...own);
 
       if (action === 'me') {
         return send(200, { username: user.username, character: user.character, inventory: ownedItems(user), state: stateOf(user) });
@@ -378,6 +491,7 @@ export function makeGameApi(env) {
 
       if (action === 'handle') return send(200, { handle: makeHandle(user) }); // for trading, anonymously
       if (action === 'trade') { const [code, data] = await trade(user, body); return send(code, data); }
+      if (action === 'pool') { const [code, data] = await pool(user, body); return send(code, data); }
 
       if (action === 'save') {
         let owned = ownedItems(user);
@@ -396,7 +510,7 @@ export function makeGameApi(env) {
 
       return send(404, { error: 'Not found' });
     } catch (e) {
-      if (e instanceof NotMigrated) return send(503, { error: 'The game database needs its latest update (supabase/migrations)' });
+      if (e instanceof NotMigrated || e instanceof NotReady) return send(503, { error: 'The game database needs its latest update (supabase/migrations)' });
       console.error(e);
       return send(500, { error: 'Something went wrong' });
     }

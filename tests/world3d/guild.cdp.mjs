@@ -105,6 +105,27 @@ try {
   assert.ok(dead, 'the companion killed the slime');
   await load(A, `${BASE}/game/world3d/?area=city&hour=13&nomp=1&farmfast=1`);
 
+  // the pet walks with you (petbrain.js): warps back when you're far, idles when you stop, fetches loot
+  await A.ev(`__world3d.openGuild('pets'); 1`);
+  assert.ok(await click(`[data-act="g_walk"][data-id="${pet.id}"]`), 'walk button works');
+  await A.ev(`document.getElementById('shopClose').click(); 1`);
+  const brain = () => A.ev('JSON.stringify(__world3d.guild().brain.state)').then(JSON.parse);
+  const me = await A.ev('[__world3d.P.x, __world3d.P.z]');
+  await sleep(1500);
+  assert.ok(await brain(), 'your pet is out');
+  // (every mode is covered in tests/petbrain.test.mjs; headless Chrome runs a frame or so a second)
+  await A.ev(`__world3d.tp(${me[0]}, ${me[1] - 20}, 0); 1`); // through a gate, far up the street
+  let st, near = false;
+  for (let t = 0; t < 30 && !near; t++) { await sleep(400); st = await brain(); near = Math.hypot(st.x - me[0], st.z - (me[1] - 20)) < 3; }
+  assert.ok(near, 'it warped to you');
+  await A.ev('__world3d.cam(6, 0.6); 1');
+  const gold0 = await A.ev('__world3d.field().gold');
+  await A.ev(`__world3d.spawnDrop({ kind: 'gold', m: 'slime', amount: 3 }, __world3d.P.x + 3, __world3d.P.z + 2); const d = __world3d.drops.at(-1); d.ready = true; d.y = 0.35; d.vx = d.vz = d.vy = 0; 1`);
+  let fetched = false;
+  for (let t = 0; t < 120 && !fetched; t++) { await sleep(400); if (t === 6) await A.shot('guild-pet-fetch.png'); fetched = (await brain()).grabbed > 0; }
+  assert.ok(fetched, 'it fetched the gold');
+  assert.equal(await A.ev('__world3d.field().gold'), gold0 + 3, 'and you got it');
+
   // the guild is saved with the field: still there after a reload
   await load(A, `${BASE}/game/world3d/?area=city&hour=13&nomp=1&farmfast=1`);
   assert.equal((await G()).heroes.length, 5);

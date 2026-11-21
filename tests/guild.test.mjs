@@ -132,3 +132,20 @@ test('tonics are brewed at the crafting table', () => {
   assert.equal(applyAction(s, { t: 'craft', id: 'stamina_tonic' }, { now: 1, isGear: () => false }), '');
   assert.equal(s.econ.bag.stamina_tonic, 1);
 });
+
+test('a pet walks with you until its companion leaves on an expedition', () => {
+  const s = { econ: newEcon(), owned: [], farm: null };
+  s.econ.gold = 500; s.econ.bag.pet_egg = 1;
+  const go = (a) => applyAction(s, a, { now: 9e9, minute: MIN, rand, isGear: () => false });
+  go({ t: 'g_recruit' }); go({ t: 'g_hatch' });
+  const [h] = s.econ.guild.heroes, [p] = s.econ.guild.pets;
+  assert.equal(go({ t: 'g_walk', pet: 99 }), 'no such pet');
+  assert.equal(go({ t: 'g_walk', pet: p.id }), '');
+  assert.equal(s.econ.guild.walk, p.id);
+  go({ t: 'g_pet', pet: p.id, hero: h.id });
+  assert.equal(s.econ.guild.walk, p.id, 'still walks with you while it helps a companion');
+  go({ t: 'g_quest', where: 'mine', party: [h.id], n: 1 });
+  assert.equal(s.econ.guild.walk, 0, 'it goes with its companion');
+  assert.equal(go({ t: 'g_walk', pet: p.id }), 'pet away');
+  assert.equal(go({ t: 'g_walk', pet: 0 }), '');
+});

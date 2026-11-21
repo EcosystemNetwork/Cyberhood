@@ -214,10 +214,30 @@ export const LIMITS = {
   'kill:spider_queen': [2, 110],
   warp: [2, 20],
   barrel: [4, 8],
+  zone: [4, 30], // moving between zones (below): a visit to the Hollow is two moves
 };
+
+/* Zones: which monsters can be met where. A player is in one zone at a time (the last 'area'
+   said which), and the server only lets monsters of that zone spawn, so a script can't farm the
+   giants, the gladiators and the wilds at once, or summon a giant in a field. (The browser still
+   says which zone it's in: server-run zones are the real fix.) */
+export const ZONES = {
+  wild: ['slime', 'shroom', 'bat', 'goblin', 'king'],
+  arena: ['gladiator'],
+  hollow: ['golem_crystal', 'spider_queen'],
+};
+// The zone for a map with these monster types.
+export const zoneOf = (types) => Object.keys(ZONES).find((z) => z !== 'wild' && types.some((t) => ZONES[z].includes(t))) || 'wild';
 export const MAX_PENDING = 30;   // uncollected drops kept per kind
 export const BAG_MAX = 99999;
 export const MAX_MEMBERS = 20;
+/* The two taps on farm and loot income. Shops buying from players is where new gold comes from
+   (crops, drops, ores), so each account can sell shops at most SELL_DAY_GOLD a day; past that,
+   Old Fenn's pools (pools.js) trade with other players, which makes no new gold. And a plot holds
+   at most MAX_CROPS crops at once, so the big plot farms like a small one and keeps its room for
+   building. (Without these, a full 24x24 plot of carrots made about 27,000 gold an hour.) */
+export const SELL_DAY_GOLD = 1500;
+export const MAX_CROPS = 96;
 export const HARVEST_SLACK_MS = 5000; // client and server clocks / latency
 
 /* A first upload of progress saved in the browser before cloud saves existed is accepted
@@ -268,8 +288,20 @@ export function normEcon(e) {
     sea: { gen: { ...((e.sea && e.sea.gen) || {}) }, back: { ...((e.sea && e.sea.back) || {}) }, last: (e.sea && e.sea.last) || null },
     pos: Array.isArray(e.pos) ? [...e.pos] : null,
     guild: normGuild(e.guild),
+    lp: Object.fromEntries(Object.entries((e.lp && typeof e.lp === 'object' && e.lp) || {}).filter(([, n]) => Number.isSafeInteger(n) && n > 0)), // pool shares (pools.js)
+    bound: Number.isSafeInteger(e.bound) && e.bound > 0 ? e.bound : 0,
+    boundGear: Array.isArray(e.boundGear) ? e.boundGear.filter((id) => typeof id === 'string') : [],
   };
 }
+
+/* Bound value: what the one-time import handed out (see 'import') can be used in the game but
+   never leaves the account, so fresh accounts can't be farmed for it. `bound` gold is spent
+   first (applyAction lowers it whenever gold goes down); only gold above it can be traded,
+   withdrawn or swapped in a pool. `boundGear` lists imported gear that can't be withdrawn. */
+export const freeGold = (e) => Math.max(0, (e.gold || 0) - (e.bound || 0));
+export const NON_IMPORTABLE = new Set([ // anything that can leave the game (chain.js RESOURCES) or be pooled
+  ...Object.values(MONSTER_LOOT).map((m) => m.drop), ...Object.keys(CROPS), ...Object.keys(GUILD_ITEMS),
+]);
 
 // The client's game clock may not run ahead of the server's (no speeding up the game).
 // Combat and barrels share it. Returns false if `at` is ahead.
@@ -300,14 +332,14 @@ function take(econ, key, now) {
 }
 
 // Pays out a kill (XP now, drops once picked up), within the respawn-rate limits.
-function credit(e, type, now) {
+function credit(e, type, now, rand = Math.random) {
   const m = MONSTER_LOOT[type];
   if (!take(e, LIMITS['kill:' + type] ? 'kill:' + type : 'kill', now)) return 'too fast';
   e.xp += m.xp; e.kills += 1;
   e.pending.gold[type] = Math.min(MAX_PENDING, (e.pending.gold[type] || 0) + 1);
   e.pending.item[m.drop] = Math.min(MAX_PENDING, (e.pending.item[m.drop] || 0) + 1);
   const gd = GEAR_DROPS[type];
-  if (gd && Math.random() < gd.chance) {
+  if (gd && rand() < gd.chance) {
     if (!e.pending.gear) e.pending.gear = {};
     e.pending.gear[type] = Math.min(5, (e.pending.gear[type] || 0) + 1);
   }
@@ -354,14 +386,15 @@ function importFarm(s, f, budget, ctx) {
     if (!clear) continue;
     budget -= B.cost; farm.builds.push({ k: b.k, i, j, r });
   }
-  for (const [key, c] of Object.entries(f.crops && typeof f.crops === 'object' ? f.crops : {}).slice(0, 600)) {
+  for (const [key, c] of Object.entries(f.crops && typeof f.crops === 'object' ? f.crops : {}).slice(0, MAX_CROPS)) {
     const m = /^(\d+),(\d+)$/.exec(key), seed = c && CROPS[c.k] ? valueOf(c.k + '_seed') : undefined;
     if (!m || seed === undefined || seed > budget) continue;
     const i = +m[1], j = +m[2];
     if (!inSoil(i, j) || buildAt(farm, i, j)) continue;
     const t = Number(c.t);
     budget -= seed;
-    farm.crops[`${i},${j}`] = { k: c.k, t: Number.isFinite(t) ? Math.max(now - 30 * 86400000, Math.min(now, t)) : now };
+    // planted now: an old planting time would make every crop ripe at once, and crops can be withdrawn
+    farm.crops[`${i},${j}`] = { k: c.k, t: now };
   }
   const old = unpack(typeof f.blocks === 'string' ? f.blocks.slice(0, 40000) : '', soil[0], soil[1]), vox = unpack('', soil[0], soil[1]);
   old.forEach((i, j, k, t, r) => {
@@ -384,13 +417,24 @@ function importFarm(s, f, budget, ctx) {
      ctx = { now: ms, isGear: (id) => bool, owner: character name, dev: local testing,
              minute: ms per crop/altar minute (60000, less with ?farmfast in local testing) } */
 export function applyAction(s, a, ctx) {
+  const before = s.econ.gold;
+  const why = applyOne(s, a, ctx);
+  const spent = before - s.econ.gold; // bound gold is spent first (freeGold)
+  if (spent > 0 && s.econ.bound) s.econ.bound = Math.max(0, s.econ.bound - spent);
+  return why;
+}
+function applyOne(s, a, ctx) {
   const e = s.econ, now = ctx.now, minute = ctx.minute || 60000;
   if (!a || typeof a !== 'object' || typeof a.t !== 'string') return 'bad action';
   const farm = s.farm, soil = farm && PLOT_SOIL[farm.id];
 
   switch (a.t) {
-    case 'area': { // a new map loaded: the monsters of the last one are gone, and you're somewhere new
+    case 'area': { // { z: zone }: a new map loaded: the monsters of the last one are gone, and you're somewhere new
       e.foes = {}; e.hands = {}; e.pos = null;
+      const z = a.z === undefined ? 'wild' : a.z;
+      if (!Object.prototype.hasOwnProperty.call(ZONES, z)) return 'bad area';
+      if (z !== (e.zone || 'wild') && !take(e, 'zone', now)) return 'too fast';
+      e.zone = z;
       return '';
     }
     case 'warp': { // { x, z, at }: fainted and woke at the map's start
@@ -403,6 +447,7 @@ export function applyAction(s, a, ctx) {
     case 'spawn': { // { id, m }: a monster appeared, with full HP
       const m = MONSTER_LOOT[a.m];
       if (!m) return 'unknown monster';
+      if (!ZONES[e.zone || 'wild'].includes(a.m)) return 'wrong area';
       if (typeof a.id !== 'string' || !/^[a-z0-9]{4,16}$/.test(a.id) || e.foes[a.id]) return 'bad id';
       const ids = Object.keys(e.foes);
       if (ids.length >= MAX_FOES) delete e.foes[ids[0]]; // the oldest
@@ -444,7 +489,7 @@ export function applyAction(s, a, ctx) {
       foe.dealt = (foe.dealt || 0) + dmg;
       if (foe.hp > 0) return '';
       delete e.foes[a.id];
-      return credit(e, foe.m, now);
+      return credit(e, foe.m, now, ctx.rand);
     }
     case 'ahit': { // { id, hero, at, dmg, mx, mz }: your companion's hit (guild.js ALLY)
       const foe = e.foes[a.id], g = e.guild;
@@ -469,19 +514,19 @@ export function applyAction(s, a, ctx) {
       if (foe.hp > 0) return '';
       delete e.foes[a.id];
       h.xp += MONSTER_LOOT[foe.m].xp; // the companion learns from its kills too
-      return credit(e, foe.m, now);
+      return credit(e, foe.m, now, ctx.rand);
     }
     case 'down': { // { id }: a monster this player helped fight was finished off by someone else
       const foe = e.foes[a.id];
       if (!foe) return 'no such monster';
       if ((foe.dealt || 0) < Math.ceil(MONSTER_LOOT[foe.m].hp * ASSIST_SHARE)) return 'not enough damage';
       delete e.foes[a.id];
-      return credit(e, foe.m, now);
+      return credit(e, foe.m, now, ctx.rand);
     }
     case 'kill': { // only local testing reports kills directly; the live game kills through hits
       if (!ctx.dev) return 'kills come from hits';
       if (!MONSTER_LOOT[a.m]) return 'unknown monster';
-      return credit(e, a.m, now);
+      return credit(e, a.m, now, ctx.rand);
     }
     case 'pickup': { // a drop walked over: { kind: 'gold', m } or { kind: 'item', id }
       if (a.kind === 'gold') { // the server rolls the amount; whatever the browser showed is only a guess
@@ -502,11 +547,17 @@ export function applyAction(s, a, ctx) {
         if (!(e.pending.gear && e.pending.gear[mt] > 0)) return 'nothing to pick up';
         e.pending.gear[mt] -= 1;
         if (!e.pending.gear[mt]) delete e.pending.gear[mt];
-        const uid = typeof a.uid === 'string' && a.uid.length <= 64 ? a.uid : `g_${mt}_${now}`;
-        const ilvl = typeof a.ilvl === 'number' ? Math.max(1, Math.min(10, a.ilvl | 0)) : ((GEAR_DROPS[mt] || {}).ilvl || [3])[0];
         if (!e.gearInv) e.gearInv = [];
         if (e.gearInv.length >= 60) return 'inventory full';
-        if (!e.gearInv.some((g) => g.uid === uid)) e.gearInv.push(rollGearDrop(uid, ilvl));
+        /* The server picks the uid and the item level, never the browser: rollGearDrop is public
+           and deterministic, so a chosen uid could be searched offline for a legendary roll. The
+           browser's own guess is replaced when the server's state comes back (gearInv). */
+        const roll = ctx.rand || Math.random;
+        const [lo, hi] = (GEAR_DROPS[mt] || {}).ilvl || [1, 1];
+        const ilvl = lo + Math.min(hi - lo, Math.floor(roll() * (hi - lo + 1)));
+        let uid = 'g';
+        for (let i = 0; i < 4; i++) uid += Math.floor(roll() * 0x10000).toString(16).padStart(4, '0');
+        e.gearInv.push(rollGearDrop(uid, ilvl));
         return '';
       }
       return 'bad pickup';
@@ -530,6 +581,9 @@ export function applyAction(s, a, ctx) {
       const n = int(a.n);
       if (!(a.id in SELL)) return 'not wanted';
       if (!(n >= 1) || !has(e.bag, a.id, n)) return 'not enough';
+      const day = Math.floor(now / 86400000), sold = Array.isArray(e.sold) && e.sold[0] === day ? e.sold[1] : 0;
+      if (sold + SELL[a.id] * n > SELL_DAY_GOLD) return 'shops are full today';
+      e.sold = [day, sold + SELL[a.id] * n];
       add(e.bag, a.id, -n); e.gold += SELL[a.id] * n;
       return '';
     }
@@ -595,6 +649,7 @@ export function applyAction(s, a, ctx) {
       const i = int(a.i), j = int(a.j), key = `${i},${j}`;
       if (!CROPS[a.k] || !(i >= 0 && j >= 0 && i < soil[0] && j < soil[1])) return 'bad spot';
       if (farm.crops[key] || buildAt(farm, i, j) || unpack(farm.blocks, soil[0], soil[1]).get(i, j, 0)) return 'spot taken';
+      if (Object.keys(farm.crops).length >= MAX_CROPS) return 'field is full';
       if (!has(e.bag, a.k + '_seed', 1)) return 'no seeds';
       add(e.bag, a.k + '_seed', -1);
       farm.crops[key] = { k: a.k, t: now };
@@ -690,21 +745,28 @@ export function applyAction(s, a, ctx) {
         const v = typeof id === 'string' && ctx.isGear(id) && !s.owned.includes(id) ? valueOf(id) : undefined;
         if (v === undefined || v > budget) continue;
         budget -= v; s.owned.push(id);
+        e.boundGear = [...(e.boundGear || []), id]; // imported gear can't be withdrawn
       }
+      let bound = 0; // the gold the rest of the import could ever turn into
       // then the bag, as many of each as the budget allows
       if (f.bag && typeof f.bag === 'object') {
         for (const [id, n] of Object.entries(f.bag).slice(0, 200)) {
-          const v = BAG_ITEMS.has(id) ? valueOf(id) : undefined;
+          // consumables, seeds and blocks only: nothing that can be withdrawn, pooled or traded on
+          const v = BAG_ITEMS.has(id) && !NON_IMPORTABLE.has(id) ? valueOf(id) : undefined;
           if (v === undefined) continue;
           const k = Math.min(cap(n, IMPORT_CAPS.bag), v > 0 ? Math.floor(budget / v) : IMPORT_CAPS.bag);
-          if (k > 0) { add(e.bag, id, k); budget -= k * v; }
+          if (k > 0) { add(e.bag, id, k); budget -= k * v; bound += k * (SELL[id] || 0); }
         }
       }
       // then a farm plot kept in the browser before farms moved to the server, if the plot is free
       if (a.farm && typeof a.farm === 'object' && !s.farm && PLOT_SOIL[a.farm.id] && ctx.plotTaken !== a.farm.id) {
         budget = importFarm(s, a.farm, budget, ctx);
+        for (const b of s.farm.builds) bound += BUILDS[b.k].cost; // 'unbuild' pays this back in gold
       }
-      e.gold += cap(f.gold, budget); // then gold, with what's left
+      const gold = cap(f.gold, budget);
+      e.gold += gold; // then gold, with what's left
+      // everything but the gear (boundGear) is bound: usable here, never tradeable or withdrawable
+      e.bound = (e.bound || 0) + bound + gold;
       if (Array.isArray(a.loot)) for (const id of a.loot) if (SEA_TREASURE[id] && !e.loot.includes(id)) e.loot.push(id);
       e.imported = true;
       return '';
@@ -740,7 +802,7 @@ export function cleanTerms(t) {
 }
 export const emptyTerms = (t) => !t.gold && !Object.keys(t.items).length;
 export const sameTerms = (a, b) => !!a && !!b && a.gold === b.gold && JSON.stringify(cleanTerms(a).items) === JSON.stringify(cleanTerms(b).items);
-export const canGive = (e, t) => e.gold >= t.gold && Object.entries(t.items).every(([id, n]) => has(e.bag, id, n));
+export const canGive = (e, t) => freeGold(e) >= t.gold &&Object.entries(t.items).every(([id, n]) => has(e.bag, id, n));
 // Moves `give` out of the economy and `get` into it (check canGive first).
 export function swapTerms(e, give, get) {
   e.gold += get.gold - give.gold;
@@ -748,4 +810,4 @@ export function swapTerms(e, give, get) {
   for (const [id, n] of Object.entries(get.items)) add(e.bag, id, n);
 }
 
-export const publicEcon = (e) => ({ gold: e.gold, xp: e.xp, kills: e.kills, bag: e.bag, loot: e.loot, gearInv: e.gearInv || [], imported: e.imported, barrels: (e.sea && e.sea.gen) || {}, guild: e.guild || newGuild() });
+export const publicEcon = (e) => ({ gold: e.gold, xp: e.xp, kills: e.kills, bag: e.bag, loot: e.loot, gearInv: e.gearInv || [], imported: e.imported, barrels: (e.sea && e.sea.gen) || {}, guild: e.guild || newGuild(), lp: e.lp || {} });

@@ -49,7 +49,7 @@ FORE_SHARE = 0.5                  # of that, the share the forearm takes down by
 SWEEP_CLIPS = ('walk', 'run')     # clips whose arm swing the cape is widened to cover …
 SWEEP_K, SWEEP_MAX = 0.4, 0.035   # … this much of the way, by at most this much,
 SWEEP_BACK = 115                  # only behind this angle (the back-swing; forward the cape is open)
-HOOD_GAP, HOOD_POINT = 0.03, 0.05   # hood offset from the head; size of the soft point at the back
+HOOD_GAP, HOOD_POINT = 0.036, 0.05  # hood offset from the head; size of the peak at the top of the back
 HOOD_BRIM = 0.022    # the face opening's rim stands this far forward of the head, framing the face
 FACE_HALF = 52       # half-width (deg, round the head) of the face opening at eye level
 TEX_CAPE, TEX_HOOD = 1024, 512
@@ -322,6 +322,15 @@ def grid_mesh(name, grid, uv_rows):
 
 cape = grid_mesh('cape', grid, lambda j: 1 - j / ROWS)
 
+
+def cloak_r(th, z):  # the cloak's own radius (capelet, then cape) at a direction and height
+    i = min(range(len(thetas)), key=lambda k: abs(thetas[k] - th))
+    col = [around(grid[j][i])[1:] for j in range(ROWS + 1)]  # (r, z), z falling toward the hem
+    for (r0, z0), (r1, z1) in zip(col, col[1:]):
+        if z1 <= z <= z0 and z0 > z1:
+            return r0 + (r1 - r0) * (z0 - z) / (z0 - z1)
+    return col[-1][0] if z < col[-1][1] else col[0][0]
+
 # ---- 3 hood: a smooth ellipsoid a little outside the head (sized from the head's extent each way,
 # so hair bumps don't show), a soft point at the back, the bottom flaring onto the shoulders, and an
 # oval face opening that closes above the brow
@@ -332,16 +341,33 @@ ext = {
     'right': max((p - hc).dot(R) for p in hverts), 'left': max(-(p - hc).dot(R) for p in hverts),
     'up': max((p - hc).z for p in hverts),
 }
-def face_open(e):  # front half-angle of the opening at elevation e: oval, closed above the brow
-    if e > 14:   # closed above the brow
+FACE_TOP, FACE_ROUND = 24, 34  # the opening closes at this elevation, rounding off over the last 34°
+
+
+def face_open(e):  # front half-angle of the opening at elevation e: a round-topped oval
+    if e >= FACE_TOP:
         return 0
-    if e > -8:   # rounding off over the forehead
-        return FACE_HALF * math.sqrt(max(0.0, 1 - ((e + 8) / 22) ** 2))
+    lo = FACE_TOP - FACE_ROUND
+    if e > lo:   # rounding off over the forehead
+        return FACE_HALF * math.sqrt(max(0.0, 1 - ((e - lo) / FACE_ROUND) ** 2))
     return FACE_HALF if e > -40 else FACE_HALF * 1.2  # open down past the chin to the neck
 
 
+def shell(a, e):  # a point on the ellipsoid round the head (a: degrees from straight behind)
+    ar, er = math.radians(a), math.radians(e)
+    cb, sr, ce, se = math.cos(ar), math.sin(ar), math.cos(er), math.sin(er)
+    rx = (ext['back'] if cb > 0 else ext['front']) + HOOD_GAP
+    ry = (ext['right'] if sr > 0 else ext['left']) + HOOD_GAP
+    rz = ext['up'] + HOOD_GAP if se > 0 else ext['up'] * 0.9 + HOOD_GAP
+    return hc + B * (cb * ce * rx) + R * (sr * ce * ry) + UP * (se * rz), rz
 
-HC, HR = 40, 22
+
+# A hood is a cloth bag, not a helmet: below its widest ring the back and sides fall straight to the
+# shoulders instead of tucking in under the skull; it comes to a peak at the top of the back; and it
+# has a few soft folds low down. A fine grid, so the face opening's edge is smooth.
+HC, HR = 56, 40
+HOOD_FOLDS, HOOD_FOLD_AMP = 7, 0.006
+fold_ph = random.uniform(0, 2 * math.pi)
 hgrid = []
 elev = [-78 + (90 + 78) * j / HR for j in range(HR + 1)]  # from the collar up to the crown
 for j, e in enumerate(elev):
@@ -349,16 +375,21 @@ for j, e in enumerate(elev):
     span = 180 - face_open(e)  # each ring stops exactly at the face opening: a smooth oval edge
     for i in range(HC + 1):
         a = -span + 2 * span * i / HC
-        ar, er = math.radians(a), math.radians(e)
-        cb, sr = math.cos(ar), math.sin(ar)
-        ce, se = math.cos(er), math.sin(er)
-        # ellipsoid: pick the semi-axis on each side, then add the gap
-        rx = (ext['back'] if cb > 0 else ext['front']) + HOOD_GAP
-        ry = (ext['right'] if sr > 0 else ext['left']) + HOOD_GAP
-        rz = ext['up'] + HOOD_GAP if se > 0 else ext['up'] * 0.9 + HOOD_GAP
-        p = hc + B * (cb * ce * rx) + R * (sr * ce * ry) + UP * (se * rz)
-        # soft point at the back of the crown
-        p += (B * 0.8 + UP * 0.2) * HOOD_POINT * math.exp(-((a / 40) ** 2) - (((e - 30) / 22) ** 2))
+        p, rz = shell(a, e)
+        if e < 0:  # hang straight down from the widest ring (less so beside the face)
+            eq, _ = shell(a, 0.0)
+            hang = smooth(-e / 35) * smooth((150 - abs(a)) / 50)
+            h_now, h_eq = Vector((p.x - hc.x, p.y - hc.y, 0)), Vector((eq.x - hc.x, eq.y - hc.y, 0))
+            h_eq *= 1 + 0.05 * smooth(-e / 60)  # a little fuller toward the shoulders
+            hh = h_now.lerp(h_eq, hang)
+            p = Vector((hc.x + hh.x, hc.y + hh.y, p.z))
+        # the peak, at the top of the back
+        p += (B * 0.88 + UP * 0.12).normalized() * HOOD_POINT * math.exp(-((a / 38) ** 2) - (((e - 44) / 24) ** 2))
+        # soft folds: low on the back and sides, none at the crown or along the face's rim
+        out_ = Vector((p.x - hc.x, p.y - hc.y, 0))
+        if out_.length > 1e-6:
+            f_ = math.sin(math.radians(a) * HOOD_FOLDS + fold_ph) + 0.4 * math.sin(math.radians(a) * HOOD_FOLDS * 1.9 + 1.3)
+            p += out_.normalized() * HOOD_FOLD_AMP * f_ / 1.4 * smooth((30 - e) / 50) * smooth((span - abs(a)) / 25)
         # below the jaw the hood flares out onto the shoulders
         if e < -20:  # below the jaw the cowl lies on the capelet, ending just below the shoulders
             k = smooth((-20 - e) / 58)
@@ -370,12 +401,12 @@ for j, e in enumerate(elev):
             p = p.lerp(on, smooth((-20 - e) / 25))
         # the rim round the face opening stands forward, so it frames the face like a hood's brim
         if face_open(e) > 0:
-            edge = math.exp(-(min(i, HC - i) / 2.2) ** 2)
+            edge = math.exp(-(min(i, HC - i) / 3.0) ** 2)
             p += F * HOOD_BRIM * edge * smooth((e + 40) / 25)
         row.append(p)
     hgrid.append(row)
 hood = grid_mesh('hood', hgrid, lambda j: j / HR)
-FACE_V = (14 + 78) / (90 + 78)  # the hood's v where the face opening closes (elevation 14)
+FACE_V = (FACE_TOP + 78) / (90 + 78)  # the hood's v where the face opening closes
 
 
 print('BUILT cape', len(cape.data.vertices), 'verts; hood', len(hood.data.vertices), 'verts')
@@ -426,7 +457,8 @@ def fabric(size, trims, folds):
 
 for ob, size, trims, folds in (
     (cape, TEX_CAPE, [('u', 0.0, 0.035), ('u', 0.965, 1.0), ('v', 0.04, 0.085)], 9),
-    (hood, TEX_HOOD, [('v', 0.0, 0.07), ('u', 0.0, 0.03, FACE_V), ('u', 0.97, 1.0, FACE_V)], 6),  # collar, face rim
+    (hood, TEX_HOOD, [('v', 0.0, 0.07), ('u', 0.0, 0.03, FACE_V), ('u', 0.97, 1.0, FACE_V),
+                       ('u', 0.493, 0.507)], 6),  # collar, face rim, the seam down the back
 ):
     img = bpy.data.images.new(ob.name + '_tex', size, size)
     img.pixels.foreach_set(fabric(size, trims, folds).astype(np.float32).ravel())
@@ -453,6 +485,35 @@ for ob, size, trims, folds in (
     lm.node_tree.nodes.get('Principled BSDF').inputs['Roughness'].default_value = 0.9
     ob.data.materials.append(lm)
     print('TEXTURED', ob.name, size)
+
+# ---- 4a the hood down (glbhero.js shows this or the hood: hero.setHood, H in the world): pushed
+# back off the head, a hood lies folded on the upper back. Built as a soft pouch on the cape below
+# the nape: a rolled top edge round the back of the neck (with the hood's gold collar trim), hanging
+# a little way down the back, narrowing, its middle dropping lowest where the peak hangs, the seam
+# down its centre. It wears the hood's materials
+# DN_TH: half-width (deg round the back), DN_LEN: how far down the back. Kept to the nape and the
+# shoulder blades, and thin, so it reads as a hood folded down (not a slab across the shoulders) and a
+# sheathed weapon on the back (glbhero.js SHEATH) lies over it rather than through it
+DN_COLS, DN_ROWS, DN_TH, DN_LEN = 26, 12, 50, 0.10
+dgrid = []
+for j in range(DN_ROWS + 1):
+    r = j / DN_ROWS                                   # 0 at the rolled top edge, 1 at the bottom
+    row = []
+    for i in range(DN_COLS + 1):
+        c = -1 + 2 * i / DN_COLS                       # -1 … 1 across the back
+        th = c * DN_TH * (1 - 0.48 * r)
+        roll = math.exp(-(r / 0.09) ** 2)              # the folded-over top edge stands up and out
+        z = neck.z - 0.004 - DN_LEN * r * (1 - 0.15 * c * c) - 0.028 * math.exp(-(c / 0.3) ** 2) * r ** 3 + 0.01 * roll
+        base = cloak_r(th, z)  # on the cloak itself (not the body: that reaches out over the arms)
+        rad = base + 0.006 + 0.012 * math.sin(math.pi * r) * (1 - c * c) + 0.007 * roll \
+            + 0.003 * math.sin(c * 7 + r * 2.5)
+        row.append(at(th, rad, z))
+    dgrid.append(row)
+cowl = grid_mesh('cowl', dgrid, lambda j: 0.004 + 0.86 * j / DN_ROWS)  # the top edge on the collar trim
+face_out(cowl, lambda p: Vector((axis.x, axis.y, p.z)))
+for m_ in hood.data.materials:
+    cowl.data.materials.append(m_)
+print('COWL', len(cowl.data.vertices), 'verts')
 
 # ---- 4b clasp: a gold brooch on each front edge at the chest, a chain sagging between them
 GOLD_MAT = bpy.data.materials.new('clasp_gold')
@@ -580,11 +641,23 @@ W[cape] = cw
 hw = []
 for j, e in enumerate(elev):
     for i in range(HC + 1):
-        k = smooth((e + 10) / 30)   # head above the jaw line …
-        n = smooth((e + 55) / 40)   # … neck below it, the shoulders' Spine2 at the very bottom
+        # The rim round the face rides the head (from the jaw up), so the opening keeps framing the
+        # face however the head turns and nods (running nods it a lot). The back hangs from the
+        # cloak: less of the head the lower it is, so a nod doesn't tip the whole hood like a
+        # helmet and lift its back off the shoulders. Below, the neck; Spine2 at the very bottom
+        span = 180 - face_open(e)
+        a = abs(-span + 2 * span * i / HC)              # 0 straight behind … span at the face
+        front = smooth((a - 70) / 70)
+        k_face = smooth((e + 42) / 22)
+        k_back = 0.95 * smooth((e + 25) / 70)            # crown: nearly all head (a nod can't push it through)
+        k = front * k_face + (1 - front) * k_back
+        n = smooth((e + 72) / 26)
         ws = {'mixamorig:Head': k, 'mixamorig:Neck': (1 - k) * n, 'mixamorig:Spine2': (1 - k) * (1 - n)}
         hw.append(ws)
 W[hood] = hw
+W[cowl] = [{'mixamorig:Spine2': 1.0 - 0.35 * math.exp(-(j / DN_ROWS / 0.12) ** 2) * math.exp(-((-1 + 2 * i / DN_COLS) / 0.5) ** 2),
+            'mixamorig:Neck': 0.35 * math.exp(-(j / DN_ROWS / 0.12) ** 2) * math.exp(-((-1 + 2 * i / DN_COLS) / 0.5) ** 2)}
+           for j in range(DN_ROWS + 1) for i in range(DN_COLS + 1)]  # the hood down rides the chest
 W[clasp] = [{'mixamorig:Spine2': 1.0} for _ in clasp.data.vertices]
 
 # ---- 6 un-skin to the bind pose, bind, export
@@ -607,8 +680,14 @@ for ob, ws_list in W.items():
         for g, w in ws.items():
             if w / tot > 1e-3:
                 ob.vertex_groups[g].add([i], w / tot, 'REPLACE')
+    if ob is hood:  # the grid's two edges meet above the brow: weld them, or a nod opens a slit there
+        bm_ = bmesh.new()
+        bm_.from_mesh(ob.data)
+        r_ = bmesh.ops.remove_doubles(bm_, verts=bm_.verts, dist=1e-5)
+        bm_.to_mesh(ob.data)
+        bm_.free()
     ob.parent = arm
-    if ob in (cape, hood):  # cloth thickness: the inner shell takes the lining (material slot 1)
+    if ob in (cape, hood, cowl):  # cloth thickness: the inner shell takes the lining (material slot 1)
         so = ob.modifiers.new('thick', 'SOLIDIFY')
         so.thickness, so.offset, so.use_even_offset = 0.006, -1.0, False  # even offset spikes at the ragged hem's points
         so.material_offset = 1
@@ -626,7 +705,7 @@ for a in list(bpy.data.actions):
     bpy.data.actions.remove(a)
 bpy.data.objects.remove(body, do_unlink=True)
 for o in bpy.data.objects:
-    o.select_set(o in (arm, cape, hood, clasp))
+    o.select_set(o in (arm, cape, hood, cowl, clasp))
 bpy.ops.export_scene.gltf(filepath=OUT, export_format='GLB', use_selection=True, export_animations=False,
                           export_skins=True, export_apply=True, export_image_format='JPEG', export_jpeg_quality=88)
 print('WROTE', OUT)

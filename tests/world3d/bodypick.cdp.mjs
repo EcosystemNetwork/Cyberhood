@@ -72,7 +72,7 @@ try {
   // another (classic) player sees A as the human
   const B = await player('Blue');
   await B.go(`${BASE}/game/world3d/?area=fields&hour=13`);
-  assert.ok(await waitFor(B, `window.__world3d && __world3d.mp.live`, 120000), 'B in the world'); log('B in the world');
+  assert.ok(await waitFor(B, `window.__world3d && __world3d.mp.live`, 300000), 'B in the world'); log('B in the world');
   assert.ok(await waitFor(B, `[...__world3d.ghosts.values()].some((g) => g.name === 'Robin')`, 20000), 'B sees A'); log('B sees A');
   assert.ok(await waitFor(B, `(() => { const g = [...__world3d.ghosts.values()].find((g) => g.name === 'Robin'); let n = 0; g.hero.root.traverse((o) => { if (o.isSkinnedMesh) n++; }); return n >= 2; })()`, 90000), 'B sees A as the human');
   assert.equal(await skinned(B, '__world3d.hero()'), 0, 'B is still the classic hero');

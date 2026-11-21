@@ -140,7 +140,7 @@ const NAMES_A = ['Bram', 'Tess', 'Odo', 'Fenna', 'Rook', 'Lio', 'Maeve', 'Garr',
 const PET_NAMES = ['Biscuit', 'Pip', 'Nutmeg', 'Clover', 'Tumble', 'Sprig', 'Pudding', 'Fizz', 'Button', 'Mochi', 'Pebble', 'Dumpling'];
 const NAMES_B = ['Thorn', 'Brook', 'Ashby', 'Moss', 'Fernley', 'Holt', 'Marrow', 'Reed', 'Stone', 'Briar', 'Dale', 'Wren', 'Hollow', 'Cole', 'Burrow'];
 
-export function newGuild() { return { heroes: [], next: 1, quests: [], qnext: 1, log: [], follow: 0, pets: [], pnext: 1 }; }
+export function newGuild() { return { heroes: [], next: 1, quests: [], qnext: 1, log: [], follow: 0, pets: [], pnext: 1, walk: 0 }; }
 export function normGuild(g) {
   const n = newGuild();
   if (!g || typeof g !== 'object') return n;
@@ -153,6 +153,7 @@ export function normGuild(g) {
     follow: Number.isInteger(g.follow) ? g.follow : 0,
     pets: Array.isArray(g.pets) ? g.pets.map((p) => ({ ...p })) : [],
     pnext: Number.isInteger(g.pnext) ? g.pnext : 1,
+    walk: Number.isInteger(g.walk) ? g.walk : 0,
   };
 }
 
@@ -241,6 +242,8 @@ export function guildAction(g, e, a, ctx, add, has) {
       if (party.some((h) => staminaOf(h, now, minute) < X.stamina * n)) return 'too tired';
       party.forEach((h) => spendStamina(h, X.stamina * n, now, minute));
       if (ids.includes(g.follow)) g.follow = 0; // your companion leaves your side for the expedition
+      const walker = g.pets.find((p) => p.id === g.walk);
+      if (walker && ids.includes(walker.hero)) g.walk = 0; // and so does its pet
       const fast = party.every((h) => h.prof === X.prof);
       const ms = Math.round(n * X.minutes * minute * (fast ? PROF_SPEED : 1));
       g.quests.push({ id: g.qnext++, where: a.where, party: ids, n, start: now, end: now + ms });
@@ -296,6 +299,14 @@ export function guildAction(g, e, a, ctx, add, has) {
       const p = { id: g.pnext++, kind, rar: rollRarity(rand), hero: 0, name: pick(rand, PET_NAMES) };
       g.pets.push(p);
       log(g, { k: 'hatch', at: now, pet: p.id });
+      return '';
+    }
+    case 'g_walk': { // { pet }: this pet walks with you around the map (0: none). Its companion keeps the bonus.
+      if (a.pet === 0) { g.walk = 0; return ''; }
+      const p = g.pets.find((x) => x.id === a.pet);
+      if (!p) return 'no such pet';
+      if (p.hero && heroBusy(g, p.hero)) return 'pet away';
+      g.walk = p.id;
       return '';
     }
     case 'g_pet': { // { pet, hero }: give a pet to a companion (hero 0: back to the hall)

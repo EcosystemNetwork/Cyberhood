@@ -71,29 +71,31 @@ KEYED = {
         0: [],
         3: [  # lift: elbow comes up in front, hand rising
             ('turn', 'Spine1', 'U', -6), ('turn', 'Spine2', 'U', -6),
-            ('swing', 'RightArm', 'F+R*0.6', 70), ('swing', 'RightForeArm', 'U', 70),
-            ('swing', 'LeftArm', 'F+R*0.3', 25), ('swing', 'LeftForeArm', 'U+F', 35),
+            ('swing', 'RightArm', 'R+F*0.5', 65), ('swing', 'RightForeArm', 'U', 65),  # out to the side, clear of the face
+            ('swing', 'LeftArm', 'F+R*0.3', 20), ('swing', 'LeftForeArm', 'U+F', 30),
         ],
         6: [  # wind-up: hand by the right ear, blade laid back over the shoulder, chest turned right
             ('turn', 'Spine1', 'U', -16), ('turn', 'Spine2', 'U', -14), ('swing', 'Spine2', '-F', 5),
-            ('swing', 'RightArm', 'R+U*0.7', 105), ('swing', 'RightForeArm', 'U-R*0.5', 105),
+            ('swing', 'RightArm', 'R+U*0.7', 105), ('swing', 'RightForeArm', 'U-F*0.3', 100),
             ('swing', 'RightHand', '-F', 30),
-            ('swing', 'LeftArm', 'F+R*0.5', 50), ('swing', 'LeftForeArm', 'U+F', 50),
+            ('swing', 'LeftArm', 'F+R*0.5', 35), ('swing', 'LeftForeArm', 'U+F', 40),  # off hand forward, below the chin
         ],
         9: [  # strike: arm whips across to the left, chest turned through, leaning in
             ('turn', 'Spine1', 'U', 16), ('turn', 'Spine2', 'U', 16), ('swing', 'Spine1', 'F', 10),
             ('swing', 'RightArm', 'F-R*0.6', 80), ('swing', 'RightForeArm', 'F', 10),
-            ('swing', 'RightHand', '-R', 15),
+            ('swing', 'RightHand', '-U', 65),  # wrist rolls over: the blade carries on the arm's line
             ('swing', 'LeftArm', '-F-R*0.3', 35), ('swing', 'LeftForeArm', 'U+F', 40),
         ],
         12: [  # follow-through: low on the left, still turned
             ('turn', 'Spine1', 'U', 20), ('turn', 'Spine2', 'U', 14), ('swing', 'Spine1', 'F', 8),
-            ('swing', 'RightArm', 'F-R', 55), ('swing', 'RightForeArm', 'F-R', 20),
+            ('swing', 'RightArm', 'F-R', 45), ('swing', 'RightForeArm', 'F-R', 20),
+            ('swing', 'RightHand', '-U-R*0.5', 60),
             ('swing', 'LeftArm', '-F', 25), ('swing', 'LeftForeArm', 'U+F', 35),
         ],
         17: [  # settle back toward the hanging arms
             ('turn', 'Spine1', 'U', 4),
             ('swing', 'RightArm', 'F', 15), ('swing', 'RightForeArm', 'F+U', 25),
+            ('swing', 'RightHand', '-U', 20),
         ],
     },
     # Right straight punch: guard up, cock back, snap to full reach, recoil.
@@ -189,16 +191,19 @@ KEYED = {
         5: [  # raise: blade straight up and back, body arched, left hand up for balance
             ('swing', 'Spine2', '-F', 8),
             ('swing', 'RightArm', 'U-F*0.15', 160), ('swing', 'RightForeArm', '-F', 40),
+            ('turn', 'RightHand', 'U', 95),  # roll the blade from flat across the head to straight back over it
             ('swing', 'LeftArm', 'F+U*0.5', 70), ('swing', 'LeftForeArm', 'U', 40),
         ],
         8: [  # chop: arm drives down in front, chest folds over it
             ('swing', 'Spine', 'F', 12), ('swing', 'Spine1', 'F', 14),
             ('swing', 'RightArm', 'F-U*0.3', 70), ('swing', 'RightForeArm', 'F', 5),
+            ('swing', 'RightHand', '-U', 70),  # wrist breaks over: the blade comes down in front, not up
             ('swing', 'LeftArm', '-F', 30),
         ],
         11: [  # hold low
             ('swing', 'Spine', 'F', 10), ('swing', 'Spine1', 'F', 12),
             ('swing', 'RightArm', 'F-U*0.5', 55), ('swing', 'RightForeArm', 'F', 10),
+            ('swing', 'RightHand', '-U', 70),
             ('swing', 'LeftArm', '-F', 25),
         ],
         18: [('swing', 'RightArm', 'F', 15), ('swing', 'RightForeArm', 'F+U', 25)],
@@ -281,19 +286,18 @@ KEYED = {
         76: [('turn', 'Spine2', 'U', -8), ('turn', 'Neck', 'U', -24), ('turn', 'Head', 'U', -30)],
         94: [],
     },
-    # Idle fidget: arms-up stretch with a twist.
+    # Idle fidget: neck stretch, ear to each shoulder, then a shoulder roll. Hands stay low
+    # (an arms-overhead stretch read as stiff: straight arms pivoting at the shoulder).
     'stretch': {
         0: [],
-        14: [('swing', 'Spine2', '-F', 10), ('swing', 'Head', '-F', 10),
-             ('swing', 'RightArm', 'U+R*0.35', 145), ('swing', 'RightForeArm', 'U', 8),
-             ('swing', 'LeftArm', 'U-R*0.35', 145), ('swing', 'LeftForeArm', 'U', 8)],
-        26: [('swing', 'Spine2', '-F', 10), ('turn', 'Spine1', 'U', 12),
-             ('swing', 'RightArm', 'U+R*0.3', 150), ('swing', 'RightForeArm', 'U', 10),
-             ('swing', 'LeftArm', 'U-R*0.3', 150), ('swing', 'LeftForeArm', 'U', 10)],
-        38: [('swing', 'Spine2', '-F', 10), ('turn', 'Spine1', 'U', -12),
-             ('swing', 'RightArm', 'U+R*0.3', 150), ('swing', 'RightForeArm', 'U', 10),
-             ('swing', 'LeftArm', 'U-R*0.3', 150), ('swing', 'LeftForeArm', 'U', 10)],
-        54: [],
+        14: [('turn', 'Neck', 'F', 12), ('turn', 'Head', 'F', 16), ('swing', 'LeftShoulder', '-U', 6)],
+        30: [('turn', 'Neck', 'F', 14), ('turn', 'Head', 'F', 20), ('swing', 'LeftShoulder', '-U', 8)],
+        44: [('turn', 'Neck', 'F', -12), ('turn', 'Head', 'F', -16), ('swing', 'RightShoulder', '-U', 6)],
+        60: [('turn', 'Neck', 'F', -14), ('turn', 'Head', 'F', -20), ('swing', 'RightShoulder', '-U', 8)],
+        70: [('swing', 'Head', 'F', 4)],
+        78: [('swing', 'LeftShoulder', 'U', 14), ('swing', 'RightShoulder', 'U', 14), ('swing', 'Spine2', '-F', 3)],
+        86: [('swing', 'LeftShoulder', '-F', 8), ('swing', 'RightShoulder', '-F', 8), ('swing', 'Spine2', '-F', 4)],
+        98: [],
     },
 }
 

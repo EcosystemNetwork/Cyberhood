@@ -4,8 +4,11 @@
      await loadGlbHero('human');       // a key of HERO_URL, or a url
      const hero = makeGlbHero(look);   // same API as makeHero3D / makeBlenderHero; look.body picks the
                                        // loaded body (else the last loaded) and its START_WEAR
-     each frame: hero.update(dt, { atk, atkL, lookAt, air, vy, down })   (down: knocked out / fainted)
+     each frame: hero.update(dt, { atk, atkL, lookAt, air, vy, down, sheathed })   (down: knocked out / fainted;
+                 sheathed: weapons ride on the back, see SHEATH; a swing always draws them)
      hero.hurt();  hero.emote('happy' | 'wave' | 'victory' | 'cheer' | 'bow');  hero.fidget('look')
+     hero.setHood(up)   the cloak's hood up on the head, or down on the back (look.hood: false starts it down);
+                        hero.hood is true / false, or null with no hooded cloak on
 
    Gear: skinned clothing made for the same skeleton (tools/blender/cloak_game.py, wear_fit.py) is
    attached by bone name; its cloth strands join the hero's and are simulated like a cape, and the
@@ -83,6 +86,10 @@ const TRAIL = { n: 16, from: 0.3, to: 0.62 };          // ribbon samples; swing 
 // back over the arm that holds it) and no more than `up` upward (parts of its direction, in the
 // hero's frame, before it's made unit length again). in: s to ease back after a swing.
 const CARRY = { out: 0.42, fwd: 0.3, up: 0.2, in: 0.18 };
+// Sheathed: weapons ride diagonally across the back, hilt up over the shoulder of the hand that
+// holds it. back / up: m behind the chest / above the shoulders; lean: blade's sideways slope;
+// dur: s for the weapon to fly between hand and back on a draw or sheathe.
+const SHEATH = { back: 0.17, up: 0.06, lean: 0.55, dur: 0.2 };
 
 // Cape: spring strands. stiff: pull toward the animated pose per 1/60 s (top → bottom of a strand);
 // damp: velocity kept per 1/60 s (air drag); flutter: m of side-to-side ripple per m/s of speed.
@@ -256,6 +263,22 @@ export function makeGlbHero(look = {}) {
   const hide = {};
   for (const id of wear) attachGear(model, GEAR[id], hide);
   hideUnder(bodies, hide);
+  // the hooded cloak carries its hood twice: up (hood) and pushed back onto the shoulders (cowl)
+  const hoodUp = [], hoodDown = [];
+  model.traverse((o) => {
+    if (!o.isMesh) return;
+    if (/^hood(_\d+)?$/.test(o.name)) hoodUp.push(o);
+    else if (/^cowl(_\d+)?$/.test(o.name)) hoodDown.push(o);
+  });
+  let hood = hoodUp.length ? look.hood !== false : null;
+  const setHood = (up) => {
+    if (hood === null) return null;
+    hood = !!up;
+    for (const o of hoodUp) o.visible = hood;
+    for (const o of hoodDown) o.visible = !hood;
+    return hood;
+  };
+  setHood(hood);
 
   const bone = (n) => model.getObjectByName('mixamorig' + n) || model.getObjectByName('mixamorig:' + n);
   const B = { handR: bone('RightHand'), handL: bone('LeftHand') };
@@ -327,9 +350,113 @@ export function makeGlbHero(look = {}) {
     const tip = new THREE.Object3D();
     tip.position.set(...W.tip);
     g.add(tip);
-    return { W, tip, g, q0: g.quaternion.clone(), out: side < 0 ? -1 : 1, k: 1 };
+    return { W, tip, g, q0: g.quaternion.clone(), out: side < 0 ? -1 : 1, k: 1,
+      hand: b, home: { p: g.position.clone(), q: g.quaternion.clone(), s: g.scale.clone() }, back: null, sh: 0, from: null };
   };
+  // where a sheathed weapon sits, in the chest bone's frame (measured on idle, see below): grip behind the shoulder on its own
+  // side, the weapon (built along +y from the grip) slanting down across the back to the other hip.
+  // The hero faces +z, so its right is -x; side is -1 for the right hand.
+  const chest = bone('Spine2') || bone('Spine1') || bone('Spine');
+  // back: m behind the chest (backClear: enough to lie over the cloth worn there)
+  function backMount(side, back = SHEATH.back) {
+    const sh = side < 0 ? bone('RightArm') : bone('LeftArm');
+    if (!chest || !sh) return null;
+    const qr = root.getWorldQuaternion(new THREE.Quaternion());
+    const toWorld = (x, y, z) => new THREE.Vector3(x, y, z).applyQuaternion(qr);
+    const cp = chest.getWorldPosition(new THREE.Vector3()), sp = sh.getWorldPosition(new THREE.Vector3());
+    const local = sp.clone().sub(cp).applyQuaternion(qr.clone().invert()); // shoulder, hero frame
+    const grip = cp.clone().add(toWorld(local.x * 0.6, local.y + SHEATH.up, -back));
+    const y = toWorld(-side * SHEATH.lean, -1, -0.12).normalize();         // down, toward the far hip
+    const z = toWorld(0, 0, -1); z.sub(y.clone().multiplyScalar(z.dot(y))).normalize(); // flat to the back
+    const x = new THREE.Vector3().crossVectors(y, z);
+    const M = new THREE.Matrix4().makeBasis(x, y, z).setPosition(grip);
+    M.premultiply(chest.matrixWorld.clone().invert());
+    const m = { p: new THREE.Vector3(), q: new THREE.Quaternion(), s: new THREE.Vector3() };
+    M.decompose(m.p, m.q, m.s);
+    return m;
+  }
+  // how far behind the chest a sheathed weapon of this length must sit so it lies over the visible
+  // gear (a cloak's cape and folded-down hood) rather than through it: the deepest gear point within
+  // a hand's width of the weapon's line across the back, seen from behind, plus a little. The
+  // weapon slants back as it goes down (backMount's -0.12), so lower points need less
+  const gearMeshes = [];
+  model.traverse((o) => { if (o.isSkinnedMesh && !bodies.includes(o)) gearMeshes.push(o); });
+  const SLANT = 0.12 / Math.hypot(SHEATH.lean, 1);
+  function backClear(side, len) {
+    const sh = side < 0 ? bone('RightArm') : bone('LeftArm');
+    if (!chest || !sh) return SHEATH.back;
+    const qi = root.getWorldQuaternion(new THREE.Quaternion()).invert();
+    const cp = chest.getWorldPosition(new THREE.Vector3());
+    const g = sh.getWorldPosition(new THREE.Vector3()).sub(cp).applyQuaternion(qi);
+    const gx = g.x * 0.6, gy = g.y + SHEATH.up, d = new THREE.Vector2(-side * SHEATH.lean, -1).normalize();
+    const v = new THREE.Vector3();
+    let need = SHEATH.back;
+    for (const o of gearMeshes) {
+      if (!o.visible) continue;
+      o.skeleton.update();
+      const pos = o.geometry.attributes.position;
+      for (let i = 0; i < pos.count; i++) {
+        v.fromBufferAttribute(pos, i);
+        o.applyBoneTransform(i, v);
+        v.applyMatrix4(o.matrixWorld).sub(cp).applyQuaternion(qi);
+        const rx = v.x - gx, ry = v.y - gy, t = rx * d.x + ry * d.y;
+        if (t < -0.04 || t > len || Math.abs(rx * d.y - ry * d.x) > 0.06) continue;
+        need = Math.max(need, -v.z - SLANT * Math.max(0, t) + 0.012);
+      }
+    }
+    return need;
+  }
+  // sheathe / draw: reparent at once, then fly the weapon over from where it was (re-evaluated
+  // each frame on its old bone, so it follows the body) to where it now belongs
+  const _mA = new THREE.Matrix4(), _mB = new THREE.Matrix4(), _pA = new THREE.Vector3(), _pB = new THREE.Vector3(),
+    _qA = new THREE.Quaternion(), _qB = new THREE.Quaternion(), _sA = new THREE.Vector3(), _sB = new THREE.Vector3();
+  const onBack = (w) => !!w && w.g.parent === chest;
+  function sheath(w, want) { // before carry(): put the weapon on its new bone, at its resting spot
+    if (!w || !w.back) return;
+    if (want !== onBack(w)) {
+      w.from = { par: w.g.parent, p: w.g.position.clone(), q: w.g.quaternion.clone(), s: w.g.scale.clone() };
+      w.sh = 0;
+      (want ? chest : w.hand).add(w.g);
+    } else if (!w.from) return;
+    // while flying, sheathBlend overwrote last frame's spot: start again from the mount
+    const m = want ? w.back : w.home;
+    w.g.position.copy(m.p); w.g.quaternion.copy(m.q); w.g.scale.copy(m.s);
+  }
+  function sheathBlend(w, dt) { // after carry(): ease it there from where it was
+    if (!w || !w.from) return;
+    w.sh = Math.min(1, w.sh + dt / SHEATH.dur);
+    if (w.sh >= 1) { w.from = null; return; }
+    const k = ease(w.sh), par = w.g.parent;
+    par.updateWorldMatrix(true, false);
+    w.from.par.updateWorldMatrix(true, false);
+    _mA.compose(w.from.p, w.from.q, w.from.s).premultiply(w.from.par.matrixWorld).decompose(_pA, _qA, _sA);
+    _mB.compose(w.g.position, w.g.quaternion, w.g.scale).premultiply(par.matrixWorld).decompose(_pB, _qB, _sB);
+    _mA.compose(_pA.lerp(_pB, k), _qA.slerp(_qB, k), _sA.lerp(_sB, k)).premultiply(_mB.copy(par.matrixWorld).invert());
+    _mA.decompose(w.g.position, w.g.quaternion, w.g.scale);
+  }
   const R = hold(B.handR, eq.rhand, -1), Lh = hold(B.handL, eq.lhand, 1);
+  // the back mounts are measured on idle's first frame: the GLB's bind pose (what the hand mounts
+  // above are aimed from) holds the chest at a different angle from any pose the game shows
+  if (R || Lh) {
+    mixer.update(0);
+    model.updateMatrixWorld(true);
+    // one mount per hood state (the hood up and the hood down cover the back differently)
+    const h0 = hood;
+    for (const up of hood === null ? [null] : [true, false]) {
+      setHood(up);
+      for (const [w, side] of [[R, -1], [Lh, 1]]) if (w) (w.backs ||= {})[up] = backMount(side, backClear(side, w.tip.position.length()));
+    }
+    setHood(h0);
+    pickBacks();
+  }
+  // after the hood goes up or down, sheathed weapons move to that state's mount
+  function pickBacks() {
+    for (const w of [R, Lh]) {
+      if (!w || !w.backs) continue;
+      w.back = w.backs[hood];
+      if (onBack(w) && !w.from && w.back) { w.g.position.copy(w.back.p); w.g.quaternion.copy(w.back.q); w.g.scale.copy(w.back.s); }
+    }
+  }
   const style = (w) => !w ? 'bare' : (w.W.type === 'wand' || w.W.bow) ? 'cast' : 'blade';
   const combos = { R: COMBO[style(R)].filter(has), L: COMBO_L[style(Lh)].filter(has) };
 
@@ -519,6 +646,8 @@ export function makeGlbHero(look = {}) {
 
   return {
     root,
+    setHood: (up) => { const r = setHood(up); pickBacks(); return r; },
+    get hood() { return hood; },
     caster: R && R.W.cast ? R.W.cast : null,
     casterL: Lh && Lh.W.cast ? Lh.W.cast : null,
     tipWorld: (v) => (R ? R.tip : B.handR || root).getWorldPosition(v),
@@ -644,8 +773,13 @@ export function makeGlbHero(look = {}) {
       }
 
       model.updateMatrixWorld(true);
-      carry(R, down || st.swing.R.p >= 0, dt);
-      carry(Lh, down || st.swing.L.p >= 0, dt);
+      // sheathed rides on the back, but a swing in progress always has the weapon in hand
+      sheath(R, !!s.sheathed && st.swing.R.p < 0);
+      sheath(Lh, !!s.sheathed && st.swing.L.p < 0);
+      if (!onBack(R)) carry(R, down || st.swing.R.p >= 0, dt);
+      if (!onBack(Lh)) carry(Lh, down || st.swing.L.p >= 0, dt);
+      sheathBlend(R, dt);
+      sheathBlend(Lh, dt);
 
       // trail
       const scene = root.parent;
@@ -679,5 +813,6 @@ export function makeGlbHero(look = {}) {
     fidget(name) { return startGesture(name || pick(FIDGETS.filter(has)), true); },
     dispose() { mixer.stopAllAction(); trail.removeFromParent(); tGeo.dispose(); },
     setVisible(v) { root.visible = v; },
+    canSheathe: !!((R && R.back) || (Lh && Lh.back)), // holding something that can go on the back
   };
 }

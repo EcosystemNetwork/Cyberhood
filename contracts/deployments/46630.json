@@ -1,0 +1,48 @@
+{
+  "chainId": 46630,
+  "network": "testnet",
+  "deployedAt": "2026-11-21T21:14:10.481Z",
+  "admin": "0x2085b3627A60F740c1Cd11fD0ECEaB717A231a6c",
+  "signer": "0x7c157C9071398E5B84Dac54f567Dc199a442D47C",
+  "contracts": {
+    "bridge": "0x57d08a96ffd80d6295259343035da8dd72a53f09",
+    "gold": "0x64952bbf8a7a4e8c8e1d04cb40a7e2a99d94ed59",
+    "items": "0xb40fbd7434c6c188b49ca6407c7ac956c2125d36",
+    "plots": "0x3150d5fc44cfaadf46abfb52ac36404f41670097"
+  },
+  "resources": {
+    "carrot": "0x7C928A9b9e6d3d91022F87434AB94435F544FBb0",
+    "wheat": "0x8Ed5E82f9D577B578A7a9F0F2EAe335956FB2f87",
+    "pumpkin": "0xF0239187935840ff80A3D1C6a773b71fcb47161d",
+    "slime_gel": "0xa3c026Dbc2AFdB40d1dA59Fe8cb1526B49a2DaE4",
+    "spore_cap": "0x04Fa3d530Cf8131670a88520FB76a7be64A6081b",
+    "bat_fang": "0xb0797D29Fae0f9Af6AA851213D8ABe32449fB8fb",
+    "goblin_ear": "0x48Ad20F23E480Bc7944D3eB8cdBE4A2E6feBd37D",
+    "royal_jelly": "0x0Ce64cd25A9264Cd15e1428322Dfa8051961ddc6",
+    "laurel": "0x487BA131F36Ef4c3Fa87972C55dbEacF13d175Db",
+    "golem_core": "0x2Ae3c21e75f2ef0d24e01f4f0D7FD68D57b1aA88",
+    "queen_silk": "0x4dC1CA10D09cbc22f9b2F72d0BcBFBED1219c2Fc",
+    "copper_ore": "0x273bc1A2c98d2C589Da2aAb909476d55e23Bbce5",
+    "silver_ore": "0xBEDC3EB455264473A68BD355C6F9c33a9d367f88",
+    "sun_gem": "0x87Bf3961D0fcEE868Fd8344Ff7f072C704a49C10",
+    "minnow": "0x33a7Fc722357c793D1AeF9e1F1cdfF58525A489C",
+    "river_bass": "0x4fFc71A86748b2f850C3B2E15C88e6A5BBF1A425",
+    "goldfin": "0xA0031055b74fb486Ec33Cdc8f5Bdb9D7F1c2B439",
+    "moonleaf": "0x1DD12343B51876271f6A7bC63F1BC65C56E645cD",
+    "glowcap": "0x5C0719D17b47181448388922B2C84a9E78934A98",
+    "root_dew": "0x2F8FA3773A0FcD175E24355b2c1ded0735d0D951"
+  },
+  "startBlock": "156410282",
+  "dex": {
+    "factory": "0xca69fe5ff55f57da43dbbb4a14cd43c7c036fa6c",
+    "router": "0x899ff3295fcf7cc44f4ae5a592c2822d46744005",
+    "weth": "0xd359980d8f00579712e9e3d1f145dcf3a347c657"
+  },
+  "pools": {
+    "sun_gem": "0xe56042a0A07A1c8B3Ebfd9f58749A07975dde61D",
+    "golem_core": "0x34710FE0b6cd7B9DEe0ea846451d4EEe6C329d29",
+    "queen_silk": "0x676881D179bEF20dEde60c1cB0e3810B1D0F1e31",
+    "goldfin": "0x1473FD95ff407A2e2aAFAdBB80fB5371868c95Bc",
+    "royal_jelly": "0x1Ff436BB822c4E832C2FA4DEeB608B890A442250"
+  }
+}

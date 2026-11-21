@@ -13,7 +13,9 @@ export const RULES = {
   'shops.js': 'game/world3d/shops.js',
   'farm.js': 'game/world3d/farm.js',
   'blocks.js': 'game/world3d/blocks.js',
+  'chain.js': 'game/lib/chain.js',
   'guild.js': 'game/world3d/guild.js',
+  'pools.js': 'game/world3d/pools.js',
 };
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const out = join(ROOT, 'supabase/functions/game/rules');

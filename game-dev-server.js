@@ -33,14 +33,18 @@ const gameApi = require('./api/game/[action].js'); // reads the env vars above a
 const DB_FILE = process.env.DB_PATH || path.join(ROOT, 'game-local-db.json');
 let rows = [];
 let nextId = 1;
+let pools = {}; // game_pools (supabase/migrations/20261120_liquidity_pools.sql), by id
 try {
   if (fs.existsSync(DB_FILE)) {
     const saved = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
     rows = saved.rows || [];
     nextId = saved.nextId || rows.reduce((m, r) => Math.max(m, r.id || 0), 0) + 1;
+    pools = saved.pools || {};
   }
 } catch (e) { /* start empty */ }
-const saveDb = () => { try { fs.writeFileSync(DB_FILE, JSON.stringify({ rows, nextId }, null, 2)); } catch (e) {} };
+const saveDb = () => { try { fs.writeFileSync(DB_FILE, JSON.stringify({ rows, nextId, pools }, null, 2)); } catch (e) {} };
+// Robinhood Chain tables and functions (wallets, withdrawals, deposits): api/mock-chain-db.js
+const chainMock = require('./api/mock-chain-db.js').makeChainMock(DB_FILE.replace(/\.json$/, '') + '-chain.json', () => rows, saveDb);
 
 // The handler only uses eq., gt. and not.is.null filters, which is all we implement.
 const parseFilters = (params) => {
@@ -139,6 +143,30 @@ const server = http.createServer(async (req, res) => {
     Object.assign(rb, { econ: a.b_econ, econ_rev: a.b_rev + 1 });
     saveDb();
     return respond(200, true);
+  }
+
+  // Old Fenn's liquidity pools: the game_pools table (GET only) and game_pool(), which saves the
+  // pool and the player together, each compare-and-swap on its rev, or neither.
+  if (url.pathname === '/rest/v1/game_pools') {
+    const id = /^eq\.(.*)$/.exec(url.searchParams.get('id') || '');
+    const list = Object.values(pools).filter((p) => !id || p.id === id[1]);
+    return respond(200, list);
+  }
+  if (url.pathname === '/rest/v1/rpc/game_pool') {
+    let a = {};
+    try { a = JSON.parse((await collectBody(req)) || '{}'); } catch (e) {}
+    const pool = pools[a.pool_id] || { id: a.pool_id, gold: 0, res: 0, shares: 0, rev: 0 };
+    const p = rows.find((r) => r.id === a.p_id);
+    if (!p || pool.rev !== a.pool_rev || (p.econ_rev || 0) !== a.p_rev) return respond(200, false);
+    Object.assign(p, { econ: a.p_econ, econ_rev: a.p_rev + 1 });
+    pools[a.pool_id] = { id: a.pool_id, gold: a.pool.gold, res: a.pool.res, shares: a.pool.shares, rev: a.pool_rev + 1 };
+    saveDb();
+    return respond(200, true);
+  }
+
+  if (/^\/rest\/v1\/(rpc\/)?game_(wallets|withdrawals|deposits|chain_state|withdraw|credit|refund)$/.test(url.pathname)) {
+    const raw = await collectBody(req);
+    if (chainMock(url.pathname, req.method, url.searchParams, raw, req.headers.prefer, respond)) return;
   }
 
   // Mock Supabase REST endpoint the handler talks to.

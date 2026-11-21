@@ -139,7 +139,7 @@ test('two accounts on one browser never see or send each other\'s progress', asy
 
 test('a browser that played before saves moved to the server brings its progress along once', async () => {
   const d = device();
-  d.write('taproot_field', { xp: 300, kills: 30, gold: 120, bag: { bat_fang: 4 } }); // no owner: an old save
+  d.write('taproot_field', { xp: 300, kills: 30, gold: 120, bag: { bat_fang: 4, health_potion: 2 } }); // no owner: an old save
   d.write('taproot_owned', ['cutlass']);
   const name = newName();
   const u = await signIn(d, name, true);
@@ -147,7 +147,8 @@ test('a browser that played before saves moved to the server brings its progress
   await sleep(50);
   const st = await api('state', u.key);
   assert.equal(st.econ.gold, 120);
-  assert.equal(st.econ.bag.bat_fang, 4);
+  assert.equal(st.econ.bag.health_potion, 2);
+  assert.equal(st.econ.bag.bat_fang, undefined); // monster drops can leave the game: not imported
   assert.deepEqual(st.owned, ['cutlass']);
   assert.equal(st.econ.imported, true);
 });

@@ -49,7 +49,8 @@ CFG = {
     'boots': dict(tris=8000, tex=1024, margin=0.0045, ease=1.0, rough=0.55),
     'tunic': dict(tris=12000, tex=1024, margin=0.007, ease=1.06, rough=0.75),
 }[KIND]
-ARM_DROP = 50   # deg below horizontal the upper arms are posed at to fit (where the tunic's sleeves point)
+SLEEVE_TIGHT = 0.6  # the tunic's sleeves, radially, round the upper arm
+ARM_DROP = 70   # deg below horizontal the upper arms are posed at to fit: near where they hang in idle, walk and run, so the armholes stay closed there
 
 
 def smooth(x):
@@ -396,6 +397,57 @@ bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context='VE
 bm.to_mesh(lo.data)
 bm.free()
 print('LIDS', int(lid.sum()), 'faces cut from', len(specs), 'openings')
+
+# The tunic is split like a sewn garment: the torso has armholes and the sleeves are open where they
+# join it, each hiding the other's opening in the sculpt. Fitted to a body, the sleeve root no longer
+# covers the armhole (and the arm hangs lower than the sculpt's), so close them: every open loop on
+# a sleeve but its cuff, and every open loop on the torso out at the sides.
+def open_loops(bm, mine):
+    edges = {e for e in bm.edges if e.is_boundary and mine(e.verts[0]) and mine(e.verts[1])}
+    loops, seen = [], set()
+    for e in edges:  # connected runs of boundary edges
+        if e in seen:
+            continue
+        comp, stack = [], [e]
+        seen.add(e)
+        while stack:
+            x = stack.pop()
+            comp.append(x)
+            for v in x.verts:
+                for y in v.link_edges:
+                    if y in edges and y not in seen:
+                        seen.add(y)
+                        stack.append(y)
+        loops.append(comp)
+    return [lp for lp in loops if len(lp) >= 6]
+
+
+if KIND == 'tunic':
+    bm = bmesh.new()
+    bm.from_mesh(lo.data)
+    dl = bm.verts.layers.deform.active
+    in_group = lambda name: (lambda v, g=lo.vertex_groups.get(name): g is not None and v[dl].get(g.index, 0) > 0.5)
+    centre = lambda lp: np.mean([np.array(v.co) for x in lp for v in x.verts], 0)
+    fill = []
+    for tag in ('sleeveL', 'sleeveR'):
+        sl = HI.get(tag)
+        loops = open_loops(bm, in_group('tag_' + tag))
+        if sl is None or len(loops) < 2:
+            continue
+        J = sl[np.abs(np.abs(sl[:, 0]) - 0.255) < 0.025].mean(0)
+        ax = sl[np.abs(sl[:, 0]) > 0.44].mean(0) - J
+        cuff = int(np.argmax([centre(lp) @ ax for lp in loops]))
+        fill += [lp for i, lp in enumerate(loops) if i != cuff]
+    side = [lp for lp in open_loops(bm, in_group('tag_main')) if abs(centre(lp)[0]) > 0.12 and 0.3 < centre(lp)[2] < 0.88]
+    fill += side
+    n_faces = 0
+    for lp in fill:
+        res = bmesh.ops.holes_fill(bm, edges=lp, sides=0)
+        bmesh.ops.triangulate(bm, faces=res['faces'])
+        n_faces += len(res['faces'])
+    bm.to_mesh(lo.data)
+    bm.free()
+    print('CLOSED', len(fill), 'loops (', len(side), 'armholes ) with', n_faces, 'faces')
 while lo.data.uv_layers:  # the sculpt's per-part UVs overlap: unwrap afresh
     lo.data.uv_layers.remove(lo.data.uv_layers[0])
 lo.data.uv_layers.new(name='UVMap').active = True
@@ -533,7 +585,11 @@ elif KIND == 'tunic':
         ax_b = (P[sd + 'ForeArm'] - Jb).normalized()
         R = np.array(ax_s.rotation_difference(ax_b).to_matrix())
         s = float(chest[0]) * CFG['ease']
-        mapped = np.array(Jb) + ((V - J) * s) @ R.T
+        # a wide bell in the sculpt, whose slanted opening faces forward once the arm hangs: brought
+        # in round the arm (radially only, it keeps its length)
+        rel = V - J
+        along = (rel @ np.array(ax_s))[:, None] * np.array(ax_s)
+        mapped = np.array(Jb) + ((along + (rel - along) * SLEEVE_TIGHT) * s) @ R.T
         t = (V - J) @ np.array(ax_s)
         k = (TAG.get(tag, np.zeros(n)) * smooth((t + 0.01) / 0.08))[:, None]
         out = out * (1 - k) + mapped * k
@@ -594,6 +650,13 @@ for sgn in (1, -1):  # a leg's cloth is kept out of its own leg, not the other o
     other[:len(bco)] = BSIDE == -sgn
     col_bvh[sgn] = bvh_of(cco, ctri, ~other)[0]
 col_of = np.where(K_SIDE > 0.5, SIDE, 0).astype(int)
+if KIND == 'tunic':  # the torso's cloth is kept out of the trunk only: pushed off an arm hanging
+    # close beside it, it wedges between arm and ribs and opens a gap at the armpit
+    arms = np.zeros(len(cco), bool)
+    arms[:len(bco)] = ~torso_v
+    col_bvh[2] = bvh_of(cco, ctri, ~arms)[0]
+    sleeve = sum(TAG.get(t, np.zeros(n)) for t in ('sleeveL', 'sleeveR')) > 0.5
+    col_of[~sleeve] = 2
 X = out
 
 
@@ -660,7 +723,7 @@ for sgn in (1, -1):  # a leg's cloth takes its weights from that leg alone, neve
 for tag, sd in (('sleeveL', 'Left'), ('sleeveR', 'Right')):
     if tag in TAG and KIND == 'tunic':
         J = P[sd + 'Arm']
-        k = TAG[tag] * smooth(((X - np.array(J)) @ np.array((P[sd + 'ForeArm'] - J).normalized()) + 0.005) / 0.03)
+        k = TAG[tag] * smooth(((X - np.array(J)) @ np.array((P[sd + "ForeArm"] - J).normalized()) + 0.04) / 0.05)  # all but the very root rides the arm
         for i in np.nonzero(k > 1e-3)[0]:
             W[i] = W[i] * (1 - k[i]) + nearest_w(arm_bvh[sd], X[i]) * k[i]
 if KIND == 'tunic':  # the skirt rides the hips half way, rather than stretching between the thighs
@@ -700,6 +763,20 @@ for _ in range(2):  # erode: keep only vertices whose every neighbour is covered
 if KIND == 'boots':  # the whole foot is in the boot: none of it shows through a seam
     ank = (P['LeftFoot'].z + P['RightFoot'].z) / 2
     cov |= (BSIDE != 0) & (bco[:, 2] < ank + 0.01)
+if KIND == 'tunic':  # the trunk under it, hem to shoulders, but the chest at the laced neckline
+    z, front = bco[:, 2], bco[:, 1] < hips_c.y
+    trunk = torso_v & (BSIDE == 0) & (z > LB[0] + 0.03)
+    cov |= trunk & (z < P['Spine2'].z) | trunk & ~front & (z < shoulder_b - 0.03)
+if KIND == 'tunic':  # the upper arm inside a sleeve, shoulder to just short of the cuff (it swings
+    # down from the fitting pose, and would push through the sleeve's inner side)
+    for tag, sd in (('sleeveL', 'Left'), ('sleeveR', 'Right')):
+        if tag not in TAG:
+            continue
+        J = np.array(P[sd + 'Arm'])
+        ax = np.array((P[sd + 'ForeArm'] - P[sd + 'Arm']).normalized())
+        reach = np.percentile((X[TAG[tag] > 0.5] - J) @ ax, 97)
+        t = (bco - J) @ ax
+        cov |= side_arm_v[sd] & (t > -0.01) & (t < reach - 0.015)
 lo['hide_body'] = [int(i) for i in np.nonzero(cov)[0]]
 lo['hide_body_of'] = len(bco)  # the body's vertex count, so a different body is never cut
 print('HIDES', int(cov.sum()), 'of', len(bco), 'body verts')

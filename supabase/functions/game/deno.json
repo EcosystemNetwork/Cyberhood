@@ -1,0 +1,8 @@
+{
+  "nodeModulesDir": "none",
+  "imports": {
+    "viem": "npm:viem@2.57.13",
+    "viem/accounts": "npm:viem@2.57.13/accounts",
+    "viem/siwe": "npm:viem@2.57.13/siwe"
+  }
+}

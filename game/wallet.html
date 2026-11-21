@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Taproot Wallet</title>
+<meta name="robots" content="noindex">
+<!-- A plain test bench for the Robinhood Chain flow (game/lib/wallet.js) until it has a place in
+     the game's own UI. Uses the game session saved by the game (localStorage taproot_session):
+     sign in to the game first, or use "Sign in with wallet" for an account that's linked. -->
+<style>
+  :root { color-scheme: dark; --bg: #14161a; --panel: #1d2026; --line: #2c313a; --text: #e8e6e1; --dim: #9aa0a8; --accent: #e0b44c; --bad: #e0705c; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, sans-serif; }
+  main { max-width: 640px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  p.sub { color: var(--dim); margin: 0 0 20px; }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; }
+  h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); margin: 0 0 10px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
+  button { background: var(--accent); color: #1a1408; border: 0; border-radius: 6px; padding: 8px 12px; font: inherit; font-weight: 600; cursor: pointer; }
+  button.ghost { background: transparent; color: var(--text); border: 1px solid var(--line); }
+  button:disabled { opacity: .5; cursor: default; }
+  input, select { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; font: inherit; min-width: 0; }
+  input[type=number] { width: 110px; }
+  code, .mono { font-family: ui-monospace, monospace; font-size: 13px; word-break: break-all; }
+  #log { white-space: pre-wrap; color: var(--dim); max-height: 260px; overflow: auto; }
+  .bad { color: var(--bad); }
+  ul { margin: 0; padding-left: 18px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Taproot Wallet</h1>
+  <p class="sub">Move gold, resources and gear between the game and Robinhood Chain.</p>
+
+  <section>
+    <h2>Network</h2>
+    <div id="net" class="mono">loading…</div>
+  </section>
+
+  <section>
+    <h2>Account</h2>
+    <div class="row"><span>Game session:</span> <span id="who" class="mono">—</span></div>
+    <div class="row">
+      <input id="user" placeholder="username" autocomplete="username" aria-label="Username">
+      <input id="pass" type="password" placeholder="password" autocomplete="current-password" aria-label="Password">
+      <button id="pwlogin" class="ghost">Sign in</button>
+    </div>
+    <div class="row"><span>Wallet:</span> <span id="addr" class="mono">not connected</span></div>
+    <div class="row"><span>Linked:</span> <span id="linked" class="mono">—</span></div>
+    <div class="row">
+      <button id="connect">Connect wallet</button>
+      <button id="link" class="ghost">Link to account</button>
+      <button id="login" class="ghost">Sign in with wallet</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Withdraw to chain</h2>
+    <div class="row">
+      <input id="gold" type="number" min="1" step="1" value="10" aria-label="Gold amount">
+      <button id="wgold">Withdraw gold</button>
+    </div>
+    <div class="row">
+      <select id="res" aria-label="Resource"></select>
+      <input id="resn" type="number" min="1" step="1" value="5" aria-label="Resource amount">
+      <button id="wres">Withdraw resource</button>
+    </div>
+    <div class="row">
+      <select id="item" aria-label="Item"></select>
+      <button id="witem">Withdraw item</button>
+    </div>
+    <h2 style="margin-top:12px">Claims to send</h2>
+    <ul id="pending"><li class="mono">—</li></ul>
+  </section>
+
+  <section>
+    <h2>Sell resources for stock tokens</h2>
+    <p class="sub" style="margin:0 0 10px">Withdraw rare resources above, then sell them here. Prices move with every trade.</p>
+    <div id="market" class="mono">connect a wallet to see prices</div>
+  </section>
+
+  <section>
+    <h2>Deposit into game</h2>
+    <div class="row">
+      <input id="dgold" type="number" min="1" step="1" value="10" aria-label="Gold to deposit">
+      <button id="depgold">Deposit gold</button>
+    </div>
+    <div class="row">
+      <input id="dres" placeholder="resource id, e.g. copper_ore" aria-label="Resource to deposit">
+      <input id="dresn" type="number" min="1" step="1" value="5" aria-label="Resource amount to deposit">
+      <button id="depres">Deposit resource</button>
+    </div>
+    <div class="row">
+      <input id="ditem" placeholder="item id, e.g. iron_sword" aria-label="Item to deposit">
+      <button id="depitem">Deposit item</button>
+    </div>
+    <div class="row"><button id="bal" class="ghost">Show on-chain balance</button> <span id="balout" class="mono"></span></div>
+  </section>
+
+  <section>
+    <h2>Log</h2>
+    <div id="log"></div>
+  </section>
+</main>
+<script type="module">
+  import * as W from '/game/lib/wallet.js';
+  import { RESOURCES } from '/game/lib/chain.js';
+  const $ = (id) => document.getElementById(id);
+  const log = (msg, bad) => { const d = document.createElement('div'); d.textContent = new Date().toLocaleTimeString() + '  ' + msg; if (bad) d.className = 'bad'; $('log').prepend(d); };
+  // The game's own session when this page talks to the game's usual API; a separate one per other
+  // API (?api=), so a deployed function's key never lands in the local game's session.
+  const SKEY = W.apiBase() === '/api/game/' || W.apiBase() === 'https://rxplfcuhsdvqposhpzyp.supabase.co/functions/v1/game/' ? 'taproot_session' : 'taproot_session@' + W.apiBase();
+  const session = () => { try { const k = localStorage.getItem(SKEY); return k && /^[a-f0-9]{64}$/.test(k) ? k : null; } catch (e) { return null; } };
+  const setSession = (k) => { try { localStorage.setItem(SKEY, k); } catch (e) {} };
+  const run = (btn, fn) => $(btn).addEventListener('click', async () => {
+    $(btn).disabled = true;
+    try { await fn(); } catch (e) { log(e.message || String(e), true); } finally { $(btn).disabled = false; }
+  });
+
+  async function refresh() {
+    const key = session();
+    if (!key) { $('who').textContent = 'not signed in to the game'; return; }
+    try {
+      const me = await W.api('me', key);
+      $('who').textContent = me.username ? `${me.username} · ${me.state.econ.gold} gold` : 'session expired';
+      const sel = $('item'); sel.innerHTML = '';
+      for (const id of me.inventory || []) { const o = document.createElement('option'); o.value = o.textContent = id; sel.append(o); }
+      const rs = $('res'); rs.innerHTML = '';
+      for (const [id, n] of Object.entries(me.state.econ.bag || {})) if (RESOURCES[id]) { const o = document.createElement('option'); o.value = id; o.textContent = `${RESOURCES[id].name} (${n})`; rs.append(o); }
+      const st = await W.status(key);
+      $('linked').textContent = st.wallet || 'no wallet linked';
+      const ul = $('pending'); ul.innerHTML = '';
+      if (!st.pending.length) ul.innerHTML = '<li class="mono">none</li>';
+      for (const v of st.pending) {
+        const li = document.createElement('li');
+        li.className = 'mono';
+        li.textContent = `${v.claim.kind === 0 ? v.claim.amount + ' gold' : v.claim.kind === 3 ? v.claim.amount + ' ' + v.item : v.item} · until ${new Date(Number(v.claim.deadline) * 1000).toLocaleTimeString()} `;
+        const b = document.createElement('button'); b.textContent = 'Send claim'; b.className = 'ghost';
+        b.onclick = async () => { b.disabled = true; try { log('claimed: ' + await W.claim(v)); refresh(); } catch (e) { log(e.message, true); b.disabled = false; } };
+        li.append(b); ul.append(li);
+      }
+    } catch (e) { log(e.message, true); }
+  }
+
+  W.chainInfo().then((i) => {
+    $('net').textContent = `${W.apiBase()} · ${i.name || 'chain ' + i.chainId} (${i.chainId}) · bridge ${i.bridge || 'not deployed'} · withdrawals ${i.enabled ? 'open' : 'closed'}`;
+  }).catch((e) => { $('net').textContent = 'API unreachable: ' + e.message; });
+  refresh();
+
+  run('pwlogin', async () => { const r = await W.api('login', null, { username: $('user').value.trim().toLowerCase(), password: $('pass').value }); setSession(r.key); $('pass').value = ''; log('signed in as ' + r.username); refresh(); });
+  async function showMarket() {
+    const box = $('market');
+    try {
+      const rows = await W.market();
+      box.innerHTML = '';
+      for (const r of rows) {
+        const row = document.createElement('div'); row.className = 'row';
+        const label = document.createElement('span');
+        label.textContent = `${RESOURCES[r.resource].name} → ${r.stock}: 1 = ${W.formatStock(r.one)} ${r.stock}`;
+        const n = document.createElement('input'); n.type = 'number'; n.min = '1'; n.step = '1'; n.value = '1'; n.setAttribute('aria-label', 'Amount of ' + RESOURCES[r.resource].name);
+        n.id = 'sell-n-' + r.resource;
+        const b = document.createElement('button'); b.textContent = 'Sell'; b.id = 'sell-' + r.resource;
+        b.onclick = async () => {
+          b.disabled = true;
+          try { const s = await W.sell(r.resource, Number(n.value)); log(`sold ${n.value} ${RESOURCES[r.resource].name} for ${W.formatStock(s.out)} ${s.stock}: ${s.hash}`); showMarket(); }
+          catch (e) { log(e.shortMessage || e.message, true); } finally { b.disabled = false; }
+        };
+        row.append(label, n, b); box.append(row);
+      }
+    } catch (e) { box.textContent = e.message; }
+  }
+  run('connect', async () => { $('addr').textContent = await W.connect(); showMarket(); });
+  run('link', async () => { const k = session(); if (!k) throw new Error('Sign in to the game first'); const r = await W.link(k); log('linked ' + r.wallet + (r.credited ? ` (${r.credited} waiting deposits credited)` : '')); refresh(); });
+  run('login', async () => { const r = await W.login(); setSession(r.key); log('signed in as ' + r.username); refresh(); });
+  run('wgold', async () => { const r = await W.withdraw(session(), { kind: 'gold', amount: Number($('gold').value) }); log('voucher signed, sending claim…'); log('claimed: ' + await W.claim(r.voucher)); refresh(); });
+  run('wres', async () => { const r = await W.withdraw(session(), { kind: 'resource', item: $('res').value, amount: Number($('resn').value) }); log('voucher signed, sending claim…'); log('claimed: ' + await W.claim(r.voucher)); refresh(); });
+  run('depres', async () => { log('deposited: ' + await W.deposit({ kind: 'resource', item: $('dres').value.trim(), amount: Number($('dresn').value) }) + ' (credited at the next chain sync)'); });
+  run('witem', async () => { const r = await W.withdraw(session(), { kind: 'item', item: $('item').value }); log('voucher signed, sending claim…'); log('claimed: ' + await W.claim(r.voucher)); refresh(); });
+  run('depgold', async () => { log('deposited: ' + await W.deposit({ kind: 'gold', amount: Number($('dgold').value) }) + ' (credited at the next chain sync)'); });
+  run('depitem', async () => { log('deposited: ' + await W.deposit({ kind: 'item', item: $('ditem').value.trim() }) + ' (credited at the next chain sync)'); });
+  run('bal', async () => { const items = [...$('item').options].map((o) => o.value); const b = await W.balances(items); $('balout').textContent = `${b.gold} gold` + Object.entries(b.stocks || {}).filter(([, n]) => n > 0n).map(([s, n]) => ` · ${W.formatStock(n)} ${s}`).join('') + Object.entries(b.resources).filter(([, n]) => n > 0n).map(([id, n]) => ` · ${RESOURCES[id].name}×${n}`).join('') + Object.entries(b.items).filter(([, n]) => n > 0n).map(([id, n]) => ` · ${id}×${n}`).join(''); });
+</script>
+</body>
+</html>
