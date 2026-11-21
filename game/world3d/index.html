@@ -3102,6 +3102,13 @@ const npcs = (A.npcs || []).map(([name, sub, x, z, look, line]) => {
 });
 let nitro = 1, nitroLock = false, fainted = false, leaving = false;
 
+// The gear-drop stash, and lookups for equipment slots that hold a catalog id OR a gear-drop uid.
+// Up here because computeStats3d() (just below) runs at load and needs them.
+let gearInv = [];
+try { const _gi = JSON.parse(localStorage.getItem('taproot_gear_inv')); if (Array.isArray(_gi)) gearInv = _gi.filter((g) => g && typeof g.uid === 'string').slice(0, 60); } catch (e) {}
+const saveGear = () => { try { localStorage.setItem('taproot_gear_inv', JSON.stringify(gearInv)); } catch (e) {} };
+const resolveBase = (id) => { const g = id && gearInv.find((g) => g.uid === id); return g ? g.base : id; };
+const resolveInst = (id) => id && gearInv.find((g) => g.uid === id);
 // HP / ATK / DEF / MAG come from the character's class and gear (or a base kit plus gear without one).
 function computeStats3d() {
   const c = charData, eq = Object.assign({}, (c || DEFAULT_CHAR).equipment || {});
@@ -3135,9 +3142,6 @@ let field = null;
 try { field = JSON.parse(localStorage.getItem(FIELD_KEY)); } catch (e) {}
 field = Object.assign({ xp: 0, kills: 0, gold: 0 }, field);
 if (!field.bag || typeof field.bag !== 'object') field.bag = {};
-let gearInv = [];
-try { const _gi = JSON.parse(localStorage.getItem('taproot_gear_inv')); if (Array.isArray(_gi)) gearInv = _gi.filter((g) => g && typeof g.uid === 'string').slice(0, 60); } catch (e) {}
-const saveGear = () => { try { localStorage.setItem('taproot_gear_inv', JSON.stringify(gearInv)); } catch (e) {} };
 if (LOCAL_DEV) field.bag.smoke_bomb = Math.max(field.bag.smoke_bomb || 0, 5); // local testing: always a few to hand (dev accounts get 5 on the server too)
 const saveField = () => { try { localStorage.setItem(FIELD_KEY, JSON.stringify(field)); } catch (e) {} };
 let guildView = null; // the Guild's panel and companions (guildview.js), made once the world is up
@@ -3243,9 +3247,7 @@ const saveOwned = () => { try { localStorage.setItem('taproot_owned', JSON.strin
 const ITEM = (id) => (typeof GAME !== 'undefined' && GAME.ITEMS[id]) || null;
 const nameOf = (id) => (ITEM(id) || CONSUMABLES[id] || LOOT[id] || FARM_ITEMS[id] || { name: id }).name;
 // Gear instances: an equipment slot may hold a catalog id OR a gear-drop uid.
-const resolveBase = (id) => { const g = id && gearInv.find((g) => g.uid === id); return g ? g.base : id; };
 const resolveItem = (id) => ITEM(resolveBase(id));
-const resolveInst = (id) => id && gearInv.find((g) => g.uid === id);
 // RARITY_COLOR mirrors GAME.RARITIES colors (available even before GAME loads)
 const RARITY_COLOR = { common: '#9a95a8', uncommon: '#6ad47a', rare: '#6a9af0', legendary: '#e8c46a' };
 const equippedIds = () => Object.values((charData || DEFAULT_CHAR).equipment || {}).map(resolveBase);
