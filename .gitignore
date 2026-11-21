@@ -10,3 +10,13 @@ docs/
 
 # Local game mock DB (test accounts, created by game-dev-server.js)
 game-local-db.json
+
+# npm packages (ws was committed before this rule; everything else installs from package-lock)
+node_modules/
+
+# Foundry
+contracts/out/
+contracts/cache/
+contracts/lib/
+contracts/broadcast/
+game-local-db-chain.json

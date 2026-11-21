@@ -40,17 +40,25 @@ try {
   await A.key('KeyB', 'b'); await until('open'); await A.key('KeyB', 'b'); await until('close');
   assert.ok((await log()).includes('open') && (await log()).includes('close'), 'the bag opens and closes with a sound');
 
-  // M mutes: nothing more plays, the button shows it, and a reload keeps it
+  // M opens the full map (and doesn't touch the sound); M again closes it
   await A.key('KeyM', 'm');
-  assert.equal(await A.ev('__world3d.sfx.muted'), true, 'M mutes');
+  assert.equal(await A.ev(`document.getElementById('worldMap').hidden`), false, 'M opens the map');
+  assert.equal(await A.ev('__world3d.sfx.muted'), false, 'M no longer mutes');
+  await sleep(300); await A.shot('map-1.png');
+  await A.key('KeyM', 'm');
+  assert.equal(await A.ev(`document.getElementById('worldMap').hidden`), true, 'M closes the map');
+
+  // O mutes: nothing more plays, the button shows it, and a reload keeps it
+  await A.key('KeyO', 'o');
+  assert.equal(await A.ev('__world3d.sfx.muted'), true, 'O mutes');
   assert.equal(await A.ev(`document.getElementById('soundBtn').classList.contains('off')`), true, 'the button shows muted');
   const n = await A.ev('__world3d.sfx.count');
   await A.key('Space', ' '); await sleep(300);
   assert.equal(await A.ev('__world3d.sfx.count'), n, 'muted: a jump is silent');
   await boot();
   assert.equal(await A.ev('__world3d.sfx.muted'), true, 'still muted after a reload');
-  await A.key('KeyM', 'm');
-  assert.equal(await A.ev('__world3d.sfx.muted'), false, 'M again turns it back on');
+  await A.key('KeyO', 'o');
+  assert.equal(await A.ev('__world3d.sfx.muted'), false, 'O again turns it back on');
   await sleep(200);
   assert.ok((await log()).includes('ui'), 'with a blip to say so');
   await A.shot('sound-1.png');

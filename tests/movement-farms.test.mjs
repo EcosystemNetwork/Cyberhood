@@ -92,8 +92,8 @@ test('an old farm comes along with the import, rebuilt under the plot rules', ()
   assert.equal(f.owner, 'Hero');
   assert.deepEqual(f.builds, [{ k: 'altar', i: 3, j: 3, r: 0 }]); // one altar max; the scarecrow overlapped it
   assert.deepEqual(Object.keys(f.crops).sort(), ['0,0', '1,0']);   // off-plot and unknown crops dropped
-  assert.equal(f.crops['1,0'].t, T0);                               // a time in the future is clamped to now
-  assert.equal(f.crops['0,0'].t, T0 - 60000);
+  assert.equal(f.crops['1,0'].t, T0);                               // imported crops start growing now,
+  assert.equal(f.crops['0,0'].t, T0);                               // so none come in ripe
   assert.deepEqual(f.boost, [0, 0]);                                // no free altar boost
   assert.equal(unpack(f.blocks, 8, 8).count(), 3);
   assert.deepEqual(f.members, ['pal', 'a'.repeat(16)]);

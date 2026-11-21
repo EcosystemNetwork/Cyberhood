@@ -222,6 +222,17 @@
       return sent;
     },
     // Where multiplayer connects: the accounts' Supabase project once it has a public key set.
+    // A signed multiplayer ticket for this tab's key (game/lib/mpauth.js). Signed in: it carries the
+    // character's name; a guest's says '<name> (guest)'.
+    async mpTicket(pk, name) {
+      const key = sessionKey();
+      const r = await fetch(API + 'mpticket', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(key ? { Authorization: 'Bearer ' + key } : {}) },
+        body: JSON.stringify({ pk, name }),
+      });
+      return r.ok ? r.json() : null;
+    },
     async realtime() {
       try {
         const r = await fetch(API + 'config');
@@ -240,6 +251,20 @@
         const saved = offset; offset = off;
         try { return (d.farms || []).map(toLocal); } finally { offset = saved; }
       } catch (e) { return []; }
+    },
+    // Old Fenn's liquidity pools (game/world3d/pools.js): every pool's reserves, public.
+    async pools() {
+      try { const r = await fetch(API + 'pools'); return r.ok ? await r.json() : null; } catch (e) { return null; }
+    },
+    // One pool action ({ op: 'swap' | 'add' | 'remove', id, ... }), after anything still queued, so
+    // the server sees the bag as it is now. Pools are shared, so the server's answer is the result.
+    async pool(body) {
+      await flush(false);
+      let r;
+      try { r = await call('pool', body); } catch (e) { return { status: 0, data: { error: 'No connection' } }; }
+      if (r.status === 401) lostSession();
+      if (r.status === 200 && r.data.state) apply(r.data.state, get(OWNER));
+      return r;
     },
     on(type, fn) { listeners[type].push(fn); return Ledger; },
     // The current state as last cached: { econ: { gold, xp, kills, bag, loot }, owned, farm }.

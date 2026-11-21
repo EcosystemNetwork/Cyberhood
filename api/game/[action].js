@@ -13,6 +13,19 @@ const api = async () => {
     serviceKey: process.env.SUPABASE_SERVICE_KEY,
     anonKey: process.env.SUPABASE_ANON_KEY,
     dev: process.env.GAME_DEV === '1', // local testing: every account owns every item
+    chain: { // Robinhood Chain (supabase/functions/game/wallet.js)
+      chainId: process.env.CHAIN_ID,
+      rpc: process.env.CHAIN_RPC,
+      bridge: process.env.CHAIN_BRIDGE,
+      signerKey: process.env.CHAIN_SIGNER_KEY,
+      syncKey: process.env.CHAIN_SYNC_KEY,
+      confirmations: process.env.CHAIN_CONFIRMATIONS,
+      startBlock: process.env.CHAIN_START_BLOCK,
+      domains: process.env.CHAIN_SIWE_DOMAINS,
+      dex: process.env.CHAIN_DEX,
+      linkLockHours: process.env.CHAIN_LINK_LOCK_HOURS,
+      dailyValue: process.env.CHAIN_DAILY_VALUE,
+    },
   });
   return handle;
 };

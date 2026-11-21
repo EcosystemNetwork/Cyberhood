@@ -7,4 +7,5 @@ tools
 tests
 *.command
 game-local-db.json
+game-local-db-chain.json
 .env.local

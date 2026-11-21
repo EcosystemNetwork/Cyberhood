@@ -147,7 +147,8 @@ test("the Inferno's fire pillar and the Dragon Staff's big fireball", () => {
 test('the gladiator can be hit as hard as the arena buffs allow', () => {
   const { s, ctx, run } = player();
   ctx.stats = { atk: 20, mag: 2 };
-  run({ t: 'spawn', id: 'glad1', m: 'gladiator' });
+  assert.equal(run({ t: 'area', z: 'arena' }), '');
+  assert.equal(run({ t: 'spawn', id: 'glad1', m: 'gladiator' }), '');
   run({ t: 'hit', ...NEAR, id: 'glad1', k: 'swing', hand: 'R', a: 'g1', at: T0, dmg: 999 });
   assert.equal(s.econ.foes.glad1.hp, 150 - Math.round(20 * 1.7 + 4));
 });

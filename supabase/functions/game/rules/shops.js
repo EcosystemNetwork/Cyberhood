@@ -52,7 +52,10 @@ export const SHOPS = {
   },
 };
 
-export const SELL = { carrot: 3, wheat: 4, pumpkin: 45, slime_gel: 3, spore_cap: 4, bat_fang: 5, goblin_ear: 8, royal_jelly: 40, health_potion: 6, big_potion: 18, apple: 1, smoke_bomb: 8 };
+export const SELL = { carrot: 3, wheat: 4, pumpkin: 45, slime_gel: 3, spore_cap: 4, bat_fang: 5, goblin_ear: 8, royal_jelly: 40, health_potion: 6, big_potion: 18, apple: 1, smoke_bomb: 8,
+  // brought home by Guild expeditions (guild.js)
+  copper_ore: 3, silver_ore: 9, sun_gem: 120, minnow: 2, river_bass: 7, goldfin: 110, moonleaf: 3, glowcap: 90, root_dew: 15,
+  pet_egg: 40, stamina_tonic: 6, grand_tonic: 30 };
 
 export const RECIPES = [
   // the first gear loop: beat a slime and a bat, grab their drops and 10 gold, forge a fire staff
@@ -63,4 +66,7 @@ export const RECIPES = [
   { id: 'fire_wand', needs: { spore_cap: 3, bat_fang: 2, goblin_ear: 1 }, gold: 20 },
   // the Dragon Staff: forged from the two giants of the Hollow (Mine B2) and a King Slime's jelly
   { id: 'dragon_staff', needs: { golem_core: 1, queen_silk: 1, royal_jelly: 2 }, gold: 300 },
+  // Guild tonics, from what expeditions bring home: give a companion stamina back (guild.js TONICS)
+  { id: 'stamina_tonic', needs: { moonleaf: 2, minnow: 1 }, gold: 0 },
+  { id: 'grand_tonic', needs: { glowcap: 1, river_bass: 2, moonleaf: 2 }, gold: 15 },
 ];
