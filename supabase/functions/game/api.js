@@ -358,8 +358,9 @@ export function makeGameApi(env) {
      with the public anon key can join, so nothing there proves who sent a message. A ticket does:
      the server signs (Ed25519) { s: session id, n: display name, g: guest, k: the tab's own public
      key, e: expiry }, and the tab signs every message it broadcasts with its key. Other players
-     check both (game/lib/mpauth.js), so nobody can speak or act as someone else. Signed-in players
-     get their character's name; guests get '<name> (guest)', so they can't pass as an account.
+     check both (game/lib/mpauth.js), so nobody can speak or act as another player's session.
+     The name is the one the player shows; a guest's gets ' (guest)', so they can't pass as an
+     account. (Names aren't unique yet: reserving them is a later step.)
      The signing key is derived from the service key, so it needs no setup of its own. */
   const MP_TICKET_MS = 60 * 60 * 1000;
   const b64u = (bytes) => Buffer.from(bytes).toString('base64url');
@@ -465,10 +466,11 @@ export function makeGameApi(env) {
         if (!(await within('mpticket', ip))) return send(429, TOO_MANY);
         const pk = String(body.pk || '');
         if (!/^[A-Za-z0-9_-]{43}$/.test(pk)) return send(400, { error: 'Invalid key' });
+        // the name the player shows in the world (never the login username, which stays private);
+        // guests are marked so they can't pass as someone with an account
         const who = await sessionUser(headers);
-        const name = who ? (who.character && String(who.character.name || '').trim().slice(0, 16)) || who.username
-          : (String(body.name ?? '').replace(/[^\p{L}\p{N} _'-]/gu, '').trim().slice(0, 16) || 'Wanderer') + ' (guest)';
-        return send(200, await makeTicket(pk, name, !who));
+        const shown = String(body.name ?? '').replace(/[^\p{L}\p{N} _'-]/gu, '').trim().slice(0, 16) || 'Wanderer';
+        return send(200, await makeTicket(pk, who ? shown : shown + ' (guest)', !who));
       }
 
       /* ---- signed in ---- */
