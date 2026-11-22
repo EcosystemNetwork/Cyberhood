@@ -188,3 +188,26 @@ test('draining warns players, refuses new ones and fails the health check', asyn
   c.ws.close();
   await draining;
 });
+
+test('a kill in the realm is paid to the accounts of those who earned it, and they are told', async () => {
+  const added = [];
+  // the API's answer, as payout.mjs would pass it on
+  const payout = ({ onPaid }) => ({ add: (k) => { added.push(k); onPaid({ u: k.u[0], k: k.k, r: '', xp: 5, m: k.m, sid: k.to.get(k.u[0]) }); }, stats: () => ({}), stop: async () => {} });
+  const { realm, url } = await start({ payout });
+  const a = await signedIn(url, { sid: 'pa', acct: 'sealed-a', stats: { atk: 30, mag: 0 } }), g = await signedIn(url, { sid: 'pg' });
+  a.send({ t: 'join', zone: 'town' }); g.send({ t: 'join', zone: 'town' });
+  await a.next('zone'); await g.next('zone');
+  const slime = [...realm.world.get('town').mobs.keys()][0];
+  g.send({ t: 'hit', id: slime, k: 'swing', a: 'g1', dmg: 5 });
+  await g.next('hit');
+  a.send({ t: 'hit', id: slime, k: 'swing', a: 'a1', dmg: 99 }); // ATK 30: up to 34 a swing
+  await a.next('die');
+  assert.equal(added.length, 1);
+  assert.equal(added[0].m, 'slime');
+  assert.deepEqual(added[0].u, ['sealed-a'], 'the guest helped, but has no account to pay');
+  assert.match(added[0].k, /^[0-9a-f]{8}\.town\.1$/);
+  assert.equal(added[0].to.get('sealed-a'), 'pa');
+  assert.deepEqual(await a.next('reward'), { t: 'reward', m: 'slime', xp: 5 });
+  a.ws.close(); g.ws.close();
+  await realm.close();
+});

@@ -21,10 +21,10 @@ export const helloBytes = (nonce) => enc.encode(`cyberhood-realm-v1\n${nonce}`);
 
 export const importServerKey = (x) => subtle.importKey('raw', fromB64u(x), ALG, false, ['verify']);
 
-/* -> { sid, name, guest, exp } when `ticket` is the API's and `sig` is the ticket key's
+/* -> { sid, name, guest, exp, acct, stats } when `ticket` is the API's and `sig` is the ticket key's
    signature over this socket's nonce; otherwise null. */
 export async function checkHello(serverKey, ticket, nonce, sig, now = Date.now()) {
-  if (!serverKey || typeof ticket !== 'string' || typeof sig !== 'string' || ticket.length > 1024 || sig.length > 128) return null;
+  if (!serverKey || typeof ticket !== 'string' || typeof sig !== 'string' || ticket.length > 1500 || sig.length > 128) return null;
   try {
     const [body, tsig] = ticket.split('.');
     if (!body || !tsig) return null;
@@ -34,7 +34,12 @@ export async function checkHello(serverKey, ticket, nonce, sig, now = Date.now()
     if (!t || typeof t.s !== 'string' || typeof t.n !== 'string' || typeof t.k !== 'string' || !(t.e > now)) return null;
     const tab = await subtle.importKey('raw', fromB64u(t.k), ALG, false, ['verify']);
     if (!(await subtle.verify(ALG, tab, fromB64u(sig), helloBytes(nonce)))) return null;
-    return { sid: t.s.slice(0, 32), name: t.n.slice(0, 40), guest: !!t.g, exp: t.e };
+    // a signed-in player's ticket also has u (their account, sealed by the API: handed back when
+    // a kill is paid) and st (attack stats, which cap their hits)
+    const acct = typeof t.u === 'string' && t.u.length <= 200 ? t.u : null;
+    const st = t.st && typeof t.st === 'object' ? t.st : null;
+    const stats = st && [st.atk, st.mag].every((n) => Number.isFinite(n) && n >= 0 && n <= 10000) ? { atk: st.atk, mag: st.mag } : null;
+    return { sid: t.s.slice(0, 32), name: t.n.slice(0, 40), guest: !!t.g, exp: t.e, acct, stats };
   } catch {
     return null;
   }

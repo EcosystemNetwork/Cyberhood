@@ -33,8 +33,13 @@ test('players see only who is in view: enter, update, gone', () => {
   assert.deepEqual(s.e, [['p', 'b', 'B']]);
   assert.equal(s.u.length, 1);
   assert.equal(far.last('s').u.length, 0, 'the far player sees nobody');
+  const n = a.inbox.length;
+  z.snapshot();
+  assert.equal(a.inbox.length, n, 'nothing moved: no snapshot at all');
+  z.move('b', { x: 111, z: 100 }, 1000);
   z.snapshot();
   assert.equal(a.last('s').e, undefined, 'names are sent once');
+  assert.deepEqual(a.last('s').u.map((x) => x[0]), ['b'], 'only what changed');
   z.place(b.p, 180, 180);
   z.snapshot();
   assert.deepEqual(a.last('s').g, ['b']);
@@ -135,4 +140,44 @@ test('a crowded zone still costs little per tick', () => {
   for (let i = 1; i <= 30; i++) { z.tick(i * 33); if (i % 3 === 0) z.snapshot(); }
   const perTick = (performance.now() - t0) / 30;
   assert.ok(perTick < 33, `1000 players + 500 monsters: ${perTick.toFixed(2)} ms a tick`);
+});
+
+test('in a crowd, a snapshot holds only the nearest few, and only what moved', () => {
+  const z = zone({}, { maxView: 5 });
+  const me = player(z, 'me', { x: 100, z: 100 });
+  for (let i = 1; i <= 20; i++) player(z, 'p' + i, { x: 100 + i, z: 100 });
+  z.snapshot();
+  const s = me.last('s');
+  assert.deepEqual(s.e.map((e) => e[1]), ['p1', 'p2', 'p3', 'p4', 'p5']);
+  // p3 walks off; p6 is now among the nearest five
+  z.place(z.players.get('p3'), 100, 150);
+  z.snapshot();
+  const s2 = me.last('s');
+  assert.deepEqual(s2.g, ['p3']);
+  assert.deepEqual(s2.e.map((e) => e[1]), ['p6']);
+  assert.deepEqual(s2.u.map((u) => u[0]), ['p6'], 'the four who stood still are not resent');
+});
+
+test('a packed town (300 players in one spot) still fits the tick budget', () => {
+  const z = zone();
+  const rand = seeded(3);
+  // a send that only measures, like a socket would (the other tests' inboxes keep everything)
+  let bytes = 0;
+  for (let i = 0; i < 300; i++) { const p = z.addPlayer({ sid: 'q' + i, name: 'Q' + i }, (m) => { bytes += JSON.stringify(m).length; }, 0); z.place(p, 90 + rand() * 20, 90 + rand() * 20); }
+  // everyone shuffles about at 30 Hz; the realm sends a third of the snapshots each tick
+  const run = (from, ticks) => {
+    for (let i = from; i < from + ticks; i++) {
+      for (const p of z.players.values()) z.move(p.id, { x: p.x + (rand() - 0.5) * 0.4, z: p.z + (rand() - 0.5) * 0.4 }, i * 33);
+      z.tick(i * 33);
+      z.snapshot(i % 3, 3);
+    }
+  };
+  run(1, 30); // warm up (1 s)
+  bytes = 0;
+  const t0 = performance.now();
+  run(31, 60); // then measure 2 s
+  const perTick = (performance.now() - t0) / 60;
+  console.log(`# packed town: ${perTick.toFixed(2)} ms a tick, ${(bytes / 300 / 2 / 1024).toFixed(1)} KB a player a second`);
+  // the budget is 33 ms (30 Hz); this is the worst case: everyone in view of everyone, moving every tick
+  assert.ok(perTick < 28, `300 players in one spot: ${perTick.toFixed(2)} ms a tick`);
 });

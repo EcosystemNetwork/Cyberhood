@@ -24,15 +24,18 @@ export class Grid {
     this.remove(e);
     this.add(e);
   }
-  // every entity within r of (x, z)
-  *near(x, z, r) {
+  /* every entity within r of (x, z), as an array (into `out`, if given). Each one's squared
+     distance is left in e._d, for sorting by nearness. Not a generator: this runs once per
+     player per snapshot, and a generator costs several times more per entity. */
+  near(x, z, r, out = []) {
     const c = this.cell, r2 = r * r;
     for (let cx = Math.floor((x - r) / c); cx <= Math.floor((x + r) / c); cx++) {
       for (let cz = Math.floor((z - r) / c); cz <= Math.floor((z + r) / c); cz++) {
         const s = this.cells.get(`${cx},${cz}`);
         if (!s) continue;
-        for (const e of s) { const dx = e.x - x, dz = e.z - z; if (dx * dx + dz * dz <= r2) yield e; }
+        for (const e of s) { const dx = e.x - x, dz = e.z - z, d = dx * dx + dz * dz; if (d <= r2) { e._d = d; out.push(e); } }
       }
     }
+    return out;
   }
 }

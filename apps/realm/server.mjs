@@ -13,13 +13,15 @@
 //   { t: 'say', msg }                chat to everyone who can see you
 //   { t: 'ping', at }
 // realm -> client: challenge, welcome, zone, s (snapshot), fix, hit, ouch, die, ko, say, refused,
-//   error, pong, draining. See zone.mjs for the snapshot format.
+//   error, pong, draining, renewed, reward ({ m, xp, why }: a kill paid, or why not).
+//   See zone.mjs for the snapshot format.
 import http from 'node:http';
 import crypto from 'node:crypto';
 import { WebSocketServer } from 'ws';
 import { checkHello, importServerKey } from './auth.mjs';
 import { Zone } from './zone.mjs';
 import { ZONES } from './zones.mjs';
+import { createPayout } from './payout.mjs';
 
 export const PROTOCOL = 2;
 const LIMITS = {
@@ -34,24 +36,42 @@ const LIMITS = {
 const TICK_HZ = 30, SNAP_HZ = 10;
 
 /* opts: port, log, serverKey (the API's ticket key; default env REALM_TICKET_KEY), zones,
-   tickHz, snapHz, onKill(kill) (a kill to pay out: the economy hookup), rand */
+   tickHz, snapHz, rand,
+   apiUrl, apiSecret (the game API and its REALM_SECRET, for paying out kills; default env
+     REALM_API_URL, REALM_SECRET; without them kills aren't paid),
+   onKill(kill) (every kill, as zone.mjs reports it), payout ({ onPaid, log } -> a stand-in for payout.mjs, tests) */
 export function createRealm({ port = 8080, log = console.log, serverKey = process.env.REALM_TICKET_KEY,
-  zones = ZONES, tickHz = TICK_HZ, snapHz = SNAP_HZ, onKill = () => {}, rand = Math.random } = {}) {
+  zones = ZONES, tickHz = TICK_HZ, snapHz = SNAP_HZ, onKill = () => {}, rand = Math.random,
+  apiUrl = process.env.REALM_API_URL, apiSecret = process.env.REALM_SECRET, payout = null } = {}) {
   const startedAt = Date.now();
   let draining = false;
   const keyReady = serverKey ? importServerKey(serverKey) : Promise.resolve(null);
   keyReady.catch(() => log('REALM_TICKET_KEY is not a valid Ed25519 public key'));
   if (!serverKey) log('no REALM_TICKET_KEY: sockets can connect but nobody can sign in');
 
-  const world = new Map(zones.map((z) => [z.id, new Zone(z, { rand, onKill })]));
   const sessions = new Map(); // sid -> the socket playing it (one per session)
+
+  /* Kills go to the game API to be paid (payout.mjs). Each gets an id unique to this process
+     (a restart starts a new boot id), and the API pays an id once, so retries are safe. */
+  const boot = crypto.randomBytes(4).toString('hex');
+  let killN = 0;
+  const reward = (p) => { const ws = p.sid && sessions.get(p.sid); if (ws) send(ws, { t: 'reward', m: p.m, xp: p.xp, why: p.r || undefined }); };
+  payout = payout ? payout({ onPaid: reward, log }) : apiUrl && apiSecret ? createPayout({ url: apiUrl, secret: apiSecret, log, onPaid: reward }) : null;
+  if (!payout) log('no REALM_API_URL / REALM_SECRET: kills are not paid out');
+  function killed(kill) {
+    const to = new Map(); // sealed account -> sid, for telling each player what they got
+    for (const sid of kill.credits) { const ws = sessions.get(sid); if (ws && ws.me.acct) to.set(ws.me.acct, sid); }
+    if (payout) payout.add({ k: `${boot}.${kill.zone}.${++killN}`, m: kill.type, u: [...to.keys()], to });
+    onKill(kill);
+  }
+  const world = new Map(zones.map((z) => [z.id, new Zone(z, { rand, onKill: killed })]));
   const perf = { tickMs: 0, ticks: 0 };
 
   const server = http.createServer((req, res) => {
     if (req.url === '/health' || req.url === '/') {
       const body = { ok: !draining, service: 'realm', protocol: PROTOCOL, players: sessions.size, sockets: wss.clients.size,
         draining, uptimeS: Math.round((Date.now() - startedAt) / 1000), tickMs: Math.round(perf.tickMs * 100) / 100,
-        zones: Object.fromEntries([...world].map(([id, z]) => [id, z.stats()])) };
+        zones: Object.fromEntries([...world].map(([id, z]) => [id, z.stats()])), payout: payout ? payout.stats() : null };
       res.writeHead(draining ? 503 : 200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
       res.end(JSON.stringify(body));
       return;
@@ -136,7 +156,9 @@ export function createRealm({ port = 8080, log = console.log, serverKey = proces
         pending = false;
         if (!me) return;
         if (me.sid !== ws.me.sid) { send(ws, { t: 'error', code: 'auth' }); ws.close(4004, 'another session'); return; }
-        ws.me.exp = me.exp;
+        Object.assign(ws.me, { exp: me.exp, acct: me.acct, stats: me.stats });
+        const p = ws.zone && ws.zone.players.get(me.sid);
+        if (p && me.stats) p.stats = me.stats; // gear changed since the last ticket
         send(ws, { t: 'renewed', exp: me.exp });
         return;
       }
@@ -161,11 +183,11 @@ export function createRealm({ port = 8080, log = console.log, serverKey = proces
   let tickN = 0;
   const every = Math.max(1, Math.round(tickHz / snapHz));
   const ticker = setInterval(() => {
-    const t0 = performance.now(), now = Date.now(), snap = ++tickN % every === 0;
+    const t0 = performance.now(), now = Date.now(), part = ++tickN % every;
     for (const z of world.values()) {
       if (!z.players.size) continue;
       z.tick(now);
-      if (snap) z.snapshot();
+      z.snapshot(part, every); // a slice of the players each tick: each gets snapHz a second
     }
     const ms = performance.now() - t0;
     perf.tickMs = perf.ticks++ ? perf.tickMs * 0.95 + ms * 0.05 : ms;
@@ -196,13 +218,14 @@ export function createRealm({ port = 8080, log = console.log, serverKey = proces
     while (wss.clients.size && Date.now() < deadline) await new Promise((r) => setTimeout(r, 250));
     for (const ws of wss.clients) ws.close(1012, 'restarting');
     stop();
+    if (payout) await payout.stop(); // pay what's left before the process goes
     await shut();
   }
 
   return {
-    server, wss, world, sessions, drain,
+    server, wss, world, sessions, payout, drain,
     listen: () => new Promise((r) => server.listen(port, () => { log(`realm listening on :${server.address().port}`); r(server.address().port); })),
-    close: async () => { stop(); for (const ws of wss.clients) ws.terminate(); await shut(); },
+    close: async () => { stop(); if (payout) await payout.stop(0); for (const ws of wss.clients) ws.terminate(); await shut(); },
   };
 }
 
