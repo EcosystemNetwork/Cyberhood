@@ -32,6 +32,7 @@ try {
     facade: '-3.5,2.2,-4,0,6,-12',                 // looking up at the west front
     nave: '0.5,2.0,-13.5,0,1.6,-28',               // down the nave to the altar
     glade: '-19,5.5,17,0,2,-10',                   // wide, from the forest edge
+    mausoleum: '21,2.6,-4.5,31,2.2,-10',           // the graveyard and the tomb house
   };
   for (const [name, c] of Object.entries(ONLY === 'play' ? {} : CAMS)) {
     await boot(`cam=${c}`);
@@ -118,6 +119,22 @@ try {
     const after = JSON.parse(await A.ev('JSON.stringify(SHOWCASE.player.pos)'));
     assert.ok(Math.hypot(after.x - before.x, after.z - before.z) > 1.5, 'a dodge roll carries the warden over 1.5 m');
     await snap('play_end.png');
+    // ---- the undercroft: the tomb house's door takes you down, the relic is claimed, the stair brings you back
+    await A.ev(`(() => { const P = SHOWCASE.player; P.dead = false; P.hp = 100; P.pos.set(29.4, 0, -10); P.yaw = Math.PI / 2; return 1; })()`);
+    await A.ev(`(() => { SHOWCASE.player.pos.x = 30.1; return 1; })()`);
+    await sleep(1600);
+    assert.equal(await A.ev('SHOWCASE.area'), 'crypt', 'the tomb house door leads down into the undercroft');
+    assert.ok(await A.ev('SHOWCASE.player.pos.z') < 0, 'the warden arrives at the foot of the stair');
+    await snap('crypt_arrive.png');
+    const counts = JSON.parse(await A.ev(`JSON.stringify({ calls: SHOWCASE.R.renderer.info.render.calls, lights: SHOWCASE.world.lights.length })`));
+    assert.ok(counts.calls < 300 && counts.lights <= 4, `the undercroft stays in budget (${JSON.stringify(counts)})`);
+    await A.ev(`(() => { const S = SHOWCASE; S.foes.list.forEach((e) => { e.state = 'stun'; e.stun = 99; }); S.player.pos.set(0, 0, -23.2); return 1; })()`);
+    await sleep(400);
+    assert.equal(await A.ev('SHOWCASE.relicClaimed'), true, 'reaching the relic claims it');
+    await A.ev(`(() => { SHOWCASE.player.pos.set(0, 0, 3.6); return 1; })()`);
+    await sleep(1600);
+    assert.equal(await A.ev('SHOWCASE.area'), 'glade', 'climbing the stair returns to the graveyard');
+    assert.ok(Math.abs(await A.ev('SHOWCASE.player.pos.x') - 28.2) < 1.2, 'back out beside the tomb house door');
   }
   // ---- the Armoury: boots, every slot toggles, armour rides the bones through a combo
   await A.go(`${BASE}/game/showcase/preview.html?yaw=0.4`);

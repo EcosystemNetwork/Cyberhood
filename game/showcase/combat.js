@@ -85,6 +85,7 @@ export function makeOverlay(camera) {
       host.appendChild(el);
       const bar = el.querySelector('i');
       return {
+        hide() { el.style.opacity = '0'; },
         set(p, hp, dist, threat, alive) {
           const s = project(p);
           const vis = alive && s.front && dist < 24;
@@ -251,5 +252,9 @@ export function makeRevenants(scene, world, overlay, sparks, spots) {
     if (token.holder === e) { token.holder = null; token.cool = 1.2; }
   }
 
-  return { list, update, strike, parried, reset, token };
+  // an area's revenants sleep while the warden is elsewhere: hidden, plates off, not updated
+  function setActive(on) {
+    for (const e of list) { e.k.root.visible = on && e.state !== 'dead'; if (e.k.trail) e.k.trail.visible = false; e.plate.hide(); }
+  }
+  return { list, update, strike, parried, reset, token, setActive };
 }

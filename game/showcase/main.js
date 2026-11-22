@@ -8,6 +8,7 @@
 import * as THREE from 'three';
 import { createRenderer, loadSky, isTouch, LOOK } from './render.js';
 import { createMaterials, buildWorld, LAYOUT } from './world.js';
+import { buildCrypt, CRYPT } from './crypt.js';
 import { loadKnightAssets, makeKnight, LOOKS, gltfLoader } from './knight.js';
 import { makeRevenants, makeSparks, makeOverlay, RULES } from './combat.js';
 import { sfx } from '/game/lib/sfx.js';
@@ -36,7 +37,7 @@ const [, models] = await Promise.all([
   Promise.all([G.loadAsync(A('rock_moss_set_01.glb')), G.loadAsync(A('fern_02.glb')), G.loadAsync(A('dead_tree_trunk_02.glb'))]).then(([rocks, fern, trunk]) => ({ rocks, fern, trunk })),
   loadKnightAssets(manager).then(() => { knightP = 1; bar(); }),
 ]);
-const world = buildWorld(R, M, models);
+let world = buildWorld(R, M, models); // the area the warden is in (see AREAS)
 const sparks = makeSparks(scene, R);
 const overlay = makeOverlay(camera);
 
@@ -51,6 +52,7 @@ me.root.position.copy(player.pos);
 R.noAO.add(me.trail);
 
 // the stone warden on the plinth: the same hero, posed in vigil and frozen
+let statueRoot;
 {
   const k = makeKnight(scene, { ...LOOKS.warden, key: 'statue', hood: true });
   const stoneMat = new THREE.MeshStandardMaterial({ color: 0x6e6a64, roughness: 0.9, normalMap: M.T.blocks.nor, normalScale: new THREE.Vector2(0.5, 0.5), envMapIntensity: LOOK.envIntensity });
@@ -62,9 +64,54 @@ R.noAO.add(me.trail);
   if (k.trail) k.trail.visible = false;
   k.root.updateMatrixWorld(true);
   k.root.traverse((o) => { o.matrixAutoUpdate = false; });
+  statueRoot = k.root;
 }
-const foes = makeRevenants(scene, world, overlay, sparks, [new THREE.Vector3(-3.5, 0, -8), new THREE.Vector3(3.8, 0, -7.2), new THREE.Vector3(0.5, 0, -10.2)]);
+let foes = makeRevenants(scene, world, overlay, sparks, [new THREE.Vector3(-3.5, 0, -8), new THREE.Vector3(3.8, 0, -7.2), new THREE.Vector3(0.5, 0, -10.2)]);
 for (const e of foes.list) R.noAO.add(e.k.trail);
+
+/* ---------------- areas: the glade above, the undercroft below ---------------- */
+// each area: its world, its revenants, where you arrive, and its light (sky, image light, fog, sun)
+const AREAS = {
+  glade: { world, foes, spawn: LAYOUT.spawn, yaw: Math.PI, name: 'THE HOLLOW CHAPEL', bg: scene.background, env: scene.environment,
+    fog: [scene.fog.color.clone(), scene.fog.density], sun: true, extra: [statueRoot] },
+};
+let area = 'glade', travelling = false, relicClaimed = false;
+function crypt() { // built on first descent, behind the fade
+  if (!AREAS.crypt) {
+    const w = buildCrypt(R, M), f = makeRevenants(scene, w, overlay, sparks, CRYPT.foes);
+    for (const e of f.list) R.noAO.add(e.k.trail);
+    f.setActive(false);
+    AREAS.crypt = { world: w, foes: f, spawn: CRYPT.spawn, yaw: Math.PI, name: 'THE UNDERCROFT', bg: new THREE.Color(0x040304), env: w.env,
+      fog: [new THREE.Color(CRYPT.fog.color), CRYPT.fog.density], sun: false, extra: [] };
+  }
+  return AREAS.crypt;
+}
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+async function travel(to, pos, yaw) {
+  if (travelling) return;
+  travelling = true;
+  const veil = $('veil');
+  veil.style.transition = 'opacity 0.45s ease';
+  veil.classList.remove('gone');
+  await wait(480);
+  const from = AREAS[area], dest = to === 'crypt' ? crypt() : AREAS[to];
+  from.world.root.visible = false; for (const o of from.extra) o.visible = false; from.foes.setActive(false);
+  dest.world.root.visible = true; for (const o of dest.extra) o.visible = true; dest.foes.reset(); dest.foes.setActive(true);
+  scene.background = dest.bg; scene.environment = dest.env;
+  scene.fog.color.copy(dest.fog[0]); scene.fog.density = dest.fog[1];
+  R.sun.visible = dest.sun;
+  world = dest.world; foes = dest.foes; area = to;
+  Object.assign(player, { yaw, roll: null, heavy: null });
+  player.pos.copy(pos); player.vel.set(0, 0, 0); player.atk.p = -1;
+  me.stopMove();
+  cam.yaw = yaw + Math.PI; // behind the warden
+  cam.focus.copy(pos).setY(world.heightAt(pos.x, pos.z) + 1.42);
+  R.renderer.compile(scene, camera); // the new light rig's shaders, compiled behind the veil
+  toast(dest.name, false, 2.4);
+  await wait(150);
+  veil.classList.add('gone');
+  travelling = false;
+}
 
 /* ---------------- input ---------------- */
 const keys = new Set();
@@ -249,7 +296,7 @@ function hud(dt) {
 
 /* ---------------- camera ---------------- */
 const cam = { yaw: 0, pitch: 0.2, dist: 4.4, focus: new THREE.Vector3(), intro: 1, blend: 0 };
-const fixedCam = P.get('cam')?.split(',').map(Number);
+let fixedCam = P.get('cam')?.split(',').map(Number);
 const _cp = new THREE.Vector3(), _ct = new THREE.Vector3();
 function updateCamera(dt, t) {
   cam.yaw -= input.look.x * 0.0026;
@@ -260,7 +307,8 @@ function updateCamera(dt, t) {
   _cp.set(Math.sin(cam.yaw) * cy, Math.sin(cam.pitch), Math.cos(cam.yaw) * cy).multiplyScalar(cam.dist).add(cam.focus).addScaledVector(right, 0.42);
   // inside the nave the walls would stand between camera and warden: keep the camera in
   const N = LAYOUT.nave;
-  if (player.pos.x > N.x0 && player.pos.x < N.x1 && player.pos.z > N.z0 && player.pos.z < N.z1) {
+  world.clampCamera?.(_cp);
+  if (area === 'glade' && player.pos.x > N.x0 && player.pos.x < N.x1 && player.pos.z > N.z0 && player.pos.z < N.z1) {
     _cp.x = clamp(_cp.x, N.x0 + 0.7, N.x1 - 0.7); _cp.z = clamp(_cp.z, N.z0 - 2.5, N.z1 + 6);
   }
   _cp.y = Math.max(_cp.y, world.heightAt(_cp.x, _cp.z) + 0.35);
@@ -326,9 +374,9 @@ function stepPlayer(dt) {
   if (p.dead) {
     p.deadT += dt;
     if (p.deadT > 4) {
-      Object.assign(p, { dead: false, hp: 100, st: 100, pos: LAYOUT.spawn.clone(), yaw: Math.PI, roll: null });
+      Object.assign(p, { dead: false, hp: 100, st: 100, pos: AREAS[area].spawn.clone(), yaw: AREAS[area].yaw, roll: null });
       foes.reset();
-      toast('THE CHAPEL WAITS');
+      toast(area === 'crypt' ? 'THE DEAD STIR AGAIN' : 'THE CHAPEL WAITS');
     }
     return;
   }
@@ -396,6 +444,18 @@ function stepPlayer(dt) {
   } else if (a.gap) { a.gap = false; startSwing(); } // one frame of p = -1 between swings lets glbhero walk its combo
   world.collide(p.pos, 0.36);
   p.pos.y = world.heightAt(p.pos.x, p.pos.z);
+  // ways between the areas: the tomb house's door, and the top of the undercroft's stair
+  if (!travelling && area === 'glade' && Math.hypot(p.pos.x - LAYOUT.portal.x, p.pos.z - LAYOUT.portal.z) < 0.8) travel('crypt', CRYPT.spawn, Math.PI);
+  else if (!travelling && area === 'crypt' && p.pos.z > CRYPT.exitZ) travel('glade', LAYOUT.portal.clone().add(new THREE.Vector3(-1.9, 0, 0)), -Math.PI / 2);
+  // the relic: reach it and it's yours (once): full health, and the alcove blazes
+  if (area === 'crypt' && !relicClaimed && p.pos.distanceTo(CRYPT.relic) < 1.9) {
+    relicClaimed = true;
+    p.hp = 100; p.st = 100;
+    world.relicLight.userData.base = 42;
+    sparks.burst(world.relic.position.clone().setY(1.6), 'parry', 50);
+    sfx.play('levelup');
+    toast("THE WARDEN'S FIRST BLADE", false, 3);
+  }
 }
 
 /* ---------------- perf overlay ---------------- */
@@ -416,4 +476,4 @@ $('veil').classList.add('gone');
 R.renderer.compile(scene, camera);
 requestAnimationFrame(frame);
 if (P.has('auto')) start();
-window.SHOWCASE = { R, world, player, foes, me, cam, clock, start, toast, doAttack, doRoll, setGuard, beginHeavy, releaseHeavy, keys, input };
+window.SHOWCASE = { R, get world() { return world; }, get foes() { return foes; }, get area() { return area; }, get relicClaimed() { return relicClaimed; }, travel, AREAS, player, me, setCam: (...c) => { fixedCam = c.length ? c : null; }, cam, clock, start, toast, doAttack, doRoll, setGuard, beginHeavy, releaseHeavy, keys, input };

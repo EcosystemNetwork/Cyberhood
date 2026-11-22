@@ -20,20 +20,9 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { LOOK } from './render.js';
+import { createKit, makeCollide, rng, fbm, sstep, boxUV, archRing } from './kit.js';
 
 const A = new URL('./assets/', import.meta.url).href;
-
-// ---- deterministic noise
-function rng(seed) { let s = seed >>> 0 || 1; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); }
-function hash(x, z) { const s = Math.sin(x * 127.1 + z * 311.7) * 43758.5453; return s - Math.floor(s); }
-function vnoise(x, z) {
-  const xi = Math.floor(x), zi = Math.floor(z), xf = x - xi, zf = z - zi;
-  const u = xf * xf * (3 - 2 * xf), v = zf * zf * (3 - 2 * zf);
-  const a = hash(xi, zi), b = hash(xi + 1, zi), c = hash(xi, zi + 1), d = hash(xi + 1, zi + 1);
-  return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
-}
-function fbm(x, z, o = 4) { let s = 0, a = 0.5, f = 1; for (let i = 0; i < o; i++) { s += a * (vnoise(x * f, z * f) * 2 - 1); a *= 0.5; f *= 2.03; } return s; }
-const sstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
 // ---- layout
 export const LAYOUT = {
@@ -42,6 +31,8 @@ export const LAYOUT = {
   statue: new THREE.Vector3(0, 0, -1.5),
   spawn: new THREE.Vector3(0, 0, 9),
   grave: { x0: 17, x1: 29, z0: -18, z1: -2 },
+  mausoleum: { x0: 30, x1: 35, z0: -12.6, z1: -7.4 }, // the undercroft's way in: its door faces the graves (west)
+  portal: new THREE.Vector3(30.1, 0, -10),
 };
 const N = LAYOUT.nave;
 const pathX = (z) => Math.sin(z * 0.08) * 2.2;
@@ -52,7 +43,7 @@ export function heightAt(x, z) {
   const r = Math.hypot(x, z);
   let h = fbm(x * 0.045, z * 0.045) * 1.5 + fbm(x * 0.16 + 7, z * 0.16) * 0.22;
   const flat = Math.max(sstep(19, 13, r), sstep(6, 1.5, rectDist(x, z, N)), z > 0 ? sstep(4.5, 1.8, Math.abs(x - pathX(z))) * 0.85 : 0,
-    sstep(5, 1, rectDist(x, z, LAYOUT.grave)) * 0.7);
+    sstep(5, 1, rectDist(x, z, LAYOUT.grave)) * 0.7, sstep(5, 1.5, rectDist(x, z, LAYOUT.mausoleum)));
   h *= 1 - flat;
   h += Math.min(13, Math.pow(Math.max(0, r - 36), 1.45) * 0.085) * (0.8 + 0.2 * fbm(x * 0.02, z * 0.02 + 5, 2)); // the bowl's rim, under the firs
   return h;
@@ -92,45 +83,13 @@ export function createMaterials(manager) {
 }
 
 // ---- geometry helpers
-// box-projected UVs in world space (scale: metres per texture tile), for procedural stonework
-function boxUV(g, scale) {
-  g = g.index ? g.toNonIndexed() : g;
-  g.clearGroups();
-  const p = g.attributes.position, uv = new Float32Array(p.count * 2);
-  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), n = new THREE.Vector3();
-  for (let i = 0; i < p.count; i += 3) {
-    a.fromBufferAttribute(p, i); b.fromBufferAttribute(p, i + 1); c.fromBufferAttribute(p, i + 2);
-    n.subVectors(c, b).cross(a.clone().sub(b)).normalize();
-    const ax = Math.abs(n.x), ay = Math.abs(n.y), az = Math.abs(n.z);
-    for (let k = 0; k < 3; k++) {
-      const x = p.getX(i + k), y = p.getY(i + k), z = p.getZ(i + k);
-      const [u, v] = ay > ax && ay > az ? [x, z] : ax > az ? [z, y] : [x, y];
-      uv[(i + k) * 2] = u / scale; uv[(i + k) * 2 + 1] = v / scale;
-    }
-  }
-  g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
-  for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(k)) g.deleteAttribute(k);
-  if (!g.attributes.normal) g.computeVertexNormals();
-  return g;
-}
-// a gothic (equilateral) pointed arch as a hole path: x, y0 = bottom-left, w wide, springing at ys
-function archPath(x, y0, w, ys) {
-  const p = new THREE.Path();
-  p.moveTo(x, y0); p.lineTo(x + w, y0); p.lineTo(x + w, ys);
-  p.absarc(x, ys, w, 0, Math.PI / 3, false);
-  p.absarc(x + w, ys, w, (2 * Math.PI) / 3, Math.PI, false);
-  p.lineTo(x, y0);
-  return p;
-}
-
 /* ============================================================================ */
 export function buildWorld(R, M, models) {
   const { scene } = R;
   const root = new THREE.Group();
   scene.add(root);
-  const colliders = []; // { a: Vector2, b: Vector2, r } segments, or { c: Vector2, r } circles
-  const seg = (x0, z0, x1, z1, r) => colliders.push({ a: new THREE.Vector2(x0, z0), b: new THREE.Vector2(x1, z1), r });
-  const circ = (x, z, r) => colliders.push({ c: new THREE.Vector2(x, z), r });
+  const K = createKit(heightAt); // the stone kit (kit.js): pieces + colliders
+  const { colliders, circ } = K; // { a: Vector2, b: Vector2, r } segments, or { c: Vector2, r } circles
   const updaters = [];
 
   /* ---------------- terrain ---------------- */
@@ -186,37 +145,7 @@ export function buildWorld(R, M, models) {
   }
 
   /* ---------------- stonework: everything merged into one stone mesh ---------------- */
-  const stone = [], stoneDark = [];
-  const put = (g, list = stone) => list.push(g);
-  // a wall from (x0,z0) to (x1,z1): elevation shape with a jagged top, arch holes, extruded t thick
-  function wall(x0, z0, x1, z1, { h, t = 0.9, top, holes = [], gaps = [], seed = 1, list }) {
-    const L = Math.hypot(x1 - x0, z1 - z0), rnd = rng(seed);
-    const s = new THREE.Shape();
-    s.moveTo(0, -0.4); s.lineTo(L, -0.4);
-    const steps = Math.max(2, Math.ceil(L / 0.45));
-    for (let i = steps; i >= 0; i--) {
-      const u = (i / steps) * L;
-      let y = top ? top(u, L) : h;
-      y = Math.max(0.3, Math.round((y - rnd() * 0.18) / 0.22) * 0.22); // lost blocks, a course at a time
-      s.lineTo(u, y);
-    }
-    s.lineTo(0, -0.4);
-    for (const H of holes) s.holes.push(H.circle ? new THREE.Path().absarc(H.u, H.y, H.r, 0, Math.PI * 2, true) : archPath(H.u, H.y, H.w, H.ys));
-    const g = new THREE.ExtrudeGeometry(s, { depth: t, bevelEnabled: false, curveSegments: 10 });
-    g.translate(0, 0, -t / 2);
-    g.rotateY(Math.atan2(-(z1 - z0), x1 - x0));
-    g.translate(x0, 0, z0);
-    put(g, list);
-    // collision: the wall's line, minus doorways
-    const dir = [(x1 - x0) / L, (z1 - z0) / L];
-    let u0 = 0;
-    for (const [ga, gb] of [...gaps, [L, L]]) {
-      if (ga - u0 > 0.05) seg(x0 + dir[0] * u0, z0 + dir[1] * u0, x0 + dir[0] * ga, z0 + dir[1] * ga, t / 2);
-      u0 = gb;
-    }
-    return g;
-  }
-  const box = (w, h, d, x, y, z, ry = 0, list) => { const g = new THREE.BoxGeometry(w, h, d); g.rotateY(ry); g.translate(x, y, z); put(g, list); return g; };
+  const { stoneDark, put, wall, box } = K;
 
   // -- west front (faces the courtyard, z = N.z1): gable, door, rose window, broken right shoulder
   const FW = N.x1 - N.x0;
@@ -228,9 +157,7 @@ export function buildWorld(R, M, models) {
   });
   // door jamb mouldings: three receding orders of the arch
   for (let k = 1; k <= 3; k++) {
-    const w = 2.7 + k * 0.62, s = new THREE.Shape();
-    s.moveTo(-w / 2, 0); s.lineTo(w / 2, 0); s.lineTo(w / 2, 3.0); s.absarc(-w / 2, 3.0, w, 0, Math.PI / 3, false); s.absarc(w / 2, 3.0, w, (2 * Math.PI) / 3, Math.PI, false); s.lineTo(-w / 2, 0);
-    s.holes.push(archPath(-w / 2 + 0.31, -0.1, w - 0.62, 3.0));
+    const w = 2.7 + k * 0.62, s = archRing(w, 3.0, 0.31);
     const g = new THREE.ExtrudeGeometry(s, { depth: 0.22, bevelEnabled: true, bevelSize: 0.05, bevelThickness: 0.05, bevelSegments: 2, curveSegments: 14 });
     g.translate(0, 0, 0.5 + (3 - k) * 0.2);
     g.translate(0, 0, N.z1);
@@ -238,7 +165,8 @@ export function buildWorld(R, M, models) {
   }
   // string courses: horizontal mouldings that give the flat front its storeys
   // [y, x from, x to]: the upper one stops where the front's right shoulder has fallen
-  for (const [y, xa, xb] of [[4.55, N.x0 - 0.12, N.x1 + 0.12], [8.1, N.x0 - 0.12, N.x0 + 6.3]]) {
+  // the lower one breaks around the door's outer order
+  for (const [y, xa, xb] of [[4.55, N.x0 - 0.12, -2.35], [4.55, 2.35, N.x1 + 0.12], [8.1, N.x0 - 0.12, N.x0 + 6.3]]) {
     const w = xb - xa, cx = (xa + xb) / 2;
     const g = new THREE.BoxGeometry(w, 0.2, 0.3); g.translate(cx, y, N.z1 + 0.62); put(g, stoneDark);
     const g2 = new THREE.BoxGeometry(w, 0.1, 0.18); g2.translate(cx, y - 0.15, N.z1 + 0.58); put(g2, stoneDark);
@@ -299,21 +227,12 @@ export function buildWorld(R, M, models) {
   }
   // -- nave arcade: clustered columns, some fallen
   {
-    const prof = [[0, 0], [0.5, 0], [0.5, 0.16], [0.42, 0.22], [0.42, 0.3], [0.34, 0.38], [0.32, 0.5]];
-    const column = (x, z, h) => {
-      const pts = [...prof, [0.3, h - 0.55], [0.36, h - 0.42], [0.46, h - 0.24], [0.52, h - 0.12], [0.52, h], [0, h]].map(([r, y]) => new THREE.Vector2(r, y));
-      const g = new THREE.LatheGeometry(pts, 14); g.translate(x, 0, z); put(g);
-      for (let k = 0; k < 4; k++) { // the cluster: four engaged shafts
-        const a = (k / 4) * Math.PI * 2 + Math.PI / 4, sh = new THREE.CylinderGeometry(0.12, 0.12, h - 1.0, 8);
-        sh.translate(x + Math.cos(a) * 0.3, 0.5 + (h - 1.0) / 2, z + Math.sin(a) * 0.3); put(sh);
-      }
-      circ(x, z, 0.62);
-    };
+    const column = (x, z, h) => K.column(x, z, h);
     const H = [6.3, 3.2, 6.3, 1.4, 4.4, 6.3, 2.2, 6.3];
     let i = 0;
     for (const z of [-15.6, -19.6, -23.6, -27.4]) for (const x of [-2.6, 2.6]) column(x, z, H[i++]);
     // fallen drums from the broken ones
-    const drum = (x, z, ry) => { const g = new THREE.CylinderGeometry(0.33, 0.33, 0.95, 14); g.rotateZ(Math.PI / 2); g.rotateY(ry); g.translate(x, heightAt(x, z) + 0.3, z); put(g); circ(x, z, 0.55); };
+    const drum = K.drum;
     drum(1.1, -19.0, 0.4); drum(-1.0, -23.4, 2.1); drum(0.4, -24.6, 1.2); drum(3.8, -21.0, 0.9);
   }
   // -- altar, and the chapel threshold
@@ -347,9 +266,8 @@ export function buildWorld(R, M, models) {
     circ(S.x, S.z, 1.55);
   }
 
-  const stoneMesh = new THREE.Mesh(mergeGeometries(stone.map((g) => boxUV(g, 2.4))), M.stone);
-  const darkMesh = new THREE.Mesh(mergeGeometries(stoneDark.map((g) => boxUV(g, 2.4))), M.stoneDark);
-  for (const m of [stoneMesh, darkMesh]) { m.castShadow = m.receiveShadow = true; root.add(m); }
+  buildMausoleum(K, root);
+  K.build(M, root);
 
   /* ---------------- scattered stone: rubble, graves (instanced) ---------------- */
   const dummy = new THREE.Object3D();
@@ -392,7 +310,7 @@ export function buildWorld(R, M, models) {
     const deadHi = [0, 1, 2].map((s) => deadTree(s + 11, 4)), deadLo = [0, 1, 2].map((s) => deadTree(s + 11, 2));
     const firHi = [0, 1].map((s) => firTree(s + 3, true)), firLo = [0, 1].map((s) => firTree(s + 3, false));
     const rnd = rng(21), dead = [[], [], []], fir = [[], []];
-    const ok = (x, z, pad) => Math.hypot(x, z) > LAYOUT.ring + 3 + pad && rectDist(x, z, N) > 3 + pad && !(z > 0 && Math.abs(x - pathX(z)) < 4) && rectDist(x, z, LAYOUT.grave) > 1.5;
+    const ok = (x, z, pad) => Math.hypot(x, z) > LAYOUT.ring + 3 + pad && rectDist(x, z, N) > 3 + pad && !(z > 0 && Math.abs(x - pathX(z)) < 4) && rectDist(x, z, LAYOUT.grave) > 1.5 && rectDist(x, z, LAYOUT.mausoleum) > 4 + pad;
     for (let i = 0; i < 900 && dead.flat().length < 34; i++) {
       const a = rnd() * Math.PI * 2, r = 18 + rnd() * 22, x = Math.cos(a) * r, z = Math.sin(a) * r;
       if (!ok(x, z, 0)) continue;
@@ -423,7 +341,7 @@ export function buildWorld(R, M, models) {
       const list = [];
       for (let i = 0; i < 40 && list.length < 6; i++) {
         const a = rnd() * Math.PI * 2, r = 15 + rnd() * 26, x = Math.cos(a) * r, z = Math.sin(a) * r;
-        if (rectDist(x, z, N) < 3 || (z > 0 && Math.abs(x - pathX(z)) < 3) || rectDist(x, z, LAYOUT.grave) < 1) continue;
+        if (rectDist(x, z, N) < 3 || (z > 0 && Math.abs(x - pathX(z)) < 3) || rectDist(x, z, LAYOUT.grave) < 1 || rectDist(x, z, LAYOUT.mausoleum) < 2) continue;
         const s = 0.7 + rnd() * 1.4;
         list.push({ p: new THREE.Vector3(x, heightAt(x, z) - 0.15 * s, z), r: new THREE.Euler(0, rnd() * 6.3, 0), s: new THREE.Vector3(s, s, s) });
         circ(x, z, 0.6 * s);
@@ -436,7 +354,7 @@ export function buildWorld(R, M, models) {
     for (let i = 0; i < 3000 && fl.length < 260; i++) {
       const a = rnd() * Math.PI * 2, r = 12.5 + Math.pow(rnd(), 0.8) * 30, x = Math.cos(a) * r, z = Math.sin(a) * r;
       if (splatAt(x, z) > 0.25 || rectDist(x, z, N) < 0.6 || (z > 0 && Math.abs(x - pathX(z)) < 2.4) || fbm(x * 0.12, z * 0.12) < -0.05) continue;
-      if (rectDist(x, z, LAYOUT.grave) < 0.5) continue;
+      if (rectDist(x, z, LAYOUT.grave) < 0.5 || rectDist(x, z, LAYOUT.mausoleum) < 1) continue;
       const s = 0.6 + rnd() * 0.7;
       fl.push({ p: new THREE.Vector3(x, heightAt(x, z), z), r: new THREE.Euler(0, rnd() * 6.3, 0), s: new THREE.Vector3(s, s, s) });
     }
@@ -453,7 +371,7 @@ export function buildWorld(R, M, models) {
 
   /* ---------------- grass: chunked instanced tufts, wind, pushed aside by the player ---------------- */
   const grass = buildGrass(root, R, (x, z) => {
-    if (splatAt(x, z) > 0.22 || Math.hypot(x, z) > 62 || rectDist(x, z, N) < 0.5) return 0;
+    if (splatAt(x, z) > 0.22 || Math.hypot(x, z) > 62 || rectDist(x, z, N) < 0.5 || rectDist(x, z, LAYOUT.mausoleum) < 0.3) return 0;
     const n = fbm(x * 0.09, z * 0.09, 3);
     return Math.min(1, Math.max(0, 0.55 + n * 1.3)) * (1 - sstep(48, 62, Math.hypot(x, z)));
   });
@@ -527,26 +445,48 @@ export function buildWorld(R, M, models) {
     if ((lodT -= dt) <= 0) { lodT = 0.25; for (const l of lods) l.update(camera.position); }
   }
 
-  // push a circle (x, z, radius) out of every collider
-  const _p = new THREE.Vector2(), _d = new THREE.Vector2(), _ab = new THREE.Vector2();
-  function collide(pos, r) {
-    _p.set(pos.x, pos.z);
-    for (const c of colliders) {
-      if (c.c) { _d.subVectors(_p, c.c); }
-      else {
-        _ab.subVectors(c.b, c.a);
-        const t = Math.max(0, Math.min(1, _d.subVectors(_p, c.a).dot(_ab) / _ab.lengthSq()));
-        _d.subVectors(_p, _ab.multiplyScalar(t).add(c.a));
-      }
-      const L = _d.length(), min = r + c.r;
-      if (L < min && L > 1e-6) _p.addScaledVector(_d, (min - L) / L);
-    }
-    const rr = Math.hypot(_p.x, _p.y);
-    if (rr > 44) _p.multiplyScalar(44 / rr); // the edge of the glade
-    pos.x = _p.x; pos.z = _p.y;
-  }
+  const collide = makeCollide(colliders, 44); // 44: the edge of the glade
 
   return { root, heightAt, collide, update, colliders, lights, fires, grass, lods, noAO: R.noAO };
+}
+
+/* ---------------- the mausoleum: a gabled tomb house, its dark door the way down ---------------- */
+function buildMausoleum(K, root) {
+  const { x0, x1, z0, z1 } = LAYOUT.mausoleum, cz = (z0 + z1) / 2, D = z1 - z0, y0 = heightAt((x0 + x1) / 2, cz) - 0.15;
+  const H = 3.4, G = 1.7; // eaves height, gable rise
+  const gable = (u, L) => H + G * (1 - Math.abs(u - L / 2) / (L / 2));
+  K.wall(x0, z1, x0, z0, { t: 0.55, y0, clean: true, top: gable, holes: [{ u: D / 2 - 0.75, y: -0.5, w: 1.5, ys: 1.95 }], gaps: [[D / 2 - 0.75, D / 2 + 0.75]] });
+  K.wall(x1, z0, x1, z1, { t: 0.55, y0, clean: true, top: gable, holes: [{ circle: true, u: D / 2, y: H + 0.55, r: 0.42 }] });
+  K.wall(x0, z0, x1, z0, { t: 0.55, y0, clean: true, h: H });
+  K.wall(x1, z1, x0, z1, { t: 0.55, y0, clean: true, h: H });
+  // the door's two receding orders
+  for (let k = 1; k <= 2; k++) {
+    const w = 1.5 + k * 0.44, s = archRing(w, 1.95, 0.22);
+    const g = new THREE.ExtrudeGeometry(s, { depth: 0.16, bevelEnabled: true, bevelSize: 0.03, bevelThickness: 0.03, bevelSegments: 1, curveSegments: 12 });
+    g.rotateY(-Math.PI / 2); g.translate(x0 - 0.28 - (2 - k) * 0.15, y0, cz);
+    K.put(g, K.stoneDark);
+  }
+  // pitched roof, ridge running east-west, with a coping ridge
+  const pitch = Math.atan2(G, D / 2), slab = Math.hypot(G, D / 2) + 0.35;
+  for (const s of [-1, 1]) {
+    const g = new THREE.BoxGeometry(x1 - x0 + 0.7, 0.2, slab);
+    g.rotateX(s * pitch); g.translate((x0 + x1) / 2, y0 + H + G / 2 + 0.12, cz + s * (D / 4 + 0.05));
+    K.put(g, K.stoneDark);
+  }
+  K.box(x1 - x0 + 0.8, 0.22, 0.3, (x0 + x1) / 2, y0 + H + G + 0.18, cz, 0, K.stoneDark);
+  // corner buttresses with pinnacles, a plinth course, and a cross on the west gable
+  for (const [x, z] of [[x0, z0], [x0, z1], [x1, z0], [x1, z1]]) {
+    K.box(0.7, H + 0.4, 0.7, x, y0 + (H + 0.4) / 2 - 0.2, z);
+    const p = new THREE.ConeGeometry(0.42, 1.3, 4); p.rotateY(Math.PI / 4); p.translate(x, y0 + H + 0.85, z); K.put(p);
+    K.circ(x, z, 0.5);
+  }
+  K.box(x1 - x0 + 0.5, 0.35, D + 0.5, (x0 + x1) / 2, y0 + 0.02, cz, 0, K.stoneDark);
+  K.box(0.16, 1.0, 0.16, x0 - 0.1, y0 + H + G + 0.6, cz); K.box(0.16, 0.16, 0.6, x0 - 0.1, y0 + H + G + 0.75, cz);
+  K.circ((x0 + x1) / 2 + 0.6, cz, 2.1); // the inside is the stairwell: you only get as far as the door
+  // darkness past the door: the stair going down
+  const dark = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0 - 0.7, H - 0.2, D - 0.7), new THREE.MeshBasicMaterial({ color: 0x020203 }));
+  dark.position.set((x0 + x1) / 2, y0 + (H - 0.2) / 2, cz);
+  root.add(dark);
 }
 
 /* ============================================================================
@@ -821,7 +761,7 @@ function buildGrass(parent, R, density) {
 }
 
 /* ---------------- fire: three crossed shader planes, noise-shaped, HDR additive ---------------- */
-function makeFire({ color, scale }) {
+export function makeFire({ color, scale }) {
   const u = { uTime: { value: 0 }, uSpirit: { value: color === 'spirit' ? 1 : 0 } };
   const mat = new THREE.ShaderMaterial({
     uniforms: u, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false,

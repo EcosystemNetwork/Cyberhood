@@ -91,8 +91,12 @@ and effects are kept out of the AO pass.
    from four directions, block recoil, a parry beat, a guard break with stagger, and a charged
    heavy (hold E) that breaks a foe's swing. Next: bake them into the human GLB once the hero-art
    branch lands (its mocap `roll` replaces the flip-based roll), plus weapon-specific sets.
-3. **Environment kit:** turn the chapel's wall, arch, column and buttress builders into a reusable
-   kit, then build a city district and a dungeon with it.
+3. **Environment kit:** in (`kit.js`): walls with arch holes and doorways, arch-ring mouldings,
+   columns, buttresses, barrel vaults and ribs, stairs, chest tombs, all box-UV'd and merged into
+   two draws per place. The chapel, a graveyard mausoleum and the Undercroft (`crypt.js`, a
+   vaulted crypt under the mausoleum, 166 draw calls) are all built from it. Underground light:
+   no sun, a dim gradient-room image light so PBR still has something to reflect, torches, and
+   the relic's cold blue. Next: a city district from the same kit.
 4. **Monsters and bosses:** a non-human silhouette for the revenants, and a boss.
 5. **Multiplayer polish:** these nameplates, effects and telegraphs, carried into the realm
    server's combat.

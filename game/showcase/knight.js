@@ -27,6 +27,7 @@ import { makeMover } from './moves.js';
 export const gltfLoader = (manager) => new GLTFLoader(manager).setMeshoptDecoder(MeshoptDecoder);
 
 let SWORD = null;
+export const swordMesh = () => SWORD.clone(); // the baked longsword, for set dressing (the undercroft's relic)
 export async function loadKnightAssets(manager) {
   const [, , sword] = await Promise.all([loadGlbHero('human'), loadGlbGear(), gltfLoader(manager).loadAsync(new URL('./assets/longsword.glb', import.meta.url).href), loadArmorKit(gltfLoader(manager))]);
   SWORD = bake(sword.scene, 1.25); // four materials → one draw (bake.js)
