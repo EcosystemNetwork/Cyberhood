@@ -28,6 +28,8 @@ export const CHAINS = {
       AMZN: '0x5884aD2f920c162CFBbACc88C9C51AA75eC09E02', NFLX: '0x3b8262A63d25f0477c4DDE23F83cfe22Cb768C93',
       PLTR: '0x1FBE1a0e43594b3455993B5dE5Fd0A7A266298d0',
     },
+    // Bloom + the Orchard (tools/chain/orchard.mjs): { bloom, orchard, groves: { resource: gid } }, null until deployed
+    orchard: null,
   },
   mainnet: {
     id: 4663,
@@ -42,6 +44,7 @@ export const CHAINS = {
     // stock token is involved (they are real, regulated securities on mainnet)
     dex: { factory: null, router: null, weth: null },
     stocks: {},
+    orchard: null,
   },
 };
 
@@ -173,3 +176,38 @@ export const SIWE_STATEMENT = {
   link: 'Link this wallet to your Taproot account.',
   login: 'Sign in to Taproot.',
 };
+
+/* The Orchard (contracts/src/Orchard.sol): stake a pool's Uniswap V2 LP tokens in its grove and
+   Bloom (contracts/src/Bloom.sol, 18 decimals) grows for you every second. tools/chain/orchard.mjs
+   deploys it with these settings and adds a grove per entry in ORCHARD_GROVES; the admin
+   (multisig) can change a grove's weight later with setGrove. At most 2 * rate * halving Bloom is
+   ever emitted (here 2 * 2 * 120 days = 41.47M of the 100M cap); the rest of the cap is kept for
+   later sinks and rewards. */
+export const BLOOM = { name: 'Taproot Bloom', symbol: 'BLOOM', decimals: 18, cap: 100_000_000 };
+export const ORCHARD = {
+  ratePerSecond: 2,          // whole Bloom a second, all groves together, in the first epoch
+  halvingDays: 120,          // the rate halves every this many days
+  unlockedBps: 2500,         // 25% of a harvest is paid at once
+  vestDays: 30,              // the other 75% unlocks linearly over this
+};
+// One grove per resource / stock pool (STOCK_POOLS); `alloc` is its share of the emission.
+export const ORCHARD_GROVES = STOCK_POOLS.map((p) => ({ resource: p.resource, stock: p.stock, alloc: 100 }));
+export const ORCHARD_ABI = [
+  { type: 'function', name: 'bloom', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'address' }] },
+  { type: 'function', name: 'groveCount', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'uint256' }] },
+  { type: 'function', name: 'groves', stateMutability: 'view', inputs: [{ name: '', type: 'uint256' }], outputs: [
+    { name: 'lp', type: 'address' }, { name: 'alloc', type: 'uint256' }, { name: 'staked', type: 'uint256' }, { name: 'acc', type: 'uint256' }, { name: 'last', type: 'uint256' }] },
+  { type: 'function', name: 'totalAlloc', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'uint256' }] },
+  { type: 'function', name: 'rate', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'uint256' }] },
+  { type: 'function', name: 'listed', stateMutability: 'view', inputs: [{ name: '', type: 'address' }], outputs: [{ name: '', type: 'bool' }] },
+  { type: 'function', name: 'stakes', stateMutability: 'view', inputs: [{ name: '', type: 'uint256' }, { name: '', type: 'address' }], outputs: [{ name: 'amount', type: 'uint256' }, { name: 'debt', type: 'uint256' }] },
+  { type: 'function', name: 'pending', stateMutability: 'view', inputs: [{ name: 'gid', type: 'uint256' }, { name: 'who', type: 'address' }], outputs: [{ name: '', type: 'uint256' }] },
+  { type: 'function', name: 'vestOf', stateMutability: 'view', inputs: [{ name: 'who', type: 'address' }], outputs: [{ name: 'locked', type: 'uint256' }, { name: 'ready', type: 'uint256' }, { name: 'end', type: 'uint256' }] },
+  { type: 'function', name: 'addGrove', stateMutability: 'nonpayable', inputs: [{ name: 'lp', type: 'address' }, { name: 'alloc', type: 'uint256' }], outputs: [] },
+  { type: 'function', name: 'setGrove', stateMutability: 'nonpayable', inputs: [{ name: 'gid', type: 'uint256' }, { name: 'alloc', type: 'uint256' }], outputs: [] },
+  { type: 'function', name: 'deposit', stateMutability: 'nonpayable', inputs: [{ name: 'gid', type: 'uint256' }, { name: 'amount', type: 'uint256' }], outputs: [] },
+  { type: 'function', name: 'withdraw', stateMutability: 'nonpayable', inputs: [{ name: 'gid', type: 'uint256' }, { name: 'amount', type: 'uint256' }], outputs: [] },
+  { type: 'function', name: 'harvestAll', stateMutability: 'nonpayable', inputs: [], outputs: [] },
+  { type: 'function', name: 'claimVested', stateMutability: 'nonpayable', inputs: [], outputs: [] },
+  { type: 'function', name: 'emergencyWithdraw', stateMutability: 'nonpayable', inputs: [{ name: 'gid', type: 'uint256' }], outputs: [] },
+];
