@@ -113,6 +113,13 @@
   #leaveBtn { background: linear-gradient(#ffd27a, #e89a2a); color: #3a1a00; text-shadow: none; box-shadow: 0 3px 0 #8a4a10; }
   #sailBtn { color: #1a2a40; text-shadow: none; background: linear-gradient(#bff0ff, #4ab8e8); box-shadow: 0 3px 0 #1a5a8a, 0 0 14px rgba(90, 200, 255, 0.6); }
   .menus button { padding: 6px 14px; border-radius: 999px; font-size: 15px; }
+  #questBtn { position: relative; background: linear-gradient(#ffd86a, #f0a020); color: #3a1c00; text-shadow: none; box-shadow: 0 3px 0 #8a5200; }
+  #questBtn .dot { position: absolute; top: -4px; right: -4px; width: 14px; height: 14px; border-radius: 50%; background: #ff3a5a; border: 2px solid #fff; }
+  .qtrack { position: fixed; z-index: 2; left: 14px; top: 104px; max-width: min(300px, calc(100% - 180px)); pointer-events: none; display: flex; flex-direction: column; gap: 4px; }
+  .qtrack div { background: rgba(20, 6, 34, 0.72); border-radius: 10px; padding: 4px 10px; font-size: 13px; color: #fff; line-height: 1.3; }
+  .qtrack div b { font-weight: 400; } .qtrack div span { color: #ffe066; }
+  .qtrack div.ok { box-shadow: 0 0 0 2px #7aff8a; } .qtrack div.ok span { color: #7aff8a; }
+  @media (max-width: 700px) { .qtrack { top: 96px; } .qtrack div:nth-child(n+3) { display: none; } }
   #bagBtn { color: #1e3000; text-shadow: none; background: linear-gradient(#e6ff7a, #a8e000); box-shadow: 0 3px 0 var(--lime-dk), 0 0 12px rgba(200, 255, 46, 0.5); }
   #chatBtn { background: linear-gradient(#8ad8ff, #3a8ae0); box-shadow: 0 3px 0 #1a4a8a; }
   #guildBtn { background: linear-gradient(#ffcf7a, #e08a1a); box-shadow: 0 3px 0 #8a4a08; }
@@ -525,6 +532,7 @@ if (!window.SOLO) {
     <div class="pill" style="--c: #5ab4ff"><span>&#11088;</span><b id="killText">0</b></div>
   </div>
   <div class="menus">
+    <button id="questBtn" type="button" tabindex="-1" aria-label="Quests">&#128220;<span class="lbl"> Quests</span><i class="dot" hidden></i></button>
     <button id="bagBtn" type="button" tabindex="-1" aria-label="Bag">&#127890;<span class="lbl"> Bag</span><kbd>B</kbd></button>
     <button id="guildBtn" type="button" tabindex="-1" aria-label="Guild">&#127984;<span class="lbl"> Guild</span><kbd>Y</kbd></button>
     <button id="chatBtn" type="button" tabindex="-1" aria-label="Chat">&#128172;<span class="lbl"> Chat</span><kbd>T</kbd></button>
@@ -558,7 +566,7 @@ if (!window.SOLO) {
   </div>
 </div>
 <div id="joyRing" hidden><i></i></div>
-<div class="help" id="helpBar"><b>I</b> hide &middot; <span id="lookHelp"><b>WASD</b> move &middot; <b>Drag / Q E</b> look &middot; <b>Z X</b> tilt &middot;</span> <b>Space</b> jump (at a ledge: climb) &middot; <b>Alt</b> / double-tap roll &middot; <b>'</b> / <b>J</b> right hand &middot; <b>;</b> left hand &middot; <b>Shift</b> nitro &middot; <b>C</b> camera &middot; <b>F</b> use &middot; <b>H</b> hood up / down &middot; <b>R</b> potion &middot; <b>N</b> smoke &middot; <b>B</b> bag &middot; <b>U</b> sprint toggle &middot; <b>P</b> sheathe / draw &middot; <b>V</b> view &middot; <b>L</b> auto-aim &middot; <b>T</b> chat &middot; <b>M</b> map &middot; <b>O</b> sound &middot; <b>\</b> controls &middot; <b>&#9881;&#65039;</b> graphics &middot; <b>Tab</b> target &middot; <b>/help</b> social</div>
+<div class="help" id="helpBar"><b>I</b> hide &middot; <span id="lookHelp"><b>WASD</b> move &middot; <b>Drag / Q E</b> look &middot; <b>Z X</b> tilt &middot;</span> <b>Space</b> jump (at a ledge: climb) &middot; <b>Alt</b> / double-tap roll &middot; <b>'</b> / <b>J</b> right hand &middot; <b>;</b> left hand &middot; <b>Shift</b> nitro &middot; <b>C</b> camera &middot; <b>F</b> use &middot; <b>H</b> hood up / down &middot; <b>R</b> potion &middot; <b>N</b> smoke &middot; <b>B</b> bag &middot; <b>&#128220;</b> quests &middot; <b>U</b> sprint toggle &middot; <b>P</b> sheathe / draw &middot; <b>V</b> view &middot; <b>L</b> auto-aim &middot; <b>T</b> chat &middot; <b>M</b> map &middot; <b>O</b> sound &middot; <b>\</b> controls &middot; <b>&#9881;&#65039;</b> graphics &middot; <b>Tab</b> target &middot; <b>/help</b> social</div>
 <div id="crosshair" hidden></div>
 <div id="aimRing" hidden></div>
 <div id="aimArc" hidden></div>
@@ -590,6 +598,7 @@ if (!window.SOLO) {
   <div class="shop-tabs" id="shopTabs"></div>
   <div class="shop-list" id="shopList"></div>
 </div>
+<div class="qtrack" id="questTrack" hidden></div>
 <div class="panel bag" id="bagPanel" hidden>
   <div class="bag-head">Bag <button id="gearBtn" type="button">&#128737; Gear</button><span id="bagGold"></span></div>
   <div id="outfit" hidden><div class="bag-sub">Outfit</div><div class="bag-grid" id="outfitGrid"></div></div>
@@ -659,6 +668,7 @@ import { createOrchardView, ROWAN, ORCHARD_TREES } from './orchardview.js';
 import { findLedge, climbPose, CLIMB_TIME, ROLL, rollSpeed, rollPose, rollSafe } from './parkour.js';
 import { createRain } from './weather.js';
 import { PRESETS, STORE_KEY as GFX_KEY, pickPreset, nextPreset, pixelRatio, createGovernor } from './gfx.js';
+import { createQuestView } from './questview.js';
 for (const id of BLOCK_IDS) FARM_ITEMS['block_' + id] = { name: BLOCKS[id].name, emoji: BLOCKS[id].emoji, info: 'Building block · place it on your plot in build mode (G)' };
 for (const [id, it] of Object.entries(GUILD_ITEMS)) FARM_ITEMS[id] = it; // what Guild expeditions bring home
 
@@ -3411,6 +3421,7 @@ field = Object.assign({ xp: 0, kills: 0, gold: 0 }, field);
 if (!field.bag || typeof field.bag !== 'object') field.bag = {};
 if (LOCAL_DEV) field.bag.smoke_bomb = Math.max(field.bag.smoke_bomb || 0, 5); // local testing: always a few to hand (dev accounts get 5 on the server too)
 const saveField = () => { try { localStorage.setItem(FIELD_KEY, JSON.stringify(field)); } catch (e) {} };
+let questView = null; // the quest log and tracker (questview.js), made once the world is up
 let guildView = null; // the Guild's panel and companions (guildview.js), made once the world is up
 let poolView = null; // Old Fenn's liquidity pools panel (poolview.js)
 let orchardView = null; // the Orchard's grove and Elder Rowan's panel (orchardview.js), Taproot City only
@@ -3544,6 +3555,7 @@ const openDig = () => { exitLock(); modal = { kind: 'fossil' }; toggleBag(false)
 const openCraft = () => { exitLock(); modal = { kind: 'craft' }; toggleBag(false); renderModal(); };
 const openPools = () => { if (!poolView) return; exitLock(); modal = { kind: 'pools' }; poolView.open(); toggleBag(false); renderModal(); };
 const openOrchard = () => { if (!orchardView) return; exitLock(); modal = { kind: 'orchard' }; orchardView.open(); toggleBag(false); renderModal(); };
+const openQuests = (tab) => { if (!questView) return; exitLock(); modal = { kind: 'quests' }; if (tab) questView.setTab(tab); toggleBag(false); renderModal(); };
 const openGuild = (tab) => { if (!guildView) return; exitLock(); modal = { kind: 'guild' }; if (tab) guildView.ui.tab = tab; toggleBag(false); renderModal(); };
 function closeModal() { modal = null; $('shopPanel').hidden = true; }
 function gearButton(id) {
@@ -3562,6 +3574,7 @@ function renderModal() {
   $('shopGold').textContent = `\u{1F4B0} ${field.gold} gold`;
   if (modal.kind === 'pools') return poolView.render({ title: $('shopTitle'), greet: $('shopGreet'), tabs: $('shopTabs'), list: $('shopList') });
   if (modal.kind === 'orchard') return orchardView.render({ title: $('shopTitle'), greet: $('shopGreet'), tabs: $('shopTabs'), list: $('shopList') });
+  if (modal.kind === 'quests') return questView.render({ title: $('shopTitle'), greet: $('shopGreet'), tabs: $('shopTabs'), list: $('shopList'), open: () => !!modal && modal.kind === 'quests' });
   if (modal.kind === 'guild') return guildView.render({ title: $('shopTitle'), greet: $('shopGreet'), tabs: $('shopTabs'), list: $('shopList'), open: () => !!modal && modal.kind === 'guild' });
   let rows = '';
   if (modal.kind === 'shop') {
@@ -3613,6 +3626,7 @@ function shopAct(act, id, extra) {
     field.bag[id] -= n;
     field.gold += SELL[id] * n;
     Ledger.act({ t: 'sell', id, n });
+    questView?.note('sold', id, SELL[id] * n);
     floatText(P.x, 2, P.z, `+${SELL[id] * n} gold`, '#ffd34a');
     sfx.play('coin');
   } else if (act === 'craft') {
@@ -3622,6 +3636,7 @@ function shopAct(act, id, extra) {
     field.gold -= r.gold || 0;
     if (ITEM(id)) { owned.push(id); saveOwned(); } else field.bag[id] = (field.bag[id] || 0) + (r.qty || 1);
     Ledger.act({ t: 'craft', id });
+    questView?.note('craft', id);
     floatText(P.x, 2.2, P.z, `Crafted ${nameOf(id)}!`, '#7ae0ff');
     sfx.play('craft');
     hero.emote('happy', 1.2);
@@ -4369,6 +4384,7 @@ function killMonster(m, quiet) {
     // show a rarity-tinted burst
     burst(m.x, 0.5, m.z, RARITY_COLOR[inst.rarity] || '#fff', inst.rarity === 'legendary' ? 20 : inst.rarity === 'rare' ? 14 : 8);
   }
+  questView?.note('kill', type);
   const before = 1 + Math.floor(field.xp / 100);
   field.xp += m.cfg.xp;
   field.kills += 1;
@@ -6216,6 +6232,7 @@ function plant(key) {
   field.bag[id] -= 1;
   myFarm.crops[key] = { k: selSeed, t: Date.now() };
   { const [i, j] = key.split(',').map(Number); Ledger.act({ t: 'plant', k: selSeed, i, j }); }
+  questView?.note('plant', selSeed);
   sfx.play('plant');
   saveField(); renderBag(); farmChanged();
   burst(P.x, 0.3, P.z, '#8a5a36', 6);
@@ -6227,6 +6244,7 @@ function harvest(key) {
   field.bag[c.k] = (field.bag[c.k] || 0) + n;
   delete myFarm.crops[key];
   { const [i, j] = key.split(',').map(Number); Ledger.act({ t: 'harvest', i, j }); }
+  questView?.note('harvest', c.k);
   sfx.play('harvest');
   saveField(); renderBag(); updateHud(); farmChanged();
   floatText(P.x, 1.7, P.z, `+${n} ${CROPS[c.k].name}`, '#ffb04a');
@@ -6898,10 +6916,11 @@ $('dodgeBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); dodge
 $('sprintBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); setSprint(!sprintOn); });
 $('sailBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); if (action) action.run(); });
 $('shopClose').addEventListener('click', closeModal);
-$('shopTabs').addEventListener('click', (e) => { const b = e.target.closest('[data-tab]'); if (b && modal && modal.kind === 'guild') guildView.setTab(b.dataset.tab.slice(2)); else if (b && modal && modal.kind === 'pools') poolView.setTab(b.dataset.tab.slice(2)); else if (b && modal) { modal.tab = b.dataset.tab; renderModal(); } });
+$('shopTabs').addEventListener('click', (e) => { const b = e.target.closest('[data-tab]'); if (b && modal && modal.kind === 'quests') questView.setTab(b.dataset.tab.slice(2)); else if (b && modal && modal.kind === 'guild') guildView.setTab(b.dataset.tab.slice(2)); else if (b && modal && modal.kind === 'pools') poolView.setTab(b.dataset.tab.slice(2)); else if (b && modal) { modal.tab = b.dataset.tab; renderModal(); } });
 $('shopList').addEventListener('click', (e) => {
   const b = e.target.closest('button[data-act]');
   if (!b) return;
+  if (modal && modal.kind === 'quests') { questView.click(b); updateHud(); renderBag(); renderModal(); return; }
   if (modal && modal.kind === 'guild') { guildView.click(b); updateHud(); renderBag(); return; }
   if (modal && modal.kind === 'pools') { poolView.click(b); return; }
   if (modal && modal.kind === 'orchard') { orchardView.click(b); return; }
@@ -7389,7 +7408,14 @@ function update(dt, now) {
    Everything above plays out at once in this browser and is sent to the server (Ledger.act).
    The server's answer is the account's real state: take it in, so if the browser ever got
    ahead of the rules (or another device played since), this corrects it. */
+questView = createQuestView({
+  field, serverNow: () => Date.now() + (Ledger.status.offset || 0), act: (a) => Ledger.act(a), save: saveField,
+  refresh: () => { updateHud(); renderBag(); }, toast, sfx, nameOf, trackEl: $('questTrack'),
+  badge: (on) => { $('questBtn').querySelector('.dot').hidden = !on; },
+});
+$('questBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); if (modal && modal.kind === 'quests') closeModal(); else openQuests(); });
 guildView = createGuildView({
+  done: (a) => { if (a.t === 'g_recruit') questView.note('recruit', '*'); }, // offline hires (online, the server counts them)
   field, minute: 60000 / FAST, labelsEl, heroH: HERO_H, player: P, sfx,
   anchors: (() => { // where companions stand on this map: idle ones by Hero Hall, the rest where they were sent
     const at = {}, hall = guildSpots.find((s) => s.name === 'Hero Hall');
@@ -7419,6 +7445,7 @@ Ledger.on('state', (st) => {
   const e = st.econ;
   Object.assign(field, { gold: e.gold, xp: e.xp, kills: e.kills, bag: { ...e.bag }, lp: { ...(e.lp || {}) } });
   if (e.guild) guildView.sync(e.guild);
+  if (e.qlog) questView.sync(e.qlog);
   // the server rolls each gear drop (its uid and stats); its stash replaces the browser's guesses
   if (Array.isArray(e.gearInv)) { gearInv = e.gearInv.filter((g) => g && typeof g.uid === 'string').slice(0, 60); saveGear(); }
   owned.splice(0, owned.length, ...st.owned);
@@ -7436,6 +7463,8 @@ const REFUSED = {
   'shops are full today': 'The shops have bought all they can from you today. Old Fenn\'s pools still trade.',
   'field is full': 'Your plot can grow 96 crops at once. Harvest some first.',
   'too fast': 'Easy there: that reward was too fast to count.',
+  'not finished': 'The server hasn\'t counted all of that quest yet. Keep going!',
+  'quest log full': 'Your quest log is full. Hand one in or drop one.',
 };
 const QUIET = new Set(['hit', 'ahit', 'spawn', 'area', 'pickup', 'down']); // combat bookkeeping: the server's state answer is enough
 Ledger.on('rejected', (all) => {
@@ -7454,7 +7483,7 @@ Ledger.load();
 
 SPAWN_LIST.forEach((entry, i) => spawnMonster(entry, i));
 // debug hook for tests and screenshots: __world3d.tp(x, z) teleports, .P is the player state
-window.__world3d = { sfx, P,
+window.__world3d = { sfx, P, quests: () => questView, openQuests,
   gfx: () => ({ preset: GFX.name, scale: governor.scale, govern: GOVERN, pixelRatio: renderer.getPixelRatio(), shadowMap: sun.shadow.mapSize.x, bloom: GFX.p.bloom }),
   setGfx, rain: () => rain && { wet: rain.wet, amount: rain.plan.amount, local: rain.plan.local, visible: rain.points.visible, drops: rain.points.geometry.drawRange.count },
   districtAt, ghosts, guild: () => guildView, openGuild, spawnDrop, pools: () => poolView, openPools, orchard: () => orchardView, openOrchard, fenn: FENN, arena, social, party: () => party, trade: () => trade, target: () => target, ladders: LADDERS, action: () => action && action.text, runAction: () => action && action.run(),

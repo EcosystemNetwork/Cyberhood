@@ -56,6 +56,7 @@ export function createGuildView(d) {
     const why = guildAction(G(), d.field, a, { now: now(), minute: min(), rand: Math.random }, add, has);
     if (why) { d.toast(REASONS[why] || why); return; }
     d.act(a); d.save(); d.refresh(); announce(); render();
+    if (d.done) d.done(a); // e.g. a hire counts for a quest (questview.js)
     if (a.t === 'g_quest') { ui.sel = []; d.sfx && d.sfx.play('buy'); }
   }
   const REASONS = {

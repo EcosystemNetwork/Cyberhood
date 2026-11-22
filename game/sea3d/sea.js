@@ -24,6 +24,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { makeHero3D } from '/game/lib/hero3d.js';
 import { toon, buildIslands, buildPlayerBoat, buildGalleon, buildBarrel, buildGull, buildDolphin, jollyTexture } from './world.js';
 import { BARREL_GOLD, BARREL_SLOTS, BARREL_RESPAWN_MS, SEA_R, barrelSpot } from '../world3d/economy.js';
+import { normQuests, questEvent } from '../world3d/quests.js';
 
 const $ = (id) => document.getElementById(id);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -450,7 +451,9 @@ function update(dt) {
     if (Math.hypot(b.x - B.x, b.z - B.z) < 3) {
       b.gone = BARREL_RESPAWN_MS / 1000 + 0.5; b.g.visible = false;
       barrelGen[b.slot] = (barrelGen[b.slot] || 0) + 1;
-      field.gold += BARREL_GOLD; save(); updateHud();
+      field.gold += BARREL_GOLD;
+      field.qlog = normQuests(field.qlog); questEvent(field.qlog, 'barrel', '*'); // quests.js (online, the server counts it too)
+      save(); updateHud();
       Ledger.act({ t: 'barrel', slot: b.slot, at: Math.round(performance.timeOrigin + performance.now()) });
       floatText(b.x, 3, b.z, `+${BARREL_GOLD} gold`, '#ffd34a');
       splash(b.x, b.z, 8, 0.3);

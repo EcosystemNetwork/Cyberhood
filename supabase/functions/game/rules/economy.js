@@ -14,6 +14,7 @@
 import { SHOPS, SELL, RECIPES, CONSUMABLES } from './shops.js';
 import { CROPS, BUILDS, ALTAR } from './farm.js';
 import { BLOCKS, unpack, pack, canPlace } from './blocks.js';
+import { newQuests, normQuests, questAction, questEvent } from './quests.js';
 import { GUILD_ITEMS, newGuild, normGuild, guildAction, heroById, heroBusy, allyKit, petOf, ALLY, ALLY_CD_SLACK } from './guild.js';
 
 // Each monster's HP and walking speed (tiles a second), and what it pays out: XP on the kill,
@@ -272,7 +273,7 @@ export const BAG_ITEMS = new Set([
 
 export function newEcon() {
   return { gold: 0, xp: 0, kills: 0, bag: {}, loot: [], gearInv: [], pending: { gold: {}, item: {} }, rl: {}, imported: false, foes: {}, hands: {}, clock: null,
-    sea: { gen: {}, back: {}, last: null }, guild: newGuild() };
+    sea: { gen: {}, back: {}, last: null }, guild: newGuild(), qlog: newQuests() };
 }
 // Fills in anything missing from a saved economy (older rows, new fields).
 export function normEcon(e) {
@@ -290,6 +291,7 @@ export function normEcon(e) {
     sea: { gen: { ...((e.sea && e.sea.gen) || {}) }, back: { ...((e.sea && e.sea.back) || {}) }, last: (e.sea && e.sea.last) || null },
     pos: Array.isArray(e.pos) ? [...e.pos] : null,
     guild: normGuild(e.guild),
+    qlog: normQuests(e.qlog), // quests.js
     lp: Object.fromEntries(Object.entries((e.lp && typeof e.lp === 'object' && e.lp) || {}).filter(([, n]) => Number.isSafeInteger(n) && n > 0)), // pool shares (pools.js)
     bound: Number.isSafeInteger(e.bound) && e.bound > 0 ? e.bound : 0,
     boundGear: Array.isArray(e.boundGear) ? e.boundGear.filter((id) => typeof id === 'string') : [],
@@ -338,6 +340,7 @@ function credit(e, type, now, rand = Math.random) {
   const m = MONSTER_LOOT[type];
   if (!take(e, LIMITS['kill:' + type] ? 'kill:' + type : 'kill', now)) return 'too fast';
   e.xp += m.xp; e.kills += 1;
+  questEvent(e.qlog, 'kill', type);
   e.pending.gold[type] = Math.min(MAX_PENDING, (e.pending.gold[type] || 0) + 1);
   e.pending.item[m.drop] = Math.min(MAX_PENDING, (e.pending.item[m.drop] || 0) + 1);
   const gd = GEAR_DROPS[type];
@@ -588,6 +591,7 @@ function applyOne(s, a, ctx) {
       if (sold + SELL[a.id] * n > SELL_DAY_GOLD) return 'shops are full today';
       e.sold = [day, sold + SELL[a.id] * n];
       add(e.bag, a.id, -n); e.gold += SELL[a.id] * n;
+      questEvent(e.qlog, 'sold', a.id, SELL[a.id] * n);
       return '';
     }
     case 'craft': {
@@ -599,6 +603,7 @@ function applyOne(s, a, ctx) {
       for (const [k, n] of Object.entries(r.needs)) add(e.bag, k, -n);
       e.gold -= r.gold || 0;
       if (gear) s.owned.push(r.id); else add(e.bag, r.id, r.qty || 1);
+      questEvent(e.qlog, 'craft', r.id);
       return '';
     }
     case 'gdrop': { // discard a gear instance from the stash by uid
@@ -637,6 +642,7 @@ function applyOne(s, a, ctx) {
       sea.back[slot] = at + BARREL_RESPAWN_MS;
       sea.last = [x, z, at];
       e.gold += BARREL_GOLD;
+      questEvent(e.qlog, 'barrel', '*');
       return '';
     }
 
@@ -656,6 +662,7 @@ function applyOne(s, a, ctx) {
       if (!has(e.bag, a.k + '_seed', 1)) return 'no seeds';
       add(e.bag, a.k + '_seed', -1);
       farm.crops[key] = { k: a.k, t: now };
+      questEvent(e.qlog, 'plant', a.k);
       return '';
     }
     case 'harvest': {
@@ -665,6 +672,7 @@ function applyOne(s, a, ctx) {
       if (cropProgress(farm, c, now + HARVEST_SLACK_MS, minute) < 1) return 'not ripe';
       add(e.bag, c.k, CROPS[c.k].yield);
       delete farm.crops[key];
+      questEvent(e.qlog, 'harvest', c.k);
       return '';
     }
     case 'offer': {
@@ -775,7 +783,12 @@ function applyOne(s, a, ctx) {
       return '';
     }
   }
-  if (a.t.startsWith('g_')) return guildAction(e.guild, e, a, { now, minute, rand: ctx.rand }, add, has); // the Guild (guild.js)
+  if (a.t.startsWith('g_')) { // the Guild (guild.js)
+    const why = guildAction(e.guild, e, a, { now, minute, rand: ctx.rand }, add, has);
+    if (!why && a.t === 'g_recruit') questEvent(e.qlog, 'recruit', '*');
+    return why;
+  }
+  if (a.t.startsWith('q_')) return questAction(e.qlog, e, a, { now }, add); // quests (quests.js)
   return 'unknown action';
 }
 
@@ -813,4 +826,4 @@ export function swapTerms(e, give, get) {
   for (const [id, n] of Object.entries(get.items)) add(e.bag, id, n);
 }
 
-export const publicEcon = (e) => ({ gold: e.gold, xp: e.xp, kills: e.kills, bag: e.bag, loot: e.loot, gearInv: e.gearInv || [], imported: e.imported, barrels: (e.sea && e.sea.gen) || {}, guild: e.guild || newGuild(), lp: e.lp || {} });
+export const publicEcon = (e) => ({ gold: e.gold, xp: e.xp, kills: e.kills, bag: e.bag, loot: e.loot, gearInv: e.gearInv || [], imported: e.imported, barrels: (e.sea && e.sea.gen) || {}, guild: e.guild || newGuild(), lp: e.lp || {}, qlog: e.qlog || newQuests() });
