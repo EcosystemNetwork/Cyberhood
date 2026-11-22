@@ -98,6 +98,23 @@ try {
     assert.ok(Math.hypot(after.x - before.x, after.z - before.z) > 1.5, 'a dodge roll carries the warden over 1.5 m');
     await snap('play_end.png');
   }
+  // ---- the Armoury: boots, every slot toggles, armour rides the bones through a combo
+  await A.go(`${BASE}/game/showcase/preview.html?yaw=0.4`);
+  assert.ok(await A.ev(`new Promise((r) => { const t = setInterval(() => { if (window.PREVIEW) { clearInterval(t); r(true); } }, 250); setTimeout(() => r(false), 60000); })`), 'the Armoury boots');
+  await sleep(800);
+  const slots = JSON.parse(await A.ev(`JSON.stringify(Object.keys(PREVIEW.cur.armor.pieces))`));
+  assert.deepEqual(slots.sort(), ['breastplate', 'gorget', 'greaves', 'helm', 'pauldrons', 'vambraces'], 'every armour slot has its pieces on the warden');
+  await A.ev(`document.getElementById('all').click(); 1`);
+  assert.equal(await A.ev('PREVIEW.cur.armor.slots.length'), 6, 'Full set shows all six slots');
+  const p0 = await A.ev(`(() => { const v = PREVIEW.cur.armor.pieces.vambraces[1].getWorldPosition(PREVIEW.R.camera.position.clone()); return v.toArray().join(); })()`);
+  await A.ev(`[...document.querySelectorAll('#acts button')].find((b) => b.dataset.k === 'combo').click(); 1`);
+  await sleep(500);
+  const p1 = await A.ev(`(() => { const v = PREVIEW.cur.armor.pieces.vambraces[1].getWorldPosition(PREVIEW.R.camera.position.clone()); return v.toArray().join(); })()`);
+  assert.notEqual(p0, p1, 'the sword-arm vambrace moves with the swing (it rides its bone)');
+  await snap('armoury.png');
+  await A.ev(`document.getElementById('none').click(); 1`);
+  assert.equal(await A.ev('PREVIEW.cur.armor.slots.length'), 0, 'None takes it all off');
+
   const errs = await A.ev('window.__errs || []');
   assert.equal(errs.length, 0, 'no page errors: ' + JSON.stringify(errs));
   console.log('showcase: all checks passed →', OUT);

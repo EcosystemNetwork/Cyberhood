@@ -71,6 +71,10 @@ Third-party assets must be CC0 or have their licence checked first. See `assets/
 | Texture | 1 k WebP (ARM packed) | same |
 | Showcase download | ~18 MB total, of which the hero + gear is ~8 MB | same |
 
+Factor-only props (sword, armour) are baked at load into one mesh with per-vertex colour,
+roughness and metalness (`bake.js`): one draw per piece instead of one per material. With five
+armoured characters that took the chapel from 664 draw calls to 468.
+
 How the budgets are kept: static stone is merged into two meshes. Repeated props are
 `InstancedMesh`. Trees use `InstancedLOD`, with hi and lo meshes re-sorted by distance. Grass is
 chunked and thins out with distance by drawing fewer of its shuffled instances. Alpha-cut foliage
@@ -78,8 +82,10 @@ and effects are kept out of the AO pass.
 
 ## 5. Roadmap from here
 
-1. **Hero:** a body-build option, then modular armour pieces on the same skeleton (pauldrons,
-   gorget, greaves), each a `wear` id like the cloak.
+1. **Hero:** modular armour is in (`armor.js`, `tools/blender/armor_kit.py`): six slots (sallet,
+   gorget, pauldrons, breastplate, vambraces, greaves) on bone sockets, checked in the Armoury
+   (`preview.html`). Next: a body-build option, and armour variants per slot (the kit's script
+   is parametric, so a heavier set is a new function, not a new pipeline).
 2. **Combat animation:** real block, parry and roll clips (the hero-art branch has `roll`),
    directional hit reactions, and a heavy attack.
 3. **Environment kit:** turn the chapel's wall, arch, column and buttress builders into a reusable

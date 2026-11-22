@@ -20,14 +20,15 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { loadGlbHero, loadGlbGear, makeGlbHero } from '/game/lib/glbhero.js';
 import { LOOK } from './render.js';
+import { loadArmorKit, attachArmor } from './armor.js';
+import { bake, bakedMaterial } from './bake.js';
 
 export const gltfLoader = (manager) => new GLTFLoader(manager).setMeshoptDecoder(MeshoptDecoder);
 
 let SWORD = null;
 export async function loadKnightAssets(manager) {
-  const [, , sword] = await Promise.all([loadGlbHero('human'), loadGlbGear(), gltfLoader(manager).loadAsync(new URL('./assets/longsword.glb', import.meta.url).href)]);
-  SWORD = sword.scene;
-  SWORD.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.material.envMapIntensity = 1.25; } });
+  const [, , sword] = await Promise.all([loadGlbHero('human'), loadGlbGear(), gltfLoader(manager).loadAsync(new URL('./assets/longsword.glb', import.meta.url).href), loadArmorKit(gltfLoader(manager))]);
+  SWORD = bake(sword.scene, 1.25); // four materials → one draw (bake.js)
 }
 
 // ---- materials: clean PBR copies per look (glbhero's are shared by every hero and lit for toon)
@@ -66,8 +67,8 @@ function fitSword(hero, tint) {
   const marks = g.children.filter((c) => !c.isMesh).sort((a, b) => a.position.y - b.position.y);
   if (marks.length >= 2) { marks[0].position.set(0, 0.32, 0); marks[marks.length - 1].position.set(0, 0.835, 0); }
   else if (marks.length === 1) marks[0].position.set(0, 0.835, 0);
-  const s = SWORD.clone(true);
-  if (tint) s.traverse((o) => { if (o.isMesh) { o.material = o.material.clone(); o.material.color.multiply(tint); o.material.roughness = Math.min(1, o.material.roughness + 0.25); } });
+  const s = SWORD.clone();
+  if (tint) s.material = bakedMaterial(1.25, tint);
   g.add(s);
   return g;
 }
@@ -135,12 +136,15 @@ export function makeKnight(scene, look) {
     }
   }
 
+  // armour on its sockets, placed in this idle pose (see armor.js); every slot is attached, worn ones shown
+  const armor = attachArmor(hero.root, scene, look.armor || [], { tint: look.armorTint });
+
   const st = { guard: 0, roll: -1, rollPhase: 0, air: false };
   const _t = new THREE.Vector3(), _pole = new THREE.Vector3(), _f = new THREE.Vector3(), _r = new THREE.Vector3(), _u = new THREE.Vector3(0, 1, 0);
   const _m = new THREE.Matrix4(), _qq = new THREE.Quaternion();
 
   return {
-    hero, root: hero.root, trail, eyes, weapon,
+    hero, root: hero.root, trail, eyes, weapon, armor,
     tipWorld: (v) => hero.tipWorld(v),
     get rolling() { return st.roll >= 0; },
     // start a dodge roll: glbhero flips when vertical speed jumps up mid-air; we fake the air time
@@ -200,7 +204,9 @@ export function makeKnight(scene, look) {
 }
 
 export const LOOKS = {
-  warden: { key: 'warden', wear: ['leather_pants', 'leather_boots', 'medieval_tunic', 'green_cloak'], hood: false, rim: new THREE.Color(0.10, 0.11, 0.14) },
+  warden: { key: 'warden', wear: ['leather_pants', 'leather_boots', 'medieval_tunic', 'green_cloak'], hood: false, rim: new THREE.Color(0.10, 0.11, 0.14),
+    armor: ['pauldrons', 'vambraces', 'greaves'] }, // the gorget hides under the cloak's cowl; the Armoury can add it
   revenant: { key: 'revenant', wear: ['leather_pants', 'leather_boots', 'medieval_tunic', 'green_cloak'], hood: true, tint: new THREE.Color(0.2, 0.19, 0.22),
+    armor: ['pauldrons', 'greaves'], armorTint: new THREE.Color(0.62, 0.5, 0.42),
     rim: new THREE.Color(0.16, 0.05, 0.03), eyes: new THREE.Color(9, 2.2, 0.5), trail: new THREE.Color(5, 1.2, 0.6) },
 };
