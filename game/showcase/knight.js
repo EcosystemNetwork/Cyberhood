@@ -23,6 +23,7 @@ import { LOOK } from './render.js';
 import { loadArmorKit, attachArmor } from './armor.js';
 import { bake, bakedMaterial } from './bake.js';
 import { makeMover } from './moves.js';
+import { fullerGlow } from './loot.js';
 
 export const gltfLoader = (manager) => new GLTFLoader(manager).setMeshoptDecoder(MeshoptDecoder);
 
@@ -213,6 +214,14 @@ export function makeKnight(scene, look) {
       }
       // combat moves last, so a block recoil pushes the guard the IK just built
       mover.update(dt);
+    },
+    // wear a blade variant (loot.js ITEMS): its glowing fuller and its trail colour; null = the plain longsword
+    setBlade(item) {
+      const s = weapon?.children.find((c) => c.isMesh && c.geometry === SWORD.geometry);
+      if (!s) return;
+      for (const c of [...s.children]) if (c.userData.fuller) s.remove(c);
+      if (item) s.add(fullerGlow(item.fuller));
+      if (trail) trail.material.color.copy(item ? item.trail : look.trail || new THREE.Color(1.9, 1.7, 6.5));
     },
     setEyes(k) { for (const e of eyes) e.material.color.copy(look.eyes).multiplyScalar(k); },
   };

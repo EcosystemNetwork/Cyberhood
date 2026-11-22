@@ -9,6 +9,8 @@ import * as THREE from 'three';
 import { createRenderer, loadSky, isTouch, LOOK } from './render.js';
 import { createMaterials, buildWorld, LAYOUT } from './world.js';
 import { buildCrypt, CRYPT } from './crypt.js';
+import { makeBoss } from './boss.js';
+import { makeLoot, ITEMS, RARITY } from './loot.js';
 import { loadKnightAssets, makeKnight, LOOKS, gltfLoader } from './knight.js';
 import { makeRevenants, makeSparks, makeOverlay, RULES } from './combat.js';
 import { sfx } from '/game/lib/sfx.js';
@@ -75,12 +77,13 @@ const AREAS = {
   glade: { world, foes, spawn: LAYOUT.spawn, yaw: Math.PI, name: 'THE HOLLOW CHAPEL', bg: scene.background, env: scene.environment,
     fog: [scene.fog.color.clone(), scene.fog.density], sun: true, extra: [statueRoot] },
 };
-let area = 'glade', travelling = false, relicClaimed = false;
+let area = 'glade', travelling = false, relicClaimed = false, boss = null, emberDropped = false;
+const loot = makeLoot(scene, R);
 function crypt() { // built on first descent, behind the fade
   if (!AREAS.crypt) {
-    const w = buildCrypt(R, M), f = makeRevenants(scene, w, overlay, sparks, CRYPT.foes);
-    for (const e of f.list) R.noAO.add(e.k.trail);
-    f.setActive(false);
+    const w = buildCrypt(R, M), f = makeRevenants(scene, w, overlay, sparks, []); // the guardian fights alone
+    boss = makeBoss(scene, w, overlay, sparks, CRYPT.boss);
+    boss.setActive(false);
     AREAS.crypt = { world: w, foes: f, spawn: CRYPT.spawn, yaw: Math.PI, name: 'THE UNDERCROFT', bg: new THREE.Color(0x040304), env: w.env,
       fog: [new THREE.Color(CRYPT.fog.color), CRYPT.fog.density], sun: false, extra: [] };
   }
@@ -97,6 +100,8 @@ async function travel(to, pos, yaw) {
   const from = AREAS[area], dest = to === 'crypt' ? crypt() : AREAS[to];
   from.world.root.visible = false; for (const o of from.extra) o.visible = false; from.foes.setActive(false);
   dest.world.root.visible = true; for (const o of dest.extra) o.visible = true; dest.foes.reset(); dest.foes.setActive(true);
+  if (boss) { if (boss.state !== 'dead') boss.reset(); boss.setActive(to === 'crypt'); }
+  loot.setVisible(true, to);
   scene.background = dest.bg; scene.environment = dest.env;
   scene.fog.color.copy(dest.fog[0]); scene.fog.density = dest.fog[1];
   R.sun.visible = dest.sun;
@@ -230,14 +235,26 @@ function moveDir() {
   return _md.set(-s * y + c * x, 0, -c * y - s * x);
 }
 // soft lock: the nearest living revenant within reach in front of the stick / facing
+// everything the warden can strike here: the area's revenants, and the guardian when it's awake
+const targets = () => (area === 'crypt' && boss && boss.state !== 'dormant' ? [...foes.list, boss.target] : foes.list);
+const ownerOf = (e) => (e.kind === 'boss' ? boss : foes);
 function lockTarget(range = 4.5) {
   let best = null, bd = 1e9;
-  for (const e of foes.list) {
+  for (const e of targets()) {
     if (e.state === 'dead' || e.state === 'rise') continue;
-    const d = e.pos.distanceTo(player.pos);
+    const d = e.pos.distanceTo(player.pos) - (e.radius || 0);
     if (d < range && d < bd) { bd = d; best = e; }
   }
   return best;
+}
+
+/* ---------------- equipment ---------------- */
+function equip(id) {
+  const it = ITEMS[id];
+  player.weapon = it;
+  me.setBlade(it);
+  sfx.play(it.rarity === 'legendary' ? 'levelup' : 'equip');
+  toast(`${RARITY[it.rarity].label}: ${it.name.toUpperCase()}`, false, 2.6);
 }
 
 /* ---------------- hits on the warden ---------------- */
@@ -249,7 +266,7 @@ function hitPlayer(e, dmg) {
   const at = player.pos.clone().add(toE.clone().multiplyScalar(0.45)); at.y += 1.3;
   if (player.guard && fwd.dot(toE) > 0.2) {
     if (clock.t - player.guardAt < RULES.parryWindow) {
-      foes.parried(e);
+      ownerOf(e).parried(e);
       me.play('parry');
       sparks.burst(at, 'parry', 40, toE.clone().negate());
       sfx.play('parry');
@@ -359,6 +376,9 @@ function frame(now) {
   const lock = lockTarget(8);
   me.update(gdt, { atk: player.atk.p, guard: player.guard && !player.roll && player.atk.p < 0 ? 1 : 0, down: player.dead, lookAt: lock ? lock.pos.clone().setY(lock.pos.y + 1.4) : null });
   foes.update(gdt, t, player, { hitPlayer });
+  if (area === 'crypt' && boss) boss.update(gdt, t, player, { hitPlayer, shake: (v) => { fx.shake = Math.max(fx.shake, v); } });
+  const got = loot.update(gdt, t, player.pos, world.heightAt);
+  if (got) equip(got);
   sparks.update(gdt);
   world.update(gdt, t, camera, player.pos);
   overlay.update(dt);
@@ -376,6 +396,7 @@ function stepPlayer(dt) {
     if (p.deadT > 4) {
       Object.assign(p, { dead: false, hp: 100, st: 100, pos: AREAS[area].spawn.clone(), yaw: AREAS[area].yaw, roll: null });
       foes.reset();
+      if (boss && boss.state !== 'dead') boss.reset();
       toast(area === 'crypt' ? 'THE DEAD STIR AGAIN' : 'THE CHAPEL WAITS');
     }
     return;
@@ -424,16 +445,22 @@ function stepPlayer(dt) {
       a.hit = true;
       const fwd = new THREE.Vector3(Math.sin(p.yaw), 0, Math.cos(p.yaw));
       let any = false;
-      for (const e of foes.list) {
-        const to = e.pos.clone().sub(p.pos).setY(0), d = to.length();
+      for (const e of targets()) {
+        const to = e.pos.clone().sub(p.pos).setY(0), d = to.length() - (e.radius || 0);
         const heavy = a.heavy != null;
         if (d > (heavy ? 2.5 : RULES.reach) || to.normalize().dot(fwd) < (heavy ? 0.1 : RULES.arc)) continue;
         const crit = e.state === 'stun' && e.stun > 0.5; // riposte on a parried foe
         const base = heavy ? 34 + 36 * a.heavy : SWING[a.i].dmg;
-        const dmg = base * (crit ? 1.8 : 1) * (0.92 + Math.random() * 0.16);
-        const r = foes.strike(e, dmg, crit, fwd, heavy);
-        if (r) any = true;
-        if (r === 'kill') { p.kills++; fx.slow = 0.4; }
+        const dmg = base * (crit ? 1.8 : 1) * (p.weapon?.dmg ?? 1) * (0.92 + Math.random() * 0.16);
+        const r = ownerOf(e).strike(e, dmg, crit, fwd, heavy);
+        if (r) { any = true; if (p.weapon) sparks.burst(me.tipWorld(new THREE.Vector3()), p.weapon.sparks, 10); }
+        if (r === 'kill') {
+          p.kills++; fx.slow = 0.4;
+          // loot: the first revenant laid to rest gives up the Ember Blade, the guardian the Grave Edge
+          const at = e.pos.clone().setY(e.pos.y + 1), land = e.pos.clone().addScaledVector(fwd, 1.4);
+          if (e.kind === 'boss') { loot.drop(at, 'grave_edge', land, area); toast('THE OSSUARY WARDEN FALLS', false, 3); }
+          else if (!emberDropped) { emberDropped = true; loot.drop(at, 'ember_blade', land, area); }
+        }
       }
       if (a.heavy != null) { // the heavy lands with dust whether or not it finds a foe
         sparks.burst(p.pos.clone().addScaledVector(fwd, 1.4).setY(p.pos.y + 0.1), 'dust', 14);
@@ -448,7 +475,7 @@ function stepPlayer(dt) {
   if (!travelling && area === 'glade' && Math.hypot(p.pos.x - LAYOUT.portal.x, p.pos.z - LAYOUT.portal.z) < 0.8) travel('crypt', CRYPT.spawn, Math.PI);
   else if (!travelling && area === 'crypt' && p.pos.z > CRYPT.exitZ) travel('glade', LAYOUT.portal.clone().add(new THREE.Vector3(-1.9, 0, 0)), -Math.PI / 2);
   // the relic: reach it and it's yours (once): full health, and the alcove blazes
-  if (area === 'crypt' && !relicClaimed && p.pos.distanceTo(CRYPT.relic) < 1.9) {
+  if (area === 'crypt' && !relicClaimed && boss?.state === 'dead' && p.pos.distanceTo(CRYPT.relic) < 1.9) {
     relicClaimed = true;
     p.hp = 100; p.st = 100;
     world.relicLight.userData.base = 42;
@@ -476,4 +503,4 @@ $('veil').classList.add('gone');
 R.renderer.compile(scene, camera);
 requestAnimationFrame(frame);
 if (P.has('auto')) start();
-window.SHOWCASE = { R, get world() { return world; }, get foes() { return foes; }, get area() { return area; }, get relicClaimed() { return relicClaimed; }, travel, AREAS, player, me, setCam: (...c) => { fixedCam = c.length ? c : null; }, cam, clock, start, toast, doAttack, doRoll, setGuard, beginHeavy, releaseHeavy, keys, input };
+window.SHOWCASE = { R, get world() { return world; }, get foes() { return foes; }, get area() { return area; }, get relicClaimed() { return relicClaimed; }, travel, AREAS, get boss() { return boss; }, loot, equip, player, me, setCam: (...c) => { fixedCam = c.length ? c : null; }, cam, clock, start, toast, doAttack, doRoll, setGuard, beginHeavy, releaseHeavy, keys, input };

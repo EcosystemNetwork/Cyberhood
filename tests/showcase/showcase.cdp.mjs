@@ -128,9 +128,28 @@ try {
     await snap('crypt_arrive.png');
     const counts = JSON.parse(await A.ev(`JSON.stringify({ calls: SHOWCASE.R.renderer.info.render.calls, lights: SHOWCASE.world.lights.length })`));
     assert.ok(counts.calls < 300 && counts.lights <= 4, `the undercroft stays in budget (${JSON.stringify(counts)})`);
-    await A.ev(`(() => { const S = SHOWCASE; S.foes.list.forEach((e) => { e.state = 'stun'; e.stun = 99; }); S.player.pos.set(0, 0, -23.2); return 1; })()`);
+    // the guardian: wakes when you come near, takes blows, falls, drops the legendary blade
+    assert.equal(await A.ev('SHOWCASE.boss.state'), 'dormant', 'the Ossuary Warden waits');
+    await A.ev(`(() => { const S = SHOWCASE; S.player.pos.set(0, 0, -11); S.player.iUntil = 1e9; return 1; })()`);
+    await sleep(1800);
+    assert.notEqual(await A.ev('SHOWCASE.boss.state'), 'dormant', 'it wakes when the warden comes near');
+    assert.ok(await A.ev(`document.getElementById('boss').classList.contains('on')`), 'its health bar shows');
+    // the relic stays sealed while it lives
+    await A.ev(`(() => { SHOWCASE.player.pos.set(0, 0, -23.2); return 1; })()`); await sleep(300);
+    assert.equal(await A.ev('SHOWCASE.relicClaimed'), false, 'the relic cannot be taken while its guardian lives');
+    for (let i = 0; i < 40 && (await A.ev('SHOWCASE.boss.state')) !== 'dead'; i++) {
+      await A.ev(`(() => { const S = SHOWCASE, b = S.boss; S.player.st = 100; const d = b.pos.clone().sub(S.player.pos).setY(0); if (d.length() > 2.4) S.player.pos.copy(b.pos).addScaledVector(d.normalize(), -2.2); S.player.yaw = Math.atan2(d.x, d.z); S.doAttack(); return 1; })()`);
+      await sleep(700);
+    }
+    assert.equal(await A.ev('SHOWCASE.boss.state'), 'dead', 'the Ossuary Warden can be killed');
+    await sleep(900);
+    assert.deepEqual(JSON.parse(await A.ev('JSON.stringify(SHOWCASE.loot.drops.map((d) => d.id))')), ['grave_edge'], 'it drops the Grave Edge');
+    await A.ev(`(() => { const d = SHOWCASE.loot.drops[0].g.position; SHOWCASE.player.pos.set(d.x, 0, d.z); return 1; })()`);
+    await sleep(300);
+    assert.equal(await A.ev('SHOWCASE.player.weapon?.name'), 'Grave Edge', 'walking over the drop takes and wields it');
+    await A.ev(`(() => { SHOWCASE.player.iUntil = 0; SHOWCASE.player.pos.set(0, 0, -23.2); return 1; })()`);
     await sleep(400);
-    assert.equal(await A.ev('SHOWCASE.relicClaimed'), true, 'reaching the relic claims it');
+    assert.equal(await A.ev('SHOWCASE.relicClaimed'), true, 'with the guardian dead, reaching the relic claims it');
     await A.ev(`(() => { SHOWCASE.player.pos.set(0, 0, 3.6); return 1; })()`);
     await sleep(1600);
     assert.equal(await A.ev('SHOWCASE.area'), 'glade', 'climbing the stair returns to the graveyard');

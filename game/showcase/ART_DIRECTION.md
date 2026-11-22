@@ -97,6 +97,11 @@ and effects are kept out of the AO pass.
    vaulted crypt under the mausoleum, 166 draw calls) are all built from it. Underground light:
    no sun, a dim gradient-room image light so PBR still has something to reflect, torches, and
    the relic's cold blue. Next: a city district from the same kit.
-4. **Monsters and bosses:** a non-human silhouette for the revenants, and a boss.
+4. **Monsters, bosses, loot:** in. The Ossuary Warden (`boss.js`): a six-legged crawler of
+   grave bones, rigid bone pieces on procedural animation (two-bone IK legs, alternating-tripod
+   gait), a rearing impale and a spinning sweep, both telegraphed, a faster second phase. Loot
+   (`loot.js`): drops arc out of the kill into rarity-coloured light pillars (rare: ember gold,
+   legendary: grave blue); blades read by their glowing fuller and trail (Ember Blade, Grave Edge).
+   Next: weapon models beyond the longsword (axe, spear), and a second monster family.
 5. **Multiplayer polish:** these nameplates, effects and telegraphs, carried into the realm
    server's combat.

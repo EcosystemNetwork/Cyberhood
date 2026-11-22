@@ -23,7 +23,7 @@ export const CRYPT = {
   spawn: new THREE.Vector3(0, 0, -1.2),         // the foot of the stair, facing in
   exitZ: 3.4,                                   // walking this far up the stair takes you out
   relic: new THREE.Vector3(0, 0, -24.6),
-  foes: [new THREE.Vector3(-1.4, 0, -11), new THREE.Vector3(1.4, 0, -17.5)],
+  boss: new THREE.Vector3(0, 0, -18.5),       // the Ossuary Warden (boss.js) waits mid-hall
   fog: { color: 0x0b0a0c, density: 0.04 },
 };
 
@@ -112,7 +112,7 @@ export function buildCrypt(R, M) {
     root.add(g);
     R.noAO.add(f);
     const e = { fire: f, light: null, base: 0, pos: new THREE.Vector3(x - sx * 0.45, 2.15, z) };
-    if (lit && lights.length < Math.max(1, R.q.lights - 1)) {
+    if (lit && lights.length < Math.max(1, R.q.lights - 2)) { // the relic and the guardian's eyes take the rest
       e.light = new THREE.PointLight(0xff8a3a, 26, 12, 2); e.light.position.copy(e.pos); e.base = 26; root.add(e.light); lights.push(e.light);
     }
     fires.push(e);
