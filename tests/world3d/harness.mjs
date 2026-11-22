@@ -22,6 +22,8 @@ export async function launch() {
   { stdio: 'ignore', detached: true });
   const kill = () => { try { process.kill(-chrome.pid); } catch (e) {} };
   process.on('exit', kill);
+  // a timeout or Ctrl-C would otherwise leave a headless Chrome rendering at full CPU
+  for (const sig of ['SIGINT', 'SIGTERM']) process.once(sig, () => { kill(); process.exit(130); });
   let ver;
   for (let i = 0; i < 40 && !ver; i++) { await sleep(500); try { ver = await (await fetch(`http://127.0.0.1:${port}/json/version`)).json(); } catch (e) {} }
   const ws = new WebSocket(ver.webSocketDebuggerUrl);

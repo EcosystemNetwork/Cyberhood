@@ -117,6 +117,7 @@
   #chatBtn { background: linear-gradient(#8ad8ff, #3a8ae0); box-shadow: 0 3px 0 #1a4a8a; }
   #guildBtn { background: linear-gradient(#ffcf7a, #e08a1a); box-shadow: 0 3px 0 #8a4a08; }
   #soundBtn { background: #241040; box-shadow: 0 3px 0 #12031a; } #soundBtn.off { opacity: 0.6; }
+  #gfxBtn { background: #241040; box-shadow: 0 3px 0 #12031a; }
   .toast { top: auto; bottom: 90px; padding: 8px 18px; }
 
 
@@ -529,6 +530,7 @@ if (!window.SOLO) {
     <button id="chatBtn" type="button" tabindex="-1" aria-label="Chat">&#128172;<span class="lbl"> Chat</span><kbd>T</kbd></button>
     <button id="soundBtn" type="button" tabindex="-1" aria-label="Sound" aria-pressed="true">&#128266;<kbd>O</kbd></button>
     <button id="ctrlBtn" type="button" tabindex="-1" aria-label="Controls">Classic<kbd>\</kbd></button>
+    <button id="gfxBtn" type="button" tabindex="-1" aria-label="Graphics" title="Graphics: low / medium / high">&#9881;&#65039;<span class="lbl"></span></button>
   </div>
 </div>
 
@@ -556,7 +558,7 @@ if (!window.SOLO) {
   </div>
 </div>
 <div id="joyRing" hidden><i></i></div>
-<div class="help" id="helpBar"><b>I</b> hide &middot; <span id="lookHelp"><b>WASD</b> move &middot; <b>Drag / Q E</b> look &middot; <b>Z X</b> tilt &middot;</span> <b>Space</b> jump (at a ledge: climb) &middot; <b>Alt</b> / double-tap roll &middot; <b>'</b> / <b>J</b> right hand &middot; <b>;</b> left hand &middot; <b>Shift</b> nitro &middot; <b>C</b> camera &middot; <b>F</b> use &middot; <b>H</b> hood up / down &middot; <b>R</b> potion &middot; <b>N</b> smoke &middot; <b>B</b> bag &middot; <b>U</b> sprint toggle &middot; <b>P</b> sheathe / draw &middot; <b>V</b> view &middot; <b>L</b> auto-aim &middot; <b>T</b> chat &middot; <b>M</b> map &middot; <b>O</b> sound &middot; <b>\</b> controls &middot; <b>Tab</b> target &middot; <b>/help</b> social</div>
+<div class="help" id="helpBar"><b>I</b> hide &middot; <span id="lookHelp"><b>WASD</b> move &middot; <b>Drag / Q E</b> look &middot; <b>Z X</b> tilt &middot;</span> <b>Space</b> jump (at a ledge: climb) &middot; <b>Alt</b> / double-tap roll &middot; <b>'</b> / <b>J</b> right hand &middot; <b>;</b> left hand &middot; <b>Shift</b> nitro &middot; <b>C</b> camera &middot; <b>F</b> use &middot; <b>H</b> hood up / down &middot; <b>R</b> potion &middot; <b>N</b> smoke &middot; <b>B</b> bag &middot; <b>U</b> sprint toggle &middot; <b>P</b> sheathe / draw &middot; <b>V</b> view &middot; <b>L</b> auto-aim &middot; <b>T</b> chat &middot; <b>M</b> map &middot; <b>O</b> sound &middot; <b>\</b> controls &middot; <b>&#9881;&#65039;</b> graphics &middot; <b>Tab</b> target &middot; <b>/help</b> social</div>
 <div id="crosshair" hidden></div>
 <div id="aimRing" hidden></div>
 <div id="aimArc" hidden></div>
@@ -655,6 +657,8 @@ import { createGuildView } from './guildview.js';
 import { createPoolView } from './poolview.js';
 import { createOrchardView, ROWAN, ORCHARD_TREES } from './orchardview.js';
 import { findLedge, climbPose, CLIMB_TIME, ROLL, rollSpeed, rollPose, rollSafe } from './parkour.js';
+import { createRain } from './weather.js';
+import { PRESETS, STORE_KEY as GFX_KEY, pickPreset, nextPreset, pixelRatio, createGovernor } from './gfx.js';
 for (const id of BLOCK_IDS) FARM_ITEMS['block_' + id] = { name: BLOCKS[id].name, emoji: BLOCKS[id].emoji, info: 'Building block · place it on your plot in build mode (G)' };
 for (const [id, it] of Object.entries(GUILD_ITEMS)) FARM_ITEMS[id] = it; // what Guild expeditions bring home
 
@@ -1563,8 +1567,18 @@ const canvas = document.getElementById('scene');
 // Phones (touch screens) get a lighter frame: fewer pixels, no glow pass, cheaper shadows and
 // sparser grass. Desktop is untouched. ?phone=0 / ?phone=1 forces either for testing.
 const PHONE = new URLSearchParams(location.search).has('phone') ? new URLSearchParams(location.search).get('phone') !== '0' : matchMedia('(pointer: coarse)').matches;
+// Graphics preset (gfx.js): low is the old phone frame, high the old desktop one. ?gfx= forces one.
+const GFX = { name: pickPreset({
+  url: new URLSearchParams(location.search).get('gfx'),
+  saved: (() => { try { return localStorage.getItem(GFX_KEY); } catch { return null; } })(),
+  phone: PHONE,
+}) };
+GFX.p = PRESETS[GFX.name];
+// the frame-rate governor lowers the render resolution a step when frames run long (?governor=0 turns it off)
+const governor = createGovernor({ min: GFX.p.minScale });
+const GOVERN = new URLSearchParams(location.search).get('governor') !== '0';
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, PHONE ? 1.25 : 2));
+renderer.setPixelRatio(pixelRatio(GFX.name, devicePixelRatio));
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = PHONE ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
@@ -1587,7 +1601,7 @@ const sun = new THREE.DirectionalLight('#fff2dc', UNDER ? 0.35 : INDOOR ? 0.9 : 
 const lantern = new THREE.PointLight('#ffc890', 14, 10, 1.4);
 if (UNDER) scene.add(lantern);
 sun.castShadow = true;
-sun.shadow.mapSize.set(PHONE ? 1024 : 2048, PHONE ? 1024 : 2048);
+sun.shadow.mapSize.set(GFX.p.shadowMap, GFX.p.shadowMap);
 Object.assign(sun.shadow.camera, { left: -24, right: 24, top: 24, bottom: -24, near: 1, far: 90 });
 sun.shadow.bias = -0.0005;
 sun.shadow.normalBias = 0.04;
@@ -1598,6 +1612,39 @@ composer.addPass(new RenderPass(scene, camera));
 const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), TOWN ? 0.18 : INDOOR ? 0.3 : 0.5, 0.45, TOWN ? 0.9 : 0.78); // barely any glow in town
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
+
+/* ---------- weather (weather.js): rain fronts over the overworld's districts, on the UTC clock ----------
+   Render-only: it never changes what you can do. The pool is sized for the top preset; lower
+   presets draw fewer drops from it. ?rain=0..1 pins the amount everywhere, for testing. */
+const RAIN_Q = new URLSearchParams(location.search).get('rain');
+const RAIN_PIN = RAIN_Q === null || RAIN_Q === '' || !Number.isFinite(+RAIN_Q) ? null : +RAIN_Q;
+const rain = DAY && !UNDER && !INDOOR ? createRain(THREE, scene, { count: PRESETS.high.rain }) : null;
+rain?.setCount(GFX.p.rain);
+// which district a point is in: the stitched overworld knows its parts; any other map is one district
+const districtAt = (x, z) => (A.partAt ? (A.partAt(x, z)?.a.title ?? null) : A.title);
+
+// apply the render scale: the preset's pixel-ratio cap times the governor's scale
+function applyScale() {
+  const pr = pixelRatio(GFX.name, devicePixelRatio, GOVERN ? governor.scale : 1);
+  renderer.setPixelRatio(pr);
+  renderer.setSize(innerWidth, innerHeight);
+  composer.setPixelRatio(pr);
+  composer.setSize(innerWidth, innerHeight);
+}
+// switch presets while playing (the ⚙ button); remembered for next visit
+function setGfx(name) {
+  if (!PRESETS[name]) return;
+  GFX.name = name; GFX.p = PRESETS[name];
+  try { localStorage.setItem(GFX_KEY, name); } catch { /* private window: just this visit */ }
+  governor.setRange(GFX.p.minScale);
+  governor.reset();
+  if (sun.shadow.mapSize.x !== GFX.p.shadowMap) {
+    sun.shadow.mapSize.set(GFX.p.shadowMap, GFX.p.shadowMap);
+    if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } // rebuilt at the new size next frame
+  }
+  rain?.setCount(GFX.p.rain);
+  applyScale();
+}
 
 /* ---------- materials ---------- */
 const gradientMap = (() => {
@@ -2899,7 +2946,7 @@ const SKY_KEYS = [
   [20, '#181c4a', '#463868', '#2a2850', '#5e60a0', '#201e2c', 0.6, '#a0b0ff', 0.5, 0.8, 0.5, '#1c3474'],
   [24, '#070b24', '#1a2650', '#141c3c', '#4a5a98', '#16182a', 0.5, '#9ab0ff', 0.55, 1, 0.55, '#16306a'],
 ];
-const sky = { canvas: canvasOf(4, 256), hour: -1, night: 0, dir: new THREE.Vector3(-0.47, 0.88, 0.35) };
+const sky = { canvas: canvasOf(4, 256), hour: -1, wet: 0, night: 0, dir: new THREE.Vector3(-0.47, 0.88, 0.35) };
 sky.tex = new THREE.CanvasTexture(sky.canvas);
 sky.tex.colorSpace = THREE.SRGBColorSpace;
 const stars = (() => {
@@ -2924,10 +2971,13 @@ function updateSky() {
   while (i < SKY_KEYS.length - 2 && h >= SKY_KEYS[i + 1][0]) i++;
   const A0 = SKY_KEYS[i], B0 = SKY_KEYS[i + 1], t = clamp((h - A0[0]) / (B0[0] - A0[0]), 0, 1);
   const num = (k) => A0[k] + (B0[k] - A0[k]) * t;
-  if (Math.abs(h - sky.hour) > 0.01) { // repaint the sky gradient about every 36 s of real time
-    sky.hour = h;
+  // rain (weather.js) greys the sky, pulls the fog in and dims the light, as much as it's raining
+  const wet = rain ? rain.wet : 0, OVERCAST = '#7d8794';
+  if (Math.abs(h - sky.hour) > 0.01 || Math.abs(wet - sky.wet) > 0.02) { // repaint the sky gradient about every 36 s of real time, or as a storm thickens
+    sky.hour = h; sky.wet = wet;
     const x = sky.canvas.getContext('2d'), g = x.createLinearGradient(0, 0, 0, 256);
-    const top = '#' + lerpHex(A0[1], B0[1], t, C1).getHexString(), hor = '#' + lerpHex(A0[2], B0[2], t, C1).getHexString();
+    const top = '#' + lerpHex(A0[1], B0[1], t, C1).lerp(C2.set(OVERCAST).multiplyScalar(1 - num(9) * 0.75), wet * 0.6).getHexString();
+    const hor = '#' + lerpHex(A0[2], B0[2], t, C1).lerp(C2.set(OVERCAST).multiplyScalar(1 - num(9) * 0.75), wet * 0.5).getHexString();
     g.addColorStop(0, top); g.addColorStop(0.55, '#' + new THREE.Color(top).lerp(C2.set(hor), 0.55).getHexString()); g.addColorStop(1, hor);
     x.fillStyle = g; x.fillRect(0, 0, 4, 256);
     sky.tex.needsUpdate = true;
@@ -2938,8 +2988,14 @@ function updateSky() {
   hemi.intensity = num(6);
   lerpHex(A0[7], B0[7], t, sun.color);
   sun.intensity = num(8);
+  if (wet > 0) {
+    scene.fog.color.lerp(C2.set(OVERCAST).multiplyScalar(1 - num(9) * 0.75), wet * 0.45);
+    hemi.intensity *= 1 - wet * 0.25;
+    sun.intensity *= 1 - wet * 0.45;
+  }
+  scene.fog.near = 38 - 14 * wet; scene.fog.far = 135 - 50 * wet;
   sky.night = num(9);
-  stars.material.opacity = sky.night;
+  stars.material.opacity = sky.night * (1 - wet);
   stars.visible = sky.night > 0.02;
   bloom.strength = num(10);
   lerpHex(A0[11], B0[11], t, seaMat.color);
@@ -4608,6 +4664,11 @@ function setSound(on) {
 }
 setSound(!sfx.muted);
 $('soundBtn').addEventListener('click', () => setSound(sfx.muted));
+// graphics preset (gfx.js): the button cycles low, medium, high and says which one you're on
+const GFX_NAMES = { low: 'Low', medium: 'Medium', high: 'High' };
+const showGfx = () => { $('gfxBtn').querySelector('.lbl').textContent = ' ' + GFX_NAMES[GFX.name]; };
+showGfx();
+$('gfxBtn').addEventListener('click', () => { setGfx(nextPreset(GFX.name)); showGfx(); toast(`Graphics: ${GFX_NAMES[GFX.name]}`); });
 function toggleBag(open) {
   const panel = $('bagPanel');
   const was = panel.hidden;
@@ -6893,8 +6954,7 @@ addEventListener('resize', () => {
   fitSquare();
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight);
-  composer.setSize(innerWidth, innerHeight);
+  applyScale();
 });
 
 await LOAD.step('Almost there', 95);
@@ -7250,6 +7310,7 @@ function update(dt, now) {
     g.arch.visible = !(g.edge === 'n' ? c.z < g.z + 0.6 : g.edge === 's' ? c.z > g.z - 0.6 : g.edge === 'w' ? c.x < g.x + 0.6 : c.x > g.x - 0.6);
   }
   updateSky();
+  rain?.update(camera.position, dt, Date.now() + (Ledger.status.offset || 0), districtAt, sky.night, RAIN_PIN);
   if (OUTDOOR) sun.position.set(P.x + sky.dir.x * 36, Math.max(sky.dir.y, 0.3) * 36, P.z + sky.dir.z * 36);
   else sun.position.set(P.x - 16, 30, P.z + 12);
   sun.target.position.set(P.x, 0, P.z);
@@ -7393,7 +7454,10 @@ Ledger.load();
 
 SPAWN_LIST.forEach((entry, i) => spawnMonster(entry, i));
 // debug hook for tests and screenshots: __world3d.tp(x, z) teleports, .P is the player state
-window.__world3d = { sfx, P, ghosts, guild: () => guildView, openGuild, spawnDrop, pools: () => poolView, openPools, orchard: () => orchardView, openOrchard, fenn: FENN, arena, social, party: () => party, trade: () => trade, target: () => target, ladders: LADDERS, action: () => action && action.text, runAction: () => action && action.run(),
+window.__world3d = { sfx, P,
+  gfx: () => ({ preset: GFX.name, scale: governor.scale, govern: GOVERN, pixelRatio: renderer.getPixelRatio(), shadowMap: sun.shadow.mapSize.x, bloom: GFX.p.bloom }),
+  setGfx, rain: () => rain && { wet: rain.wet, amount: rain.plan.amount, local: rain.plan.local, visible: rain.points.visible, drops: rain.points.geometry.drawRange.count },
+  districtAt, ghosts, guild: () => guildView, openGuild, spawnDrop, pools: () => poolView, openPools, orchard: () => orchardView, openOrchard, fenn: FENN, arena, social, party: () => party, trade: () => trade, target: () => target, ladders: LADDERS, action: () => action && action.text, runAction: () => action && action.run(),
   // can you walk (4-way, over the collision grid) from one tile to another?
   walkable: (x0, y0, x1, y1) => { const seen = new Set([`${x0},${y0}`]), q = [[x0, y0]]; while (q.length) { const [x, y] = q.pop(); if (x === x1 && y === y1) return true;
     for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = x + dx, ny = y + dy, k = `${nx},${ny}`; if (!seen.has(k) && blocked[ny] && blocked[ny][nx] === false) { seen.add(k); q.push([nx, ny]); } } } return false; },
@@ -7411,12 +7475,15 @@ window.__world3d = { sfx, P, ghosts, guild: () => guildView, openGuild, spawnDro
 updateHud();
 renderBag();
 (function frame() {
-  const dt = Math.min(clock.getDelta(), 0.05);
-  update(dt, performance.now());
-  if (PORTAL) { PORTAL.ring.tick(performance.now()); PORTAL.sprout.tick(performance.now()); }
-  if (SAFE) SAFE.camp.tick(performance.now());
-  if (orchardView) orchardView.update(dt, performance.now());
-  if (PHONE) renderer.render(scene, camera); else composer.render(); // the glow pass costs a phone more than it shows
+  const rawDt = clock.getDelta(), dt = Math.min(rawDt, 0.05);
+  const now = performance.now();
+  // the governor judges the real time between frames (clock.getDelta, before the 50 ms clamp)
+  if (GOVERN) { const was = governor.scale; if (governor.push(rawDt * 1000, now) !== was) applyScale(); }
+  update(dt, now);
+  if (PORTAL) { PORTAL.ring.tick(now); PORTAL.sprout.tick(now); }
+  if (SAFE) SAFE.camp.tick(now);
+  if (orchardView) orchardView.update(dt, now);
+  if (GFX.p.bloom) composer.render(); else renderer.render(scene, camera); // the glow pass costs a phone more than it shows
   if (!frame.shown) { frame.shown = true; LOAD.done(); if (!cachedGround) setTimeout(saveGround, 1500); } // the first frame is drawn: lift the loading screen
   requestAnimationFrame(frame);
 })();
