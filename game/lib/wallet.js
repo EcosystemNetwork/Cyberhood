@@ -12,12 +12,15 @@
      await Wallet.deposit({ kind: 'gold', amount: 20 }); // back into the game (credited within a minute)
      await Wallet.market();                             // resource / stock-token pools and prices
      await Wallet.sell('sun_gem', 5);                   // sell withdrawn resources for stock tokens
+     await Wallet.orchard();                            // the Orchard's groves, your stakes, pending Bloom
+     await Wallet.plant('sun_gem', 5);                  // add sun_gem + TSLA liquidity and stake the LP
+     await Wallet.harvest();                            // 25% of your Bloom now, 75% unlocks over 30 days
 
    Uses an injected EIP-1193 wallet (MetaMask, Rabby, Robinhood Wallet, Coinbase Wallet...).
    viem comes from a pinned CDN build so the game pages stay bundler-free. */
 import { createWalletClient, createPublicClient, custom, getAddress, keccak256, toBytes } from 'https://esm.sh/viem@2.57.13';
 import { createSiweMessage } from 'https://esm.sh/viem@2.57.13/siwe';
-import { CHAINS, chainById, BRIDGE_ABI, ERC20_ABI, ERC1155_ABI, KIND, RESOURCES, ROUTER_ABI, STOCK_DECIMALS } from './chain.js';
+import { CHAINS, chainById, BRIDGE_ABI, ERC20_ABI, ERC1155_ABI, KIND, RESOURCES, ROUTER_ABI, STOCK_DECIMALS, PAIR_ABI, ORCHARD_ABI, ORCHARD_GROVES, BLOOM } from './chain.js';
 
 // Same API location as game/lib/ledger.js: the dev server locally, the Edge Function live.
 // ?api=https://<ref>.supabase.co/functions/v1/<function>/ picks another deployed function (only
@@ -208,3 +211,110 @@ export async function sell(resource, amount, { slippageBps = 100 } = {}) {
   if (r.status !== 'success') throw new Error('The sale failed: ' + hash);
   return { hash, out: q.out, stock: q.stock };
 }
+
+/* ---- the Orchard: stake a pool's LP tokens in its grove and Bloom grows (contracts/src/Orchard.sol) ---- */
+// The network's Orchard (chain.js CHAINS.<net>.orchard). A page may set window.TAPROOT_ORCHARD to
+// the same shape first, like TAPROOT_API (the test bench does, against its test chain).
+async function orchardCfg() {
+  try { if (window.TAPROOT_ORCHARD && window.TAPROOT_ORCHARD.orchard) return window.TAPROOT_ORCHARD; } catch (e) {}
+  const c = chainById((await chainInfo()).chainId);
+  if (!c || !c.orchard || !c.orchard.orchard) throw new Error('The Orchard is not planted on this network yet');
+  return c.orchard;
+}
+const BLOOM_ONE = 10 ** BLOOM.decimals;
+export const formatBloom = (v) => { const n = Number(v) / BLOOM_ONE; return n >= 100 ? n.toFixed(0) : n >= 1 ? n.toFixed(2) : n === 0 ? '0' : n.toPrecision(3); };
+async function send(address, abi, functionName, args) {
+  const pc = await publicClient(), wc = await walletClient();
+  const hash = await wc.writeContract({ address, abi, functionName, args });
+  const r = await pc.waitForTransactionReceipt({ hash });
+  if (r.status !== 'success') throw new Error(functionName + ' failed: ' + hash);
+  return hash;
+}
+async function allow(token, spender, n) {
+  const pc = await publicClient();
+  const have = await pc.readContract({ address: token, abi: ERC20_ABI, functionName: 'allowance', args: [account, spender] });
+  if (have < n) await send(token, ERC20_ABI, 'approve', [spender, n]);
+}
+
+/* Everything the Orchard shows: { rate (Bloom wei a second, all groves), groves: [{ gid, resource,
+   stock, lp, alloc, staked, perSecond, and once connected: mine, pending, wallet (LP held) }],
+   vest: { locked, ready, end (unix s) } | null, bloom (your balance) | null }. */
+export async function orchard() {
+  const o = await orchardCfg();
+  const pc = await publicClient();
+  const r = (address, abi, functionName, args = []) => pc.readContract({ address, abi, functionName, args });
+  const [rate, totalAlloc] = await Promise.all([r(o.orchard, ORCHARD_ABI, 'rate'), r(o.orchard, ORCHARD_ABI, 'totalAlloc')]);
+  const groves = await Promise.all(Object.entries(o.groves).map(async ([resource, gid]) => {
+    const [lp, alloc, staked] = await r(o.orchard, ORCHARD_ABI, 'groves', [BigInt(gid)]);
+    const g = ORCHARD_GROVES.find((x) => x.resource === resource);
+    const out = { gid, resource, stock: g ? g.stock : null, lp, alloc, staked, perSecond: totalAlloc ? rate * alloc / totalAlloc : 0n };
+    if (account) {
+      const [[mine], pending, wallet] = await Promise.all([
+        r(o.orchard, ORCHARD_ABI, 'stakes', [BigInt(gid), account]), r(o.orchard, ORCHARD_ABI, 'pending', [BigInt(gid), account]), r(lp, ERC20_ABI, 'balanceOf', [account])]);
+      Object.assign(out, { mine, pending, wallet });
+    }
+    return out;
+  }));
+  let vest = null, bloom = null;
+  if (account) {
+    const [locked, ready, end] = await r(o.orchard, ORCHARD_ABI, 'vestOf', [account]);
+    vest = { locked, ready, end: Number(end) };
+    bloom = await r(o.bloom, ERC20_ABI, 'balanceOf', [account]);
+  }
+  return { rate, groves, vest, bloom, address: o.orchard, bloomAt: o.bloom };
+}
+
+async function grove(resource) {
+  const o = await orchardCfg();
+  if (o.groves[resource] === undefined) throw new Error('No grove for ' + resource);
+  const gid = BigInt(o.groves[resource]);
+  const [lp] = await (await publicClient()).readContract({ address: o.orchard, abi: ORCHARD_ABI, functionName: 'groves', args: [gid] });
+  return { o, gid, lp };
+}
+// Stakes LP tokens you hold in a resource's grove (all of them by default).
+export async function stake(resource, amount) {
+  if (!account) await connect();
+  const { o, gid, lp } = await grove(resource);
+  const n = amount === undefined ? await (await publicClient()).readContract({ address: lp, abi: ERC20_ABI, functionName: 'balanceOf', args: [account] }) : BigInt(amount);
+  if (n === 0n) throw new Error('You have no LP tokens for this grove');
+  await allow(lp, o.orchard, n);
+  return send(o.orchard, ORCHARD_ABI, 'deposit', [gid, n]);
+}
+// Takes LP tokens back out of a grove (all by default); harvests that grove on the way.
+export async function unstake(resource, amount) {
+  if (!account) await connect();
+  const { o, gid } = await grove(resource);
+  const n = amount === undefined ? (await (await publicClient()).readContract({ address: o.orchard, abi: ORCHARD_ABI, functionName: 'stakes', args: [gid, account] }))[0] : BigInt(amount);
+  return send(o.orchard, ORCHARD_ABI, 'withdraw', [gid, n]);
+}
+// Harvests every grove you are in and pays out what has unlocked.
+export async function harvest() { if (!account) await connect(); return send((await orchardCfg()).orchard, ORCHARD_ABI, 'harvestAll', []); }
+// Pays out the locked Bloom that has unlocked so far.
+export async function claimBloom() { if (!account) await connect(); return send((await orchardCfg()).orchard, ORCHARD_ABI, 'claimVested', []); }
+
+/* Plants in a grove in one go: adds `amount` of a withdrawn resource plus the matching stock
+   tokens (at the pool's current price) as liquidity, then stakes all the LP tokens you get.
+   Refuses to fill more than `slippageBps` (default 1%) off. Returns { stockIn, lp }. */
+export async function plant(resource, amount, { slippageBps = 100 } = {}) {
+  if (!account) await connect();
+  const d = await dex();
+  const pool = d.pools.find((p) => p.resource === resource);
+  if (!pool) throw new Error('No pool for ' + resource);
+  const { lp } = await grove(resource);
+  const pc = await publicClient();
+  const token = await resourceToken(resource), stockAt = d.stocks[pool.stock];
+  const [r0, r1] = await pc.readContract({ address: lp, abi: PAIR_ABI, functionName: 'getReserves' });
+  const t0 = await pc.readContract({ address: lp, abi: PAIR_ABI, functionName: 'token0' });
+  const [rRes, rStock] = t0.toLowerCase() === token.toLowerCase() ? [r0, r1] : [r1, r0];
+  const n = BigInt(amount);
+  const stockIn = n * rStock / rRes + 1n;
+  await allow(token, d.router, n);
+  await allow(stockAt, d.router, stockIn);
+  const keep = BigInt(10000 - slippageBps);
+  const before = await pc.readContract({ address: lp, abi: ERC20_ABI, functionName: 'balanceOf', args: [account] });
+  await send(d.router, ROUTER_ABI, 'addLiquidity', [token, stockAt, n, stockIn, n * keep / 10000n, stockIn * keep / 10000n, account, BigInt(Math.floor(Date.now() / 1000) + 600)]);
+  const got = (await pc.readContract({ address: lp, abi: ERC20_ABI, functionName: 'balanceOf', args: [account] })) - before;
+  await stake(resource, got);
+  return { stockIn, lp: got };
+}
+

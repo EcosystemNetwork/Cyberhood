@@ -324,12 +324,16 @@ cape = grid_mesh('cape', grid, lambda j: 1 - j / ROWS)
 
 
 def cloak_r(th, z):  # the cloak's own radius (capelet, then cape) at a direction and height
-    i = min(range(len(thetas)), key=lambda k: abs(thetas[k] - th))
-    col = [around(grid[j][i])[1:] for j in range(ROWS + 1)]  # (r, z), z falling toward the hem
-    for (r0, z0), (r1, z1) in zip(col, col[1:]):
-        if z1 <= z <= z0 and z0 > z1:
-            return r0 + (r1 - r0) * (z0 - z) / (z0 - z1)
-    return col[-1][0] if z < col[-1][1] else col[0][0]
+    def col_r(i):
+        col = [around(grid[j][i])[1:] for j in range(ROWS + 1)]  # (r, z), z falling toward the hem
+        for (r0, z0), (r1, z1) in zip(col, col[1:]):
+            if z1 <= z <= z0 and z0 > z1:
+                return r0 + (r1 - r0) * (z0 - z) / (z0 - z1)
+        return col[-1][0] if z < col[-1][1] else col[0][0]
+    # between the two nearest columns (snapping to one stair-steps anything laid on the cloak)
+    f = min(COLS, max(0.0, (th + OPEN) / (2 * OPEN) * COLS))
+    i0 = min(COLS - 1, int(f))
+    return col_r(i0) + (col_r(i0 + 1) - col_r(i0)) * (f - i0)
 
 # ---- 3 hood: a smooth ellipsoid a little outside the head (sized from the head's extent each way,
 # so hair bumps don't show), a soft point at the back, the bottom flaring onto the shoulders, and an
@@ -492,24 +496,33 @@ for ob, size, trims, folds in (
 # a little way down the back, narrowing, its middle dropping lowest where the peak hangs, the seam
 # down its centre. It wears the hood's materials
 # DN_TH: half-width (deg round the back), DN_LEN: how far down the back. Kept to the nape and the
-# shoulder blades, and thin, so it reads as a hood folded down (not a slab across the shoulders) and a
-# sheathed weapon on the back (glbhero.js SHEATH) lies over it rather than through it
-DN_COLS, DN_ROWS, DN_TH, DN_LEN = 26, 12, 50, 0.10
+# shoulder blades, so it reads as a hood folded down (not a slab across the shoulders); a sheathed
+# weapon on the back (glbhero.js SHEATH) measures its clearance off it, so it lies over it
+# It has real volume, or it vanishes into the cape at game distance: a thick roll round the nape,
+# then a full pouch (the hood's emptied bag) that narrows to the hood's peak, a rounded point down
+# the spine. Its side edges come back down onto the cloak, so it never shows a raw edge side-on.
+DN_COLS, DN_ROWS, DN_TH, DN_LEN = 30, 16, 62, 0.16
+DN_ROLL, DN_BAG = 0.022, 0.03   # how far the rolled top edge and the pouch stand off the cloak
 dgrid = []
 for j in range(DN_ROWS + 1):
     r = j / DN_ROWS                                   # 0 at the rolled top edge, 1 at the bottom
     row = []
     for i in range(DN_COLS + 1):
         c = -1 + 2 * i / DN_COLS                       # -1 … 1 across the back
-        th = c * DN_TH * (1 - 0.48 * r)
-        roll = math.exp(-(r / 0.09) ** 2)              # the folded-over top edge stands up and out
-        z = neck.z - 0.004 - DN_LEN * r * (1 - 0.15 * c * c) - 0.028 * math.exp(-(c / 0.3) ** 2) * r ** 3 + 0.01 * roll
+        th = c * DN_TH * (1 - 0.72 * r ** 1.3)         # narrowing toward the point
+        roll = math.exp(-(r / 0.13) ** 2)              # the folded-over top edge stands up and out
+        side = (1 - c * c) ** 0.6                      # 0 at the side edges, where it meets the cloak
+        # the bottom edge is a rounded V: the middle (the hood's peak) hangs lowest
+        z = neck.z + 0.008 * roll - DN_LEN * r * (1 - 0.35 * c * c) - 0.05 * (1 - c * c) * r ** 2.5
         base = cloak_r(th, z)  # on the cloak itself (not the body: that reaches out over the arms)
-        rad = base + 0.006 + 0.012 * math.sin(math.pi * r) * (1 - c * c) + 0.007 * roll \
-            + 0.003 * math.sin(c * 7 + r * 2.5)
+        bag = math.sin(math.pi * min(1.0, r * 1.05) ** 0.75)  # fullest a third of the way down
+        rad = base + 0.004 + side * (DN_ROLL * roll + DN_BAG * bag * (1 - 0.4 * roll)) \
+            + 0.004 * side * math.sin(c * 9 + r * 3) * (1 - roll)  # soft crumples in the cloth
         row.append(at(th, rad, z))
     dgrid.append(row)
-cowl = grid_mesh('cowl', dgrid, lambda j: 0.004 + 0.86 * j / DN_ROWS)  # the top edge on the collar trim
+# v runs up the hood's texture and back down, so both the rolled top and the V-shaped bottom edge
+# (the hood's rim, now hanging down the back) carry its gold collar trim
+cowl = grid_mesh('cowl', dgrid, lambda j: 0.004 + 0.55 * math.sin(math.pi * j / DN_ROWS))
 face_out(cowl, lambda p: Vector((axis.x, axis.y, p.z)))
 for m_ in hood.data.materials:
     cowl.data.materials.append(m_)

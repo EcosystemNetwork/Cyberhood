@@ -17,6 +17,7 @@ import { compile } from '../tools/chain/compile.mjs';
 import { MiniChain, deployAll } from './helpers/minichain.mjs';
 import { RESOURCES, STOCK_POOLS, ERC20_ABI } from '../game/lib/chain.js';
 import { deployDex, seedPools, claimSigner } from '../tools/chain/dex-core.mjs';
+import { deployOrchard } from '../tools/chain/orchard-core.mjs';
 import { itemTokenId } from '../supabase/functions/game/wallet.js';
 import { grant } from './helpers/grant.mjs';
 
@@ -26,7 +27,7 @@ const PORT = 25000 + Math.floor(Math.random() * 2000);
 const BASE = `http://localhost:${PORT}`;
 const SYNC_KEY = 'page-sync-key';
 
-test('the wallet page: link, withdraw and claim, deposit and credit, sell for a stock token', { skip: !CHROME && 'no Chrome/Chromium', timeout: 180000 }, async (t) => {
+test('the wallet page: link, withdraw and claim, deposit and credit, sell for a stock token, plant in the Orchard', { skip: !CHROME && 'no Chrome/Chromium', timeout: 180000 }, async (t) => {
   process.env.CHROME = CHROME;
   process.env.BASE = BASE;
   const { launch, sleep } = await import('./world3d/harness.mjs');
@@ -43,7 +44,9 @@ test('the wallet page: link, withdraw and claim, deposit and credit, sell for a 
   }
   const io = { account: treasury, deploy: (a, args) => chain.deploy(treasury, a, args), send: (to, abi, functionName, args) => chain.send({ from: treasury, to, abi, functionName, args }), read: (to, abi, functionName, args) => chain.read({ to, abi, functionName, args }) };
   const dex = await deployDex(io);
-  await seedPools(io, { bridge: at.bridge, chainId: chain.chainId, dex, stocks, signClaim: claimSigner(privateKeyToAccount(signerKey)), deadline: chain.time + 3600n });
+  const pairs = await seedPools(io, { bridge: at.bridge, chainId: chain.chainId, dex, stocks, signClaim: claimSigner(privateKeyToAccount(signerKey)), deadline: chain.time + 3600n });
+  // the Orchard, with a grove per pool, already growing
+  const orch = await deployOrchard(io, { built, pairs, start: chain.time });
   const rpc = await chain.serve();
   const server = spawn(process.execPath, [join(ROOT, 'game-dev-server.js')], {
     env: {
@@ -66,7 +69,7 @@ test('the wallet page: link, withdraw and claim, deposit and credit, sell for a 
   })).json();
   const username = 'p' + Math.random().toString(36).slice(2, 10);
   let { key } = await api('signup', null, { username, password: 'hunter2hunter2' });
-  await grant(BASE, username, { bag: { slime_gel: 40, sun_gem: 6 } });
+  await grant(BASE, username, { bag: { slime_gel: 40, sun_gem: 8 } });
   await api('act', key, { actions: ['wreck', 'lonely', 'gull', 'doubloon'].map((id) => ({ t: 'chest', id })) });
   const sword = (await api('save', key, { character: { name: 'Hero', cls: 'knight', skin: 1, hs: 'short', hc: 0 } })).character.equipment.rhand;
 
@@ -89,7 +92,8 @@ test('the wallet page: link, withdraw and claim, deposit and credit, sell for a 
         return r.result;
       },
       on() {}, removeListener() {},
-    };` });
+    };
+    window.TAPROOT_ORCHARD = ${JSON.stringify(orch)};` });
   await p.go(`${BASE}/game/wallet.html`);
 
   const log = () => p.ev(`document.getElementById('log').innerText`);
@@ -162,5 +166,27 @@ test('the wallet page: link, withdraw and claim, deposit and credit, sell for a 
   // 5 gems into a 40 gem / 4 TSLA pool: about 0.44 TSLA after the 0.3% fee
   assert.ok(tsla > 44n * 10n ** 16n && tsla < 45n * 10n ** 16n, String(tsla));
   assert.equal(await chain.read({ to: at.resources.sun_gem, abi: ERC20_ABI, functionName: 'balanceOf', args: [addr] }), 0n);
+
+  // the Orchard: withdraw 2 more Sun Gem, plant them with TSLA from the sale, let Bloom grow, harvest
+  await p.ev(`document.getElementById('res').value = 'sun_gem'; document.getElementById('resn').value = 2; 1`);
+  await click('wres', 'claimed: 0x');
+  for (let i = 0; i < 40 && !(await p.ev(`!!document.getElementById('plant-sun_gem')`)); i++) await sleep(250);
+  assert.match(await p.ev(`document.getElementById('orchard-sum').textContent`), /^2\.00 Bloom\/s across 5 groves/);
+  await p.ev(`document.getElementById('plant-n-sun_gem').value = 2; 1`);
+  await click('plant-sun_gem', 'planted 2 Sun Gem');
+  const gid = BigInt(orch.groves.sun_gem);
+  const [staked] = await chain.read({ to: orch.orchard, abi: built.Orchard.abi, functionName: 'stakes', args: [gid, addr] });
+  assert.ok(staked > 0n);
+  assert.equal(await chain.read({ to: at.resources.sun_gem, abi: ERC20_ABI, functionName: 'balanceOf', args: [addr] }), 0n);
+  chain.warp(3600); // an hour of growth: 2 Bloom/s split over 5 groves, all of the sun_gem grove's to us
+  await click('harvest', 'harvested: 0x');
+  const bloom = await chain.read({ to: orch.bloom, abi: ERC20_ABI, functionName: 'balanceOf', args: [addr] });
+  // a quarter of ~1440 Bloom (3600 s x 0.4 Bloom/s) is paid now; the rest is locked
+  assert.ok(bloom > 355n * 10n ** 18n && bloom < 365n * 10n ** 18n, String(bloom));
+  for (let i = 0; i < 40 && !/locked/.test(await p.ev(`document.getElementById('orchard-sum').textContent`)); i++) await sleep(250);
+  assert.match(await p.ev(`document.getElementById('orchard-sum').textContent`), /you hold 36\d\.?\d* Bloom · 10\d\d\.?\d* locked/);
+  await click('unstake-sun_gem', 'unstaked from Sun Gem: 0x');
+  assert.equal((await chain.read({ to: orch.orchard, abi: built.Orchard.abi, functionName: 'stakes', args: [gid, addr] }))[0], 0n);
+  assert.equal(await chain.read({ to: pairs.sun_gem, abi: ERC20_ABI, functionName: 'balanceOf', args: [addr] }), staked);
   await p.shot('wallet-page.png');
 });

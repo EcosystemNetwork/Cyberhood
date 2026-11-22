@@ -92,6 +92,8 @@
   .combat button { position: absolute; border-radius: 50%; padding: 0; }
   #attackBtn { right: 0; bottom: 0; width: 84px; height: 84px; font-size: 36px; background: radial-gradient(circle at 35% 30%, #ff9ae4, #e0209a 70%); box-shadow: 0 4px 0 #8a0a5a, 0 0 22px rgba(255, 63, 180, 0.7); }
   #jumpBtn { right: 94px; bottom: 0; width: 60px; height: 60px; font-size: 15px; color: #1e3000; text-shadow: none; background: radial-gradient(circle at 35% 30%, #f0ff9a, #a8e000 70%); box-shadow: 0 4px 0 var(--lime-dk), 0 0 16px rgba(200, 255, 46, 0.6); }
+  #dodgeBtn { right: 150px; bottom: 74px; width: 46px; height: 46px; font-size: 11px; font-weight: 700; color: #fff; background: #241040; box-shadow: 0 0 0 2px #8fd8ff, 0 0 12px rgba(143, 216, 255, 0.45); }
+  #dodgeBtn.cd { opacity: 0.45; }
   /* sprint: the nitro meter is the button (U) */
   #sprintBtn { right: 84px; bottom: 70px; width: 56px; height: 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 16px; line-height: 1; color: var(--lime); background: #120a1e; box-shadow: 0 0 0 2px var(--lime), 0 0 12px rgba(200, 255, 46, 0.45); }
   #sprintBtn.on { background: #2a3a00; box-shadow: 0 0 0 3px var(--lime), 0 0 18px var(--lime); }
@@ -473,11 +475,12 @@ if (!window.SOLO) {
     <button id="aimBtn" type="button" tabindex="-1" aria-label="Auto-aim" title="Auto-aim (L)">&#127919;<kbd>L</kbd></button>
     <button id="sprintBtn" type="button" tabindex="-1" aria-label="Sprint" title="Sprint (U, or hold Shift)"><span>&#9889;</span><span class="bar"><span id="nitroFill" style="display: block"></span></span><span id="nitroText">Ready</span></button>
     <button id="jumpBtn" type="button" tabindex="-1" aria-label="Jump" title="Jump (Space)">JUMP</button>
+    <button id="dodgeBtn" type="button" tabindex="-1" aria-label="Dodge roll" title="Dodge roll (Alt, or double-tap a direction)">ROLL</button>
     <button id="attackBtn" type="button" tabindex="-1" aria-label="Attack">&#9876;&#65039;</button>
   </div>
 </div>
 <div id="joyRing" hidden><i></i></div>
-<div class="help" id="helpBar"><b>I</b> hide &middot; <b>WASD</b> move &middot; <b>Drag / Q E</b> look &middot; <b>Z X</b> tilt &middot; <b>Space</b> jump &middot; <b>'</b> / <b>J</b> right hand &middot; <b>;</b> left hand &middot; <b>Shift</b> nitro &middot; <b>C</b> camera &middot; <b>F</b> use &middot; <b>H</b> hood up / down &middot; <b>R</b> potion &middot; <b>N</b> smoke &middot; <b>B</b> bag &middot; <b>U</b> sprint toggle &middot; <b>P</b> sheathe / draw &middot; <b>V</b> view &middot; <b>L</b> auto-aim &middot; <b>T</b> chat &middot; <b>M</b> map &middot; <b>O</b> sound &middot; <b>Tab</b> target &middot; <b>/help</b> social</div>
+<div class="help" id="helpBar"><b>I</b> hide &middot; <b>WASD</b> move &middot; <b>Drag / Q E</b> look &middot; <b>Z X</b> tilt &middot; <b>Space</b> jump (at a ledge: climb) &middot; <b>Alt</b> / double-tap roll &middot;<b>'</b> / <b>J</b> right hand &middot; <b>;</b> left hand &middot; <b>Shift</b> nitro &middot; <b>C</b> camera &middot; <b>F</b> use &middot; <b>H</b> hood up / down &middot; <b>R</b> potion &middot; <b>N</b> smoke &middot; <b>B</b> bag &middot; <b>U</b> sprint toggle &middot; <b>P</b> sheathe / draw &middot; <b>V</b> view &middot; <b>L</b> auto-aim &middot; <b>T</b> chat &middot; <b>M</b> map &middot; <b>O</b> sound &middot; <b>Tab</b> target &middot; <b>/help</b> social</div>
 <div id="crosshair" hidden></div>
 <div id="aimRing" hidden></div>
 <div id="aimArc" hidden></div>
@@ -571,6 +574,8 @@ import { FLOORS, floorMap, BELOW, ABOVE, SHIFT_1F } from './mine.js';
 import { GUILD_ITEMS, PETS } from './guild.js';
 import { createGuildView } from './guildview.js';
 import { createPoolView } from './poolview.js';
+import { createOrchardView, ROWAN, ORCHARD_TREES } from './orchardview.js';
+import { findLedge, climbPose, CLIMB_TIME, ROLL, rollSpeed, rollPose, rollSafe } from './parkour.js';
 for (const id of BLOCK_IDS) FARM_ITEMS['block_' + id] = { name: BLOCKS[id].name, emoji: BLOCKS[id].emoji, info: 'Building block · place it on your plot in build mode (G)' };
 for (const [id, it] of Object.entries(GUILD_ITEMS)) FARM_ITEMS[id] = it; // what Guild expeditions bring home
 
@@ -737,7 +742,9 @@ const AREAS = {
         'Head west through the woods and you will smell the docks.'],
       ['Wren', 'sells potions and gossip', 9.5, 23, { skin: 4, hc: 5, hs: 'long', equipment: { head: 'wizard_hat', body: 'mage_robe', lhand: 'crystal_orb' } },
         'That crystal pad north of the plaza hums at night. Pretty, isn\'t it?'],
+      ROWAN, // keeper of the Orchard (orchardview.js), behind the Potion Shop
     ],
+    orchard: { ox: 0, oy: 0 }, // the Orchard's grove (orchardview.js ORCHARD_TREES), at this offset once stitched into the world
     exits: [
       { edge: 's', range: [22, 26], href: '/game/world3d/?from=city', name: 'Taproot Fields' },
       { edge: 'w', range: [16, 19], href: '/game/world3d/?area=woods&from=city', name: 'Taproot Woods' },
@@ -1058,6 +1065,7 @@ function stitch(title, size, parts) {
   world.clearings.push([146, 72, 6]); // no grove trees between the road's end and the gates
   world.paths.push([143, 70, 146.5, 70, 2.6]); // and a short run of road up to them
   world.grid.box[3] = 54.2; // the seam avenue and its sidewalk spill just past the Avenues' old edge
+  world.orchard = { ox: 96, oy: 52 }; // the city's offset above
   for (const k of ['fields', 'city', 'avenues', 'woods', 'docks']) AREAS[k] = world;
 }
 const A = AREAS[AREA] || AREAS.fields;
@@ -1234,6 +1242,7 @@ PLANKS.forEach(([x1, , x2, y2, kind]) => {
 });
 A.objects.forEach(([key, x, y, w, h, name, ry]) => addObject(key, x, y, w, h, name, ry));
 (A.npcs || []).forEach(([, , x, z]) => { blocked[Math.floor(z)][Math.floor(x)] = true; });
+if (A.orchard) ORCHARD_TREES.forEach(([x, z]) => { blocked[Math.floor(z + A.orchard.oy)][Math.floor(x + A.orchard.ox)] = true; });
 if (INDOOR) {
   const [g0, g1] = A.exits[0].range;
   for (let x = 0; x < MAP_W; x++) { blocked[0][x] = true; if (x < g0 || x > g1) blocked[MAP_H - 1][x] = true; }
@@ -2608,6 +2617,7 @@ const guildSpots = placed.filter((o) => o.name === 'Hero Hall' || o.name === 'Gl
 const craftAt = placed.filter((o) => o.key === 'craft_table').map((o) => ({ x: o.tx + o.w / 2, z: o.ty + o.h + 0.6 }))[0];
 let action = null;
 const FENN = (A.npcs || []).filter(([name]) => name === 'Old Fenn').map(([, , x, z]) => ({ x, z }))[0]; // keeper of the pools
+const ROWAN_AT = (A.npcs || []).filter(([name]) => name === ROWAN[0]).map(([, , x, z]) => ({ x, z }))[0]; // keeper of the Orchard
 function currentAction() {
   const fa = farmAction();
   if (fa) return fa;
@@ -2619,6 +2629,7 @@ function currentAction() {
   if (BOARD_AT && Math.hypot(P.x - BOARD_AT.x, P.z - BOARD_AT.z) < 2) return { text: 'Press F to set sail', btn: '⛵ Set sail', run: setSail };
   for (const s of guildSpots) if (Math.hypot(P.x - s.x, P.z - s.z) < 2.6) return { text: `Press F: ${s.tab === 'recruit' ? 'recruit companions' : 'the Guild'} at ${s.name}`, btn: '\u{1F3F0} Guild', run: () => openGuild(s.tab) };
   if (FENN && Math.hypot(P.x - FENN.x, P.z - FENN.z) < 2.6) return { text: "Press F: Old Fenn's liquidity pools", btn: '\u{1F4A7} Pools', run: openPools };
+  if (ROWAN_AT && Math.hypot(P.x - ROWAN_AT.x, P.z - ROWAN_AT.z) < 2.6) return { text: "Press F: Elder Rowan's Orchard", btn: '\u{1F333} Orchard', run: openOrchard };
   for (const s of shopSpots) if (Math.hypot(P.x - s.x, P.z - s.z) < 2.4) return { text: `Press F to shop at ${s.name}`, btn: '\u{1F6D2} Shop', run: () => openShop(s.name) };
   if (craftAt && Math.hypot(P.x - craftAt.x, P.z - craftAt.z) < 2.3) return { text: 'Press F to use the crafting table', btn: '\u{1F528} Craft', run: openCraft };
   return null;
@@ -3171,6 +3182,7 @@ if (LOCAL_DEV) field.bag.smoke_bomb = Math.max(field.bag.smoke_bomb || 0, 5); //
 const saveField = () => { try { localStorage.setItem(FIELD_KEY, JSON.stringify(field)); } catch (e) {} };
 let guildView = null; // the Guild's panel and companions (guildview.js), made once the world is up
 let poolView = null; // Old Fenn's liquidity pools panel (poolview.js)
+let orchardView = null; // the Orchard's grove and Elder Rowan's panel (orchardview.js), Taproot City only
 
 // player hitbox: 0.56 x 0.4 tiles at the feet, checked against the tile grid
 function free(x, z) {
@@ -3298,6 +3310,7 @@ let modal = null; // { kind: 'shop' | 'craft', name, tab }
 const openShop = (name) => { exitLock(); modal = { kind: 'shop', name, tab: 'buy' }; toggleBag(false); renderModal(); };
 const openCraft = () => { exitLock(); modal = { kind: 'craft' }; toggleBag(false); renderModal(); };
 const openPools = () => { if (!poolView) return; exitLock(); modal = { kind: 'pools' }; poolView.open(); toggleBag(false); renderModal(); };
+const openOrchard = () => { if (!orchardView) return; exitLock(); modal = { kind: 'orchard' }; orchardView.open(); toggleBag(false); renderModal(); };
 const openGuild = (tab) => { if (!guildView) return; exitLock(); modal = { kind: 'guild' }; if (tab) guildView.ui.tab = tab; toggleBag(false); renderModal(); };
 function closeModal() { modal = null; $('shopPanel').hidden = true; }
 function gearButton(id) {
@@ -3315,6 +3328,7 @@ function renderModal() {
   $('shopPanel').hidden = false;
   $('shopGold').textContent = `\u{1F4B0} ${field.gold} gold`;
   if (modal.kind === 'pools') return poolView.render({ title: $('shopTitle'), greet: $('shopGreet'), tabs: $('shopTabs'), list: $('shopList') });
+  if (modal.kind === 'orchard') return orchardView.render({ title: $('shopTitle'), greet: $('shopGreet'), tabs: $('shopTabs'), list: $('shopList') });
   if (modal.kind === 'guild') return guildView.render({ title: $('shopTitle'), greet: $('shopGreet'), tabs: $('shopTabs'), list: $('shopList'), open: () => !!modal && modal.kind === 'guild' });
   let rows = '';
   if (modal.kind === 'shop') {
@@ -3437,9 +3451,79 @@ function drink(id) {
 }
 const drinkBest = () => { const id = ['health_potion', 'big_potion', 'apple'].find((k) => field.bag[k] > 0); if (id) drink(id); };
 
+/* ---------- parkour (parkour.js): ledge grabs on built blocks, and the dodge roll ----------
+   Jump at a wall of blocks up to about two high while pushing into it and you catch its edge,
+   hang a moment and pull yourself up. Alt (or a double-tapped direction, or ROLL on a phone)
+   rolls you along the ground: hits miss you for most of it, and it costs a little nitro. */
+let climb = null; // { ...findLedge, t }
+let roll = null;  // { t, dx, dz }
+let rollCd = 0;
+const MOVE_KEYS = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
+const tap = { code: '', at: 0 };
+const dodging = () => !!roll && rollSafe(roll.t);
+const parkourBusy = () => !!climb || !!roll;
+const cellSolid = (x, y, z) => blockCellAt(x, y, z);
+function dodge() {
+  if (fainted || modal || building || climb || roll || rollCd > 0 || STANDS) return;
+  if (P.y > groundAt(P.x, P.z, P.y) + 0.05) return; // only off the ground
+  if (nitro < ROLL.cost && gear('feet') !== 'windrunner_boots') return;
+  if (gear('feet') !== 'windrunner_boots') nitro = Math.max(0, nitro - ROLL.cost);
+  // roll the way you're pushing, or straight ahead when standing still
+  const sp = Math.hypot(P.vx, P.vz);
+  const dx = sp > 0.5 ? P.vx / sp : Math.sin(P.heading), dz = sp > 0.5 ? P.vz / sp : Math.cos(P.heading);
+  roll = { t: 0, dx, dz };
+  rollCd = ROLL.cd;
+  P.heading = Math.atan2(dx, dz);
+  sfx.play('jump', { vol: 0.5 });
+  burst(P.x, 0.15, P.z, '#d8d0c0', 6);
+}
+// Catch a ledge if one is in reach ahead along (dx, dz); returns true when a climb starts.
+function tryLedge(dx, dz) {
+  if (climb || roll || fainted || STANDS || P.y <= groundAt(P.x, P.z, P.y) + 0.05) return false;
+  const l = findLedge(cellSolid, P.x, P.z, P.y, dx, dz);
+  if (!l) return false;
+  // the world has the last word: the top must hold you, with nothing in the way of standing up there
+  if (solidAt(l.x1, l.z1, l.top) || groundAt(l.x1, l.z1, l.top) < l.top - 0.01) return false;
+  climb = { ...l, t: 0 };
+  P.vx = P.vz = P.vy = 0;
+  P.heading = l.face;
+  sfx.play('step', { vol: 1 });
+  return true;
+}
+function tickParkour(dt) {
+  if (climb) {
+    climb.t += dt;
+    const c = climbPose(climb, climb.t);
+    P.x = c.x; P.z = c.z; P.y = Math.max(c.y, groundAt(c.x, c.z, c.y));
+    P.heading = climb.face;
+    if (c.done) { climb = null; P.grounded = 0; P.vy = 0; sfx.play('land', { vol: 0.6 }); }
+    return;
+  }
+  roll.t += dt;
+  const s = rollSpeed(roll.t) * legSpeed();
+  P.vx = roll.dx * s; P.vz = roll.dz * s;
+  if (free(P.x + P.vx * dt, P.z)) P.x += P.vx * dt;
+  if (free(P.x, P.z + P.vz * dt)) P.z += P.vz * dt;
+  P.phase += dt * s * 2.4;
+  if (roll.t >= ROLL.time) { roll = null; P.vx *= 0.5; P.vz *= 0.5; }
+}
+// Tumble (roll) or lean into the wall (climb) on top of whatever pose the hero's rig made.
+function poseParkour(h, rl, lean = 0) {
+  const r = h.root;
+  r.rotation.order = 'YXZ';
+  r.rotation.x = 0;
+  if (rl !== null && rl !== undefined) {
+    const p = rollPose(rl);
+    r.rotation.x = p.spin;
+    r.position.y += p.up;
+    r.position.x -= Math.sin(r.rotation.y) * p.back;
+    r.position.z -= Math.cos(r.rotation.y) * p.back;
+  } else if (lean) r.rotation.x = lean;
+}
+
 // Jump: allowed while on the ground or just after walking off it (a short grace window).
 function jump() {
-  if (fainted) return;
+  if (fainted || climb || roll) return;
   if (P.grounded <= 0.12) { // on the ground, or only just off it
     P.vy = 7.4;
     P.grounded = 1;
@@ -3458,6 +3542,7 @@ function jump() {
 // hand 'R' (J, K or ') or 'L' (;): each hand has its own weapon, swing and cooldown (dual wield)
 function swing(hand = 'R') {
   if (STANDS) { throwTomato(); return; } // a spectator has no fight to swing at
+  if (climb) return; // both hands are on the ledge
   if (!fainted && !modal) setSheathed(false, true); // swinging draws the weapon
   if (gear(hand === 'L' ? 'lhand' : 'rhand') === 'mirror_shield') { if (!fainted && !modal) parry(); return; }
   if (fireballs.some((f) => f.boom && f.hand === hand)) return; // the boomerang is still out
@@ -3995,6 +4080,7 @@ function queenMoves(mo, v, dt, dx, dz, dist, tt) {
   v.legs.forEach((l) => { l.hip.rotation.y = l.base + (moving ? Math.sin(tt * (mo.dash > 0 ? 22 : 11) + l.i * 1.6 + (l.s > 0 ? Math.PI : 0)) * 0.3 : 0); });
 }
 function hurtPlayer(m, dx, dz, dist) {
+  if (dodging()) return; // rolled clear
   const dmg = Math.max(1, Math.round(m.cfg.dmg * 50 / (50 + stats.def)));
   hp = Math.max(0, hp - dmg);
   inv = 0.9;
@@ -4484,7 +4570,7 @@ function chatLine(name, msg, sys) {
   setTimeout(() => el.remove(), 30000);
 }
 function myState() {
-  return { id: mp.id, name: mp.name, char: GLB_HERO ? { ...charData, wear: GLB_WEAR, hood: HOOD_UP } : charData, room: MP_ROOM, born: mp.born, map: A.title, lvl: level(field.xp), x: +P.x.toFixed(2), z: +P.z.toFixed(2), y: +P.y.toFixed(2), h: +P.heading.toFixed(2), atk: mp.atk, atkL: mp.atkL, hp, mhp: stats.hp, air: P.y > groundAt(P.x, P.z, P.y) + 0.02, hid: smokedNow(), sh: sheathed && hero.canSheathe ? 1 : 0 };
+  return { id: mp.id, name: mp.name, char: GLB_HERO ? { ...charData, wear: GLB_WEAR, hood: HOOD_UP } : charData, room: MP_ROOM, born: mp.born, map: A.title, lvl: level(field.xp), x: +P.x.toFixed(2), z: +P.z.toFixed(2), y: +P.y.toFixed(2), h: +P.heading.toFixed(2), atk: mp.atk, atkL: mp.atkL, hp, mhp: stats.hp, air: P.y > groundAt(P.x, P.z, P.y) + 0.02, hid: smokedNow(), sh: sheathed && hero.canSheathe ? 1 : 0, rl: roll ? 1 : 0 };
 }
 const wearKey = (c) => (c && Array.isArray(c.wear) ? c.wear.join() : '');
 function addGhost(d) {
@@ -4519,7 +4605,8 @@ function removeGhost(id) {
 function onState(d) {
   const g = addGhost(d);
   if (!g) { if (ghosts.has(d.id)) removeGhost(d.id); return; } // they walked into another room
-  Object.assign(g, { tx: d.x, tz: d.z, ty: d.y || 0, th: d.h || 0, air: !!d.air, hid: !!d.hid, seen: performance.now() });
+  if (d.rl && !g.rl) g.rollT = 0; // they just started a roll: play it here from the start
+  Object.assign(g, { tx: d.x, tz: d.z, ty: d.y || 0, th: d.h || 0, air: !!d.air, hid: !!d.hid, rl: !!d.rl, seen: performance.now() });
   if (d.born) g.born = d.born;
   // they changed outfit: rebuild their 3D body in the new clothes
   if (d.char && g.hero.setHood && g.hero.hood !== null && g.hero.hood !== (d.char.hood !== false)) g.hero.setHood(d.char.hood !== false); // they put their hood up / down
@@ -5152,7 +5239,7 @@ function updateMultiplayer(dt, now) {
        receives it, so this is the game's running cost. Movement goes out at most 4 times a second
        (other players are eased toward each update, so it still looks smooth), only when it has
        moved or turned enough to see, and an attack or a smoke bomb goes out at once. */
-    const acted = !prev || st.atk !== prev.atk || st.atkL !== prev.atkL || st.hid !== prev.hid || st.sh !== prev.sh;
+    const acted = !prev || st.atk !== prev.atk || st.atkL !== prev.atkL || st.hid !== prev.hid || st.sh !== prev.sh || st.rl !== prev.rl;
     const moved = !prev || Math.hypot(st.x - prev.x, st.z - prev.z) > 0.15 || Math.abs(st.y - prev.y) > 0.15 || Math.abs(wrapAngle(st.h - prev.h)) > 0.17;
     if (acted || (moved && now - mp.last > 250)) { mp.channel.send({ type: 'broadcast', event: 'move', payload: st }); mp.sent = st; mp.last = now; }
   }
@@ -5167,6 +5254,8 @@ function updateMultiplayer(dt, now) {
     g.hero.root.visible = !g.dead && !g.hid; // a smoke bomb hides them, tag and all
     if (g.bar && g.mhp) g.bar.style.width = `${Math.max(0, g.hp / g.mhp) * 100}%`;
     g.hero.update(dt, { atk: g.atk, atkL: g.atkL, air: g.air, sheathed: g.sh });
+    if (g.rollT !== undefined) { g.rollT += dt; if (g.rollT > ROLL.time) g.rollT = undefined; }
+    poseParkour(g.hero, g.rollT);
     const near = !g.dead && !g.hid && Math.hypot(g.x - P.x, g.z - P.z) < 30, pos = near ? toScreen(g.x, HERO_H + 0.35 + g.y, g.z) : null;
     g.tag.hidden = !pos;
     if (pos) g.tag.style.transform = `translate(${pos[0]}px, ${pos[1]}px) translate(-50%, -100%)`;
@@ -5274,7 +5363,7 @@ function useItem(id) {
 }
 
 function hazardHurt(power, weapon) {
-  if (fainted || performance.now() < safeUntil) return;
+  if (fainted || performance.now() < safeUntil || dodging()) return;
   const dmg = Math.max(1, Math.round(power * 50 / (50 + statNow('def'))));
   hp = Math.max(0, hp - dmg);
   hero.hurt();
@@ -6335,6 +6424,12 @@ addEventListener('keydown', (e) => {
   if (e.code === 'KeyU') setSprint(!sprintOn);
   else if (sprintOn && (e.code === 'ShiftLeft' || e.code === 'ShiftRight')) { setSprint(false); shiftCancel = true; }
   if (e.code === 'Space') jump();
+  if (e.code === 'AltLeft' || e.code === 'AltRight') { e.preventDefault(); dodge(); }
+  // double-tap a direction to roll that way
+  if (MOVE_KEYS.includes(e.code)) {
+    const nowMs = performance.now();
+    if (tap.code === e.code && nowMs - tap.at < 260) { tap.code = ''; dodge(); } else { tap.code = e.code; tap.at = nowMs; }
+  }
   if (e.code === 'KeyJ' || e.code === 'KeyK' || e.code === 'Quote') swing('R');
   if (e.code === 'Semicolon') swing('L');
   if (e.code === 'KeyP') setSheathed(!sheathed);
@@ -6414,6 +6509,7 @@ canvas.addEventListener('pointercancel', endPointer);
 canvas.addEventListener('wheel', (e) => { e.preventDefault(); camDistT = Math.max(3, Math.min(18, camDistT + e.deltaY * 0.006)); }, { passive: false });
 $('attackBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); swing(); });
 $('jumpBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); jump(); });
+$('dodgeBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); dodge(); });
 $('sprintBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); setSprint(!sprintOn); });
 $('sailBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); if (action) action.run(); });
 $('shopClose').addEventListener('click', closeModal);
@@ -6423,10 +6519,11 @@ $('shopList').addEventListener('click', (e) => {
   if (!b) return;
   if (modal && modal.kind === 'guild') { guildView.click(b); updateHud(); renderBag(); return; }
   if (modal && modal.kind === 'pools') { poolView.click(b); return; }
+  if (modal && modal.kind === 'orchard') { orchardView.click(b); return; }
   shopAct.n = b.dataset.act === 'buy' ? b.dataset.n : undefined; // how many to buy (x5 buttons)
   shopAct(b.dataset.act, b.dataset.id, b.dataset.price || b.dataset.n || b.dataset.slot);
 });
-$('shopList').addEventListener('input', (e) => { if (modal && modal.kind === 'pools') poolView.input(e.target); });
+$('shopList').addEventListener('input', (e) => { if (modal && modal.kind === 'pools') poolView.input(e.target); else if (modal && modal.kind === 'orchard') orchardView.input(e.target); });
 $('bagGrid').addEventListener('click', (e) => { const b = e.target.closest('[data-use]'); if (b) useItem(b.dataset.use); });
 $('outfitGrid').addEventListener('click', (e) => { const b = e.target.closest('[data-wear]'); if (b && !b.disabled) toggleWear(b.dataset.wear); });
 $('gearStash').addEventListener('click', (e) => { const b = e.target.closest('[data-uid]'); if (b) openGearCompare(b.dataset.uid); });
@@ -6487,7 +6584,9 @@ function update(dt, now) {
   // Smoothing is frame-rate independent: damp(k, dt) is the fraction of the way to close
   // this frame for a time constant 1/k, where a bare `dt * k` would snap at low frame rates
   // and crawl at high ones. That difference is most of what reads as jerk.
-  {
+  rollCd -= dt;
+  if (parkourBusy()) tickParkour(dt); // a climb or a roll moves you on its own
+  else {
     const sy = Math.sin(camYaw), cy = Math.cos(camYaw);
     let mx = -sy * fy + cy * fx, mz = -cy * fy - sy * fx;
     const len = Math.hypot(mx, mz) || 1;
@@ -6507,16 +6606,22 @@ function update(dt, now) {
       if (P.grounded === 0 && (P.stride = (P.stride || 0) + dt * sp) > 1.6) { P.stride = 0; sfx.play('step', { vol: sprintOn ? 1 : 0.7 }); }
     } else { P.vx = P.vz = 0; }
     if (moving) P.heading = damp(P.heading, P.heading + wrapAngle(Math.atan2(mx, mz) - P.heading), 14, dt);
+    // pushing into a wall in mid-air: catch its edge if one is in reach
+    if (moving && P.grounded > 0.04 && !building) {
+      const ux = mx / len, uz = mz / len;
+      if (!free(P.x + ux * 0.12, P.z + uz * 0.12)) tryLedge(ux, uz);
+    }
     // The camera does not turn on its own. You move relative to it, so if it swung round after
     // your facing, "left" would rotate as you ran and holding A would carry you in a circle.
     // Drag, or Q and E, turn it; W always runs straight away from it.
   }
-  if (mouseLook()) P.heading = camYaw + Math.PI; // in the crosshair views you face where you look
-  if (pkb.t > 0) {
+  if (mouseLook() && !parkourBusy()) P.heading = camYaw + Math.PI; // in the crosshair views you face where you look
+  if (pkb.t > 0 && !climb) {
     pkb.t -= dt;
     if (free(P.x + pkb.x * dt, P.z)) P.x += pkb.x * dt;
     if (free(P.x, P.z + pkb.z * dt)) P.z += pkb.z * dt;
   }
+  if (!climb) { // a climb carries you up the wall itself
   const prevY = P.y;
   P.vy -= 22 * dt;
   P.y += P.vy * dt;
@@ -6525,6 +6630,7 @@ function update(dt, now) {
   const ground = groundAt(P.x, P.z, prevY);
   if (P.y <= ground) { if (P.vy < -5) sfx.play('land'); P.y = ground; P.vy = 0; P.grounded = 0; } else P.grounded += dt;
   if (solidAt(P.x, P.z, P.y)) { P.y = groundAt(P.x, P.z, MAX_H); P.vy = 0; P.grounded = 0; } // never stuck inside a block
+  }
   U.player.value.set(P.x, P.y, P.z);
 
   // 3D hero: it reads its own speed from how the root moves; looks at the nearest monster or townsfolk
@@ -6535,7 +6641,11 @@ function update(dt, now) {
   for (const n of npcs) { const d = Math.hypot(n.x - P.x, n.z - P.z); if (d < Math.min(ld, 4)) { ld = d; look = n; } }
   hero.root.position.set(P.x, P.y, P.z);
   hero.root.rotation.y = P.heading;
-  hero.update(dt, { atk: P.atk, atkL: P.atkL, lookAt: look, air: P.y > groundAt(P.x, P.z, P.y) + 0.001, vy: P.vy, down: fainted, sheathed });
+  const cp = climb && climbPose(climb, climb.t);
+  // hanging and pulling up read as the jump pose (arms up); a roll tumbles whatever pose it has
+  hero.update(dt, { atk: P.atk, atkL: P.atkL, lookAt: look, air: !!climb || P.y > groundAt(P.x, P.z, P.y) + 0.001, vy: climb ? 3 : P.vy, down: fainted, sheathed });
+  poseParkour(hero, roll ? roll.t : null, cp ? cp.lean : 0);
+  $('dodgeBtn').classList.toggle('cd', rollCd > 0 || !!roll);
   hero.root.visible = !firstPerson && !(ARENA && fainted) && !(inv > 0 && Math.floor(inv / 0.08) % 2);
   if (smokedNow() && (smokePuff -= dt) <= 0) { smokePuff = 0.12; burst(P.x, 0.4 + Math.random() * 1.2, P.z, '#9a9aa8', 3); }
   attackCd -= dt;
@@ -6893,6 +7003,9 @@ poolView = createPoolView({
   field, online: () => !SOLO && !!sessionKey(), toast, sfx, iconOf, nameOf,
   refresh: () => { updateHud(); renderBag(); }, rerender: () => { if (modal && modal.kind === 'pools') renderModal(); },
 });
+if (A.orchard) orchardView = createOrchardView({
+  THREE, scene, groundAt, toast, sfx, burst, at: A.orchard, keeper: ROWAN_AT, rerender: () => { if (modal && modal.kind === 'orchard') renderModal(); },
+});
 Ledger.on('state', (st) => {
   const e = st.econ;
   Object.assign(field, { gold: e.gold, xp: e.xp, kills: e.kills, bag: { ...e.bag }, lp: { ...(e.lp || {}) } });
@@ -6932,7 +7045,7 @@ Ledger.load();
 
 SPAWN_LIST.forEach((entry, i) => spawnMonster(entry, i));
 // debug hook for tests and screenshots: __world3d.tp(x, z) teleports, .P is the player state
-window.__world3d = { sfx, P, ghosts, guild: () => guildView, openGuild, spawnDrop, pools: () => poolView, openPools, fenn: FENN, arena, social, party: () => party, trade: () => trade, target: () => target, ladders: LADDERS, action: () => action && action.text, runAction: () => action && action.run(),
+window.__world3d = { sfx, P, ghosts, guild: () => guildView, openGuild, spawnDrop, pools: () => poolView, openPools, orchard: () => orchardView, openOrchard, fenn: FENN, arena, social, party: () => party, trade: () => trade, target: () => target, ladders: LADDERS, action: () => action && action.text, runAction: () => action && action.run(),
   // can you walk (4-way, over the collision grid) from one tile to another?
   walkable: (x0, y0, x1, y1) => { const seen = new Set([`${x0},${y0}`]), q = [[x0, y0]]; while (q.length) { const [x, y] = q.pop(); if (x === x1 && y === y1) return true;
     for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = x + dx, ny = y + dy, k = `${nx},${ny}`; if (!seen.has(k) && blocked[ny] && blocked[ny][nx] === false) { seen.add(k); q.push([nx, ny]); } } } return false; },
@@ -6942,7 +7055,7 @@ window.__world3d = { sfx, P, ghosts, guild: () => guildView, openGuild, spawnDro
   view: viewName, autoAim: () => autoAim, setAutoAim: (on) => setAutoAim(on), camYaw: () => camYaw, setCamYaw: (v) => { camYaw = v; }, nitro: () => nitro, setNitro: (v) => { nitro = v; nitroLock = false; }, jump,
   killMonster, hitMonster, collect, shopAct, claimPlot, plant, harvest, owned: () => owned, // economy tests
   spawn: (type, x, z) => { spawnMonster(type); const m = monsters[monsters.length - 1]; m.x = x; m.z = z; m.t = 99; m.vx = m.vz = 0; return monsters.length - 1; },
-  foeCast: (i) => castFoeBall(monsters[i]), chilled, smoked: () => Math.max(0, (smokeUntil - performance.now()) / 1000), colosseum: () => COLO && { arena: [A.doors.find((d) => /area=arena/.test(d.href)).x + 0.5, A.doors.find((d) => /area=arena/.test(d.href)).y + 0.5], stands: [A.doors.find((d) => /area=stands/.test(d.href)).x + 0.5, A.doors.find((d) => /area=stands/.test(d.href)).y + 0.5] }, hazardNow, clockOffset: () => HAZ.offset, hazards: () => [...HAZ.views.values()], hazardClock: (ms) => { HAZ.pinned = ms === undefined || ms === null ? null : ms; }, slowed, setHp: (n) => { hp = n; updateHud(); }, drawnBlocks: (id) => ((plotViews.get(id) || {}).blockMeshes || []).reduce((n, m) => n + m.count, 0), getPitch: () => fpPitch, camDistT: () => camDistT, getYaw: () => camYaw, firstPerson: () => firstPerson, setPitch: (v) => { fpPitch = v; }, openShop, hiddenBlocks, doorAngle: (id, i, j, k) => { const v = plotViews.get(id); return (v && v.doorAng && v.doorAng.get(`${i},${j},${k}`)) || 0; }, shopSpots, aimBlock, mouse, camera, building: () => building, toScreen, groundAt, solidAt, setBlocks, plots: PLOTS, placed, decorCrops, myFarm: () => myFarm, farmTile: () => farmTile(), hp: () => hp, mp, monsters, drops, field: () => field, hero: () => hero, sheathed: () => sheathed, fireballs, tp: (x, z, yaw) => { P.x = x; P.z = z; P.vx = P.vz = 0; if (yaw !== undefined) camYaw = yaw; }, cam: (dist, pitch) => { camDistT = camDist = dist; camPitchT = camPitch = pitch; }, size: [MAP_W, MAP_H], info: () => { // one full frame's draw calls and triangles (all passes, shadows included)
+  foeCast: (i) => castFoeBall(monsters[i]), parkour: () => ({ climb: !!climb, roll: !!roll, dodging: dodging(), rollCd }), dodge, chilled, smoked: () => Math.max(0, (smokeUntil - performance.now()) / 1000), colosseum: () => COLO && { arena: [A.doors.find((d) => /area=arena/.test(d.href)).x + 0.5, A.doors.find((d) => /area=arena/.test(d.href)).y + 0.5], stands: [A.doors.find((d) => /area=stands/.test(d.href)).x + 0.5, A.doors.find((d) => /area=stands/.test(d.href)).y + 0.5] }, hazardNow, clockOffset: () => HAZ.offset, hazards: () => [...HAZ.views.values()], hazardClock: (ms) => { HAZ.pinned = ms === undefined || ms === null ? null : ms; }, slowed, setHp: (n) => { hp = n; updateHud(); }, drawnBlocks: (id) => ((plotViews.get(id) || {}).blockMeshes || []).reduce((n, m) => n + m.count, 0), getPitch: () => fpPitch, camDistT: () => camDistT, getYaw: () => camYaw, firstPerson: () => firstPerson, setPitch: (v) => { fpPitch = v; }, openShop, hiddenBlocks, doorAngle: (id, i, j, k) => { const v = plotViews.get(id); return (v && v.doorAng && v.doorAng.get(`${i},${j},${k}`)) || 0; }, shopSpots, aimBlock, mouse, camera, building: () => building, toScreen, groundAt, solidAt, setBlocks, plots: PLOTS, placed, decorCrops, myFarm: () => myFarm, farmTile: () => farmTile(), hp: () => hp, mp, monsters, drops, field: () => field, hero: () => hero, sheathed: () => sheathed, fireballs, tp: (x, z, yaw) => { P.x = x; P.z = z; P.vx = P.vz = 0; if (yaw !== undefined) camYaw = yaw; }, cam: (dist, pitch) => { camDistT = camDist = dist; camPitchT = camPitch = pitch; }, size: [MAP_W, MAP_H], info: () => { // one full frame's draw calls and triangles (all passes, shadows included)
   renderer.info.autoReset = false; renderer.info.reset(); composer.render();
   const r = { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles };
   renderer.info.autoReset = true; return r;
@@ -6952,6 +7065,7 @@ renderBag();
 (function frame() {
   const dt = Math.min(clock.getDelta(), 0.05);
   update(dt, performance.now());
+  if (orchardView) orchardView.update(dt, performance.now());
   if (PHONE) renderer.render(scene, camera); else composer.render(); // the glow pass costs a phone more than it shows
   requestAnimationFrame(frame);
 })();

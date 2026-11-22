@@ -82,6 +82,13 @@
   </section>
 
   <section>
+    <h2>The Orchard</h2>
+    <p class="sub" style="margin:0 0 10px">Plant a resource with its stock token as liquidity and Bloom grows for you every second. A harvest pays 25% now; the rest unlocks over 30 days.</p>
+    <div id="orchard" class="mono">connect a wallet to see the groves</div>
+    <div class="row"><button id="harvest">Harvest all</button> <button id="claimbloom" class="ghost">Claim unlocked Bloom</button></div>
+  </section>
+
+  <section>
     <h2>Deposit into game</h2>
     <div class="row">
       <input id="dgold" type="number" min="1" step="1" value="10" aria-label="Gold to deposit">
@@ -171,7 +178,41 @@
       }
     } catch (e) { box.textContent = e.message; }
   }
-  run('connect', async () => { $('addr').textContent = await W.connect(); showMarket(); });
+  async function showOrchard() {
+    const box = $('orchard');
+    try {
+      const o = await W.orchard();
+      box.innerHTML = '';
+      const head = document.createElement('div');
+      head.id = 'orchard-sum';
+      head.textContent = `${W.formatBloom(o.rate)} Bloom/s across ${o.groves.length} groves · you hold ${W.formatBloom(o.bloom || 0n)} Bloom` +
+        (o.vest && (o.vest.locked || o.vest.ready) ? ` · ${W.formatBloom(o.vest.locked)} locked, ${W.formatBloom(o.vest.ready)} unlocked` : '');
+      box.append(head);
+      for (const g of o.groves) {
+        const name = RESOURCES[g.resource].name;
+        const row = document.createElement('div'); row.className = 'row';
+        const label = document.createElement('span');
+        label.textContent = `${name} / ${g.stock}: staked ${g.mine || 0n} LP · ready ${W.formatBloom(g.pending || 0n)} Bloom`;
+        const n = document.createElement('input'); n.type = 'number'; n.min = '1'; n.step = '1'; n.value = '1'; n.id = 'plant-n-' + g.resource; n.setAttribute('aria-label', 'How much ' + name + ' to plant');
+        const b = document.createElement('button'); b.textContent = 'Plant'; b.id = 'plant-' + g.resource;
+        b.onclick = async () => {
+          b.disabled = true;
+          try { const r = await W.plant(g.resource, Number(n.value)); log(`planted ${n.value} ${name} + ${W.formatStock(r.stockIn)} ${g.stock}: ${r.lp} LP staked`); showOrchard(); }
+          catch (e) { log(e.shortMessage || e.message, true); } finally { b.disabled = false; }
+        };
+        const u = document.createElement('button'); u.textContent = 'Unstake'; u.className = 'ghost'; u.id = 'unstake-' + g.resource; u.disabled = !g.mine;
+        u.onclick = async () => {
+          u.disabled = true;
+          try { log(`unstaked from ${name}: ` + await W.unstake(g.resource)); showOrchard(); }
+          catch (e) { log(e.shortMessage || e.message, true); u.disabled = false; }
+        };
+        row.append(label, n, b, u); box.append(row);
+      }
+    } catch (e) { box.textContent = e.message; }
+  }
+  run('harvest', async () => { log('harvested: ' + await W.harvest()); showOrchard(); });
+  run('claimbloom', async () => { log('claimed Bloom: ' + await W.claimBloom()); showOrchard(); });
+  run('connect', async () => { $('addr').textContent = await W.connect(); showMarket(); showOrchard(); });
   run('link', async () => { const k = session(); if (!k) throw new Error('Sign in to the game first'); const r = await W.link(k); log('linked ' + r.wallet + (r.credited ? ` (${r.credited} waiting deposits credited)` : '')); refresh(); });
   run('login', async () => { const r = await W.login(); setSession(r.key); log('signed in as ' + r.username); refresh(); });
   run('wgold', async () => { const r = await W.withdraw(session(), { kind: 'gold', amount: Number($('gold').value) }); log('voucher signed, sending claim…'); log('claimed: ' + await W.claim(r.voucher)); refresh(); });
