@@ -87,6 +87,27 @@ try {
     assert.equal(await A.ev('SHOWCASE.foes.list[1].state'), 'stun', 'a just-in-time guard parries and stuns the attacker');
     assert.equal(await A.ev('SHOWCASE.player.hp'), 100, 'a parried blow does no damage');
     await A.ev('SHOWCASE.setGuard(false); 1');
+    // a charged heavy (E held ~0.9 s) hits harder than a light swing and staggers even a striking foe
+    await A.ev(`(() => { const S = SHOWCASE, P = S.player; P.pos.set(7, 0, 4); P.yaw = Math.PI; P.st = 100; P.hp = 100; P.atk.p = -1; P.staggerT = 0;
+      const e = S.foes.list[2]; e.hp = 1; e.state = 'strike'; e.t = 0; e.p = 0.95; e.hitDone = true; e.pos.set(7, 0, 2.4); e.yaw = 0; return 1; })()`);
+    await A.down('KeyE', 'e'); await sleep(900); await A.up('KeyE', 'e');
+    await sleep(500);
+    const heavy = JSON.parse(await A.ev(`JSON.stringify({ hp: SHOWCASE.foes.list[2].hp, state: SHOWCASE.foes.list[2].state })`));
+    assert.ok(heavy.hp < 0.6, `a full heavy takes over 40% of a revenant (hp ${heavy.hp})`);
+    assert.equal(heavy.state, 'stun', 'a heavy staggers a revenant');
+    // reactions follow the blow's direction
+    assert.equal(await A.ev(`SHOWCASE.me.hit(SHOWCASE.me.root.position.clone().add(new (SHOWCASE.me.root.position.constructor)(Math.sin(SHOWCASE.player.yaw + Math.PI / 2), 0, Math.cos(SHOWCASE.player.yaw + Math.PI / 2))))`), 'hitL',
+      'a blow from the left plays the left reaction');
+    // guard broken: no stamina left, the blow lands and the warden staggers
+    await A.ev('SHOWCASE.setGuard(true); SHOWCASE.clock.t += 1; 1');
+    await sleep(150);
+    await A.ev(stage);
+    await A.ev('SHOWCASE.player.st = 5; SHOWCASE.player.stIdle = -99; 1');
+    await sleep(600);
+    assert.ok(await A.ev('SHOWCASE.player.hp') < 100, 'a guard broken by a blow still takes it');
+    assert.ok(await A.ev('SHOWCASE.me.playing("guardBreak") || SHOWCASE.player.staggerT > 0'), 'a broken guard staggers the warden');
+    await A.ev('SHOWCASE.setGuard(false); 1');
+    await sleep(800);
     // dodge roll: moves the warden over 1.5 m
     await A.ev('(() => { const P = SHOWCASE.player; P.pos.set(7, 0, 4); P.yaw = Math.PI; P.st = 100; return 1; })()');
     await sleep(100);

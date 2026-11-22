@@ -22,6 +22,7 @@ import { loadGlbHero, loadGlbGear, makeGlbHero } from '/game/lib/glbhero.js';
 import { LOOK } from './render.js';
 import { loadArmorKit, attachArmor } from './armor.js';
 import { bake, bakedMaterial } from './bake.js';
+import { makeMover } from './moves.js';
 
 export const gltfLoader = (manager) => new GLTFLoader(manager).setMeshoptDecoder(MeshoptDecoder);
 
@@ -138,6 +139,7 @@ export function makeKnight(scene, look) {
 
   // armour on its sockets, placed in this idle pose (see armor.js); every slot is attached, worn ones shown
   const armor = attachArmor(hero.root, scene, look.armor || [], { tint: look.armorTint });
+  const mover = makeMover(hero.root); // hand-keyed combat moves over the animation (moves.js)
 
   const st = { guard: 0, roll: -1, rollPhase: 0, air: false };
   const _t = new THREE.Vector3(), _pole = new THREE.Vector3(), _f = new THREE.Vector3(), _r = new THREE.Vector3(), _u = new THREE.Vector3(0, 1, 0);
@@ -150,6 +152,16 @@ export function makeKnight(scene, look) {
     // start a dodge roll: glbhero flips when vertical speed jumps up mid-air; we fake the air time
     roll() { if (st.roll >= 0) return false; st.roll = 0; st.rollPhase = 0; return true; },
     hurt: () => hero.hurt(),
+    // a blow from world point `from`: the body gives the way it was pushed (front blows also play the mocap flinch)
+    hit(from) {
+      const q = hero.root.quaternion, d = new THREE.Vector3().subVectors(from, hero.root.position).setY(0).normalize();
+      const f = d.dot(new THREE.Vector3(0, 0, 1).applyQuaternion(q)), r = d.dot(new THREE.Vector3(-1, 0, 0).applyQuaternion(q));
+      const name = f > 0.55 ? 'hitF' : f < -0.55 ? 'hitB' : r > 0 ? 'hitR' : 'hitL';
+      if (name === 'hitF') hero.hurt();
+      mover.play(name);
+      return name;
+    },
+    play: (n) => mover.play(n), release: (n) => mover.release(n), stopMove: (n) => mover.stop(n), playing: (n) => mover.playing(n),
     /* s: { atk, guard (0..1 target), down, lookAt } */
     update(dt, s = {}) {
       let air = false, vy = 0;
@@ -198,6 +210,8 @@ export function makeKnight(scene, look) {
           weapon.quaternion.slerp(want, w);
         }
       }
+      // combat moves last, so a block recoil pushes the guard the IK just built
+      mover.update(dt);
     },
     setEyes(k) { for (const e of eyes) e.material.color.copy(look.eyes).multiplyScalar(k); },
   };

@@ -44,7 +44,7 @@ const overlay = makeOverlay(camera);
 const me = makeKnight(scene, LOOKS.warden);
 const player = {
   pos: LAYOUT.spawn.clone(), yaw: Math.PI, vel: new THREE.Vector3(), hp: 100, st: 100, stIdle: 0, dead: false, deadT: 0,
-  atk: { p: -1, i: 0, dur: 0.6, hit: false, queued: false, end: -9, gap: false }, guard: false, guardAt: -9, roll: null, iUntil: 0, kills: 0,
+  atk: { p: -1, i: 0, dur: 0.6, hit: false, queued: false, end: -9, gap: false, heavy: null }, heavy: null, staggerT: 0, guard: false, guardAt: -9, roll: null, iUntil: 0, kills: 0,
 };
 const SWING = [{ dur: 0.62, dmg: 24 }, { dur: 0.58, dmg: 26 }, { dur: 0.78, dmg: 40 }]; // the combo: diagonal, backhand, overhead
 me.root.position.copy(player.pos);
@@ -74,11 +74,12 @@ addEventListener('keydown', (e) => {
   if (e.repeat) return;
   keys.add(e.code);
   if (e.code === 'Space') { e.preventDefault(); doRoll(); }
+  if (e.code === 'KeyE') beginHeavy();
   if (e.code === 'KeyG') { R.setQuality(R.quality === 'high' ? 'low' : 'high'); toast(`Quality: ${R.quality}`); }
   if (e.code === 'F3') { e.preventDefault(); const s = $('stats'); s.style.display = s.style.display === 'block' ? 'none' : 'block'; }
   if (!started) start();
 });
-addEventListener('keyup', (e) => keys.delete(e.code));
+addEventListener('keyup', (e) => { keys.delete(e.code); if (e.code === 'KeyE') releaseHeavy(); });
 addEventListener('blur', () => { keys.clear(); player.guard = false; });
 const canvas = $('view');
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -86,9 +87,10 @@ canvas.addEventListener('mousedown', (e) => {
   if (!started) { start(); return; }
   if (!locked && !isTouch) { canvas.requestPointerLock?.(); dragging = true; }
   if (e.button === 0) doAttack();
+  if (e.button === 1) { e.preventDefault(); beginHeavy(); }
   if (e.button === 2) setGuard(true);
 });
-addEventListener('mouseup', (e) => { if (e.button === 2) setGuard(false); dragging = false; });
+addEventListener('mouseup', (e) => { if (e.button === 2) setGuard(false); if (e.button === 1) releaseHeavy(); dragging = false; });
 document.addEventListener('pointerlockchange', () => { locked = document.pointerLockElement === canvas; });
 addEventListener('mousemove', (e) => { if (locked || dragging) input.look.x += e.movementX, input.look.y += e.movementY; });
 addEventListener('wheel', (e) => { cam.dist = clamp(cam.dist + Math.sign(e.deltaY) * 0.4, 2.4, 7.5); }, { passive: true });
@@ -112,12 +114,12 @@ if (isTouch) {
   canvas.addEventListener('pointermove', (e) => { if (e.pointerId !== lid) return; input.look.x += (e.clientX - lx) * 1.6; input.look.y += (e.clientY - ly) * 1.6; lx = e.clientX; ly = e.clientY; });
   canvas.addEventListener('pointerup', (e) => { if (e.pointerId === lid) lid = null; });
   const btn = (id, down, up) => { const b = $(id); b.addEventListener('pointerdown', (e) => { e.preventDefault(); b.classList.add('on'); if (!started) start(); down(); }); for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) b.addEventListener(ev, () => { b.classList.remove('on'); up?.(); }); };
-  btn('tAtk', doAttack); btn('tBlk', () => setGuard(true), () => setGuard(false)); btn('tRol', doRoll);
+  btn('tAtk', doAttack); btn('tBlk', () => setGuard(true), () => setGuard(false)); btn('tRol', doRoll); btn('tHvy', beginHeavy, releaseHeavy);
 }
 
 /* ---------------- the warden's actions ---------------- */
 function doAttack() {
-  if (player.dead || player.roll) return;
+  if (player.dead || player.roll || player.heavy || player.staggerT > 0) return;
   const a = player.atk;
   if (a.p >= 0) { if (a.p > 0.42) a.queued = true; return; }
   if (player.st < 8) return;
@@ -126,8 +128,28 @@ function doAttack() {
 function startSwing() {
   const a = player.atk;
   a.i = clock.t - a.end < 0.5 ? (a.i + 1) % 3 : 0; // mirrors glbhero's combo walk (COMBO_GAP)
-  a.p = 0; a.dur = SWING[a.i].dur; a.hit = false; a.queued = false;
+  a.p = 0; a.dur = SWING[a.i].dur; a.hit = false; a.queued = false; a.heavy = null;
   player.st -= 12; player.stIdle = 0;
+  sfx.play('swing');
+}
+// heavy: hold to coil (the longer, up to 0.8 s, the harder), release to strike; a tap is a light swing
+const HEAVY = { min: 0.18, full: 0.8, cost: 25, dur: 0.5 };
+function beginHeavy() {
+  if (!started || player.dead || player.roll || player.heavy || player.atk.p >= 0 || player.staggerT > 0 || player.st < HEAVY.cost) return;
+  player.heavy = { t: 0, full: false };
+  me.play('heavyWind');
+}
+function releaseHeavy() {
+  const h = player.heavy;
+  if (!h) return;
+  player.heavy = null;
+  me.stopMove('heavyWind');
+  if (h.t < HEAVY.min) { startSwing(); return; }
+  const a = player.atk;
+  a.p = 0; a.dur = HEAVY.dur; a.hit = false; a.queued = false;
+  a.heavy = Math.min(1, (h.t - HEAVY.min) / (HEAVY.full - HEAVY.min));
+  player.st -= HEAVY.cost; player.stIdle = 0;
+  me.play('heavyStrike');
   sfx.play('swing');
 }
 function setGuard(on) {
@@ -135,7 +157,8 @@ function setGuard(on) {
   player.guard = on;
 }
 function doRoll() {
-  if (player.dead || player.roll || player.st < 20 || !started) return;
+  if (player.dead || player.roll || player.st < 20 || !started || player.staggerT > 0) return;
+  if (player.heavy) { player.heavy = null; me.stopMove('heavyWind'); }
   if (player.atk.p >= 0 && player.atk.p < 0.5) return; // committed to the swing
   const dir = moveDir().clone(); // moveDir hands back a shared scratch vector
   if (dir.lengthSq() < 0.01) dir.set(Math.sin(player.yaw), 0, Math.cos(player.yaw));
@@ -180,6 +203,7 @@ function hitPlayer(e, dmg) {
   if (player.guard && fwd.dot(toE) > 0.2) {
     if (clock.t - player.guardAt < RULES.parryWindow) {
       foes.parried(e);
+      me.play('parry');
       sparks.burst(at, 'parry', 40, toE.clone().negate());
       sfx.play('parry');
       overlay.number(at.clone().setY(at.y + 0.4), 'PARRY', 'block');
@@ -188,14 +212,16 @@ function hitPlayer(e, dmg) {
     }
     player.st -= RULES.blockCost; player.stIdle = 0;
     sparks.burst(at, 'block', 26, toE.clone().negate());
+    me.play('block');
     sfx.play('crate');
     fx.shake = 0.18; fx.stop = 0.05;
     player.pos.addScaledVector(toE, -0.22);
     if (player.st > 0) return;
-    player.st = 0; player.guard = false; toast('GUARD BROKEN', true); // broken: the blow still lands
+    player.st = 0; player.guard = false; player.staggerT = 0.75; me.play('guardBreak'); toast('GUARD BROKEN', true); // broken: the blow still lands
   }
   player.hp -= dmg;
-  me.hurt();
+  me.hit(e.pos);
+  if (player.heavy) { player.heavy = null; me.stopMove('heavyWind'); } // a blow breaks the coil
   sparks.burst(at, 'ichor', 18, toE.clone().negate());
   sfx.play('hurt');
   fx.shake = 0.4; fx.stop = 0.06; fx.flash = 1;
@@ -321,17 +347,27 @@ function stepPlayer(dt) {
     if (r.t >= 0.6) { p.roll = null; sfx.play('land'); }
   } else {
     const sprint = (keys.has('ShiftLeft') || keys.has('ShiftRight') || input.sprint) && !p.guard && a.p < 0;
-    const speed = a.p >= 0 ? 0.7 : p.guard ? 1.5 : sprint ? 5.6 : 3.4;
+    const speed = p.staggerT > 0 ? 0.4 : p.heavy ? 0.8 : a.p >= 0 ? 0.7 : p.guard ? 1.5 : sprint ? 5.6 : 3.4;
     const want = dir.clone().multiplyScalar(speed);
     p.vel.x = damp(p.vel.x, want.x, 10, dt); p.vel.z = damp(p.vel.z, want.z, 10, dt);
     p.pos.addScaledVector(p.vel, dt);
     // facing: toward a locked foe while fighting, else where we're going
     const lock = lockTarget();
     let faceTo = null;
-    if ((a.p >= 0 || p.guard) && lock) faceTo = Math.atan2(lock.pos.x - p.pos.x, lock.pos.z - p.pos.z);
+    if ((a.p >= 0 || p.guard || p.heavy) && lock) faceTo = Math.atan2(lock.pos.x - p.pos.x, lock.pos.z - p.pos.z);
     else if (a.p >= 0 && a.p < 0.3 && dir.lengthSq() > 0.01) faceTo = Math.atan2(dir.x, dir.z);
     else if (dir.lengthSq() > 0.01 && a.p < 0) faceTo = Math.atan2(dir.x, dir.z);
     if (faceTo !== null) p.yaw += wrap(faceTo - p.yaw) * (1 - Math.exp(-dt * (a.p >= 0 ? 9 : 12)));
+  }
+  p.staggerT = Math.max(0, p.staggerT - dt);
+  // the coil: a glint on the blade when it's fully charged
+  if (p.heavy) {
+    p.heavy.t += dt;
+    if (!p.heavy.full && p.heavy.t >= HEAVY.full) {
+      p.heavy.full = true;
+      sparks.burst(me.tipWorld(new THREE.Vector3()), 'parry', 12);
+      sfx.play('equip');
+    }
   }
   // the swing
   if (a.p >= 0) {
@@ -342,14 +378,19 @@ function stepPlayer(dt) {
       let any = false;
       for (const e of foes.list) {
         const to = e.pos.clone().sub(p.pos).setY(0), d = to.length();
-        if (d > RULES.reach || to.normalize().dot(fwd) < RULES.arc) continue;
+        const heavy = a.heavy != null;
+        if (d > (heavy ? 2.5 : RULES.reach) || to.normalize().dot(fwd) < (heavy ? 0.1 : RULES.arc)) continue;
         const crit = e.state === 'stun' && e.stun > 0.5; // riposte on a parried foe
-        const dmg = SWING[a.i].dmg * (crit ? 1.8 : 1) * (0.92 + Math.random() * 0.16);
-        const r = foes.strike(e, dmg, crit, fwd);
+        const base = heavy ? 34 + 36 * a.heavy : SWING[a.i].dmg;
+        const dmg = base * (crit ? 1.8 : 1) * (0.92 + Math.random() * 0.16);
+        const r = foes.strike(e, dmg, crit, fwd, heavy);
         if (r) any = true;
         if (r === 'kill') { p.kills++; fx.slow = 0.4; }
       }
-      if (any) { fx.stop = a.i === 2 ? 0.09 : 0.06; fx.shake = a.i === 2 ? 0.35 : 0.22; }
+      if (a.heavy != null) { // the heavy lands with dust whether or not it finds a foe
+        sparks.burst(p.pos.clone().addScaledVector(fwd, 1.4).setY(p.pos.y + 0.1), 'dust', 14);
+        if (any) { fx.stop = 0.12; fx.shake = 0.3 + 0.3 * a.heavy; }
+      } else if (any) { fx.stop = a.i === 2 ? 0.09 : 0.06; fx.shake = a.i === 2 ? 0.35 : 0.22; }
     }
     if (a.p >= 1) { a.p = -1; a.end = clock.t; if (a.queued && p.st >= 8) a.gap = true; }
   } else if (a.gap) { a.gap = false; startSwing(); } // one frame of p = -1 between swings lets glbhero walk its combo
@@ -375,4 +416,4 @@ $('veil').classList.add('gone');
 R.renderer.compile(scene, camera);
 requestAnimationFrame(frame);
 if (P.has('auto')) start();
-window.SHOWCASE = { R, world, player, foes, me, cam, clock, start, toast, doAttack, doRoll, setGuard, keys, input };
+window.SHOWCASE = { R, world, player, foes, me, cam, clock, start, toast, doAttack, doRoll, setGuard, beginHeavy, releaseHeavy, keys, input };

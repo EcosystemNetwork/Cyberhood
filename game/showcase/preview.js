@@ -56,7 +56,14 @@ const SW = [0.62, 0.58, 0.78];
 btn('acts', 'Combo', 'combo', () => { S.combo = SW.slice(); S.atk = -1; });
 const guardB = btn('acts', 'Guard', 'guard', () => { S.guard = !S.guard; guardB.classList.toggle('on', S.guard); });
 btn('acts', 'Roll', 'roll', () => cur.roll());
-btn('acts', 'Hit', 'hit', () => cur.hurt());
+btn('acts', 'Heavy', 'heavy', () => { cur.play('heavyWind'); setTimeout(() => { cur.stopMove('heavyWind'); cur.play('heavyStrike'); S.combo = [0.5]; }, 750); });
+btn('acts', 'Parry', 'parry', () => { S.guard = true; guardB.classList.add('on'); cur.play('parry'); });
+btn('acts', 'Block', 'block', () => { S.guard = true; guardB.classList.add('on'); cur.play('block'); });
+btn('acts', 'Guard break', 'guardBreak', () => { S.guard = false; guardB.classList.remove('on'); cur.play('guardBreak'); });
+// hits from each side, in the character's frame
+for (const [label, x, z] of [['Hit front', 0, 1], ['Hit left', 1, 0], ['Hit right', -1, 0], ['Hit back', 0, -1]]) {
+  btn('acts', label, 'hit' + label, () => cur.hit(new THREE.Vector3(x, 0, z).applyQuaternion(cur.root.quaternion).add(cur.root.position)));
+}
 for (const e of ['victory', 'cheer', 'wave']) btn('emotes', e[0].toUpperCase() + e.slice(1), e, () => cur.hero.emote(e));
 function setLight(l) {
   S.light = l;
@@ -98,7 +105,7 @@ function frame() {
   // combo: three swings, one frame of -1 between them so glbhero walks the chain
   if (S.atk >= 0) { S.atk += dt / S.cur; if (S.atk >= 1) S.atk = -1; }
   else if (S.combo.length) { S.cur = S.combo.shift(); S.atk = 0; }
-  cur.update(dt, { atk: S.atk, guard: S.guard && S.atk < 0 ? 1 : 0 });
+  if (!S.frozen) cur.update(dt, { atk: S.atk, guard: S.guard && S.atk < 0 ? 1 : 0 });
   if (cur.trail) cur.trail.visible = S.atk >= 0;
   const fy = S.focusY;
   const c = Math.cos(S.pitch);

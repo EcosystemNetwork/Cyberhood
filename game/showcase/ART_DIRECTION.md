@@ -86,8 +86,11 @@ and effects are kept out of the AO pass.
    gorget, pauldrons, breastplate, vambraces, greaves) on bone sockets, checked in the Armoury
    (`preview.html`). Next: a body-build option, and armour variants per slot (the kit's script
    is parametric, so a heavier set is a new function, not a new pipeline).
-2. **Combat animation:** real block, parry and roll clips (the hero-art branch has `roll`),
-   directional hit reactions, and a heavy attack.
+2. **Combat animation:** in (`moves.js`): hand-keyed moves layered over the mocap at runtime, in
+   rogue_anims.py's own op vocabulary (so they can be baked into the GLB unchanged): hit reactions
+   from four directions, block recoil, a parry beat, a guard break with stagger, and a charged
+   heavy (hold E) that breaks a foe's swing. Next: bake them into the human GLB once the hero-art
+   branch lands (its mocap `roll` replaces the flip-based roll), plus weapon-specific sets.
 3. **Environment kit:** turn the chapel's wall, arch, column and buttress builders into a reusable
    kit, then build a city district and a dungeon with it.
 4. **Monsters and bosses:** a non-human silhouette for the revenants, and a boss.

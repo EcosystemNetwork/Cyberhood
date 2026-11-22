@@ -76,6 +76,7 @@
   .tb.on { background: rgba(216, 180, 106, 0.3); }
   #tAtk { right: max(26px, env(safe-area-inset-right)); bottom: max(100px, calc(env(safe-area-inset-bottom) + 80px)); width: 78px; height: 78px; }
   #tBlk { right: max(118px, calc(env(safe-area-inset-right) + 92px)); bottom: max(84px, calc(env(safe-area-inset-bottom) + 64px)); }
+  #tHvy { right: max(122px, calc(env(safe-area-inset-right) + 96px)); bottom: max(176px, calc(env(safe-area-inset-bottom) + 156px)); }
   #tRol { right: max(40px, calc(env(safe-area-inset-right) + 14px)); bottom: max(196px, calc(env(safe-area-inset-bottom) + 176px)); }
   body.touch .bars { bottom: max(14px, env(safe-area-inset-bottom)); }
   @media (prefers-reduced-motion: reduce) { #title.ready .hint { animation: none; } }
@@ -115,7 +116,8 @@
   <div class="keys">
     Move <b>WASD</b> &nbsp; Sprint <b>Shift</b><br>
     Attack <b>LMB</b> &nbsp; Block / parry <b>RMB</b><br>
-    Dodge <b>Space</b> &nbsp; Quality <b>G</b> &nbsp; Stats <b>F3</b>
+    Heavy <b>E</b> hold &nbsp; Dodge <b>Space</b><br>
+    Quality <b>G</b> &nbsp; Stats <b>F3</b>
   </div>
   <div id="toast"></div>
 </div>
@@ -124,6 +126,7 @@
   <div class="tb" id="tAtk">STRIKE</div>
   <div class="tb" id="tBlk">GUARD</div>
   <div class="tb" id="tRol">ROLL</div>
+  <div class="tb" id="tHvy">HEAVY</div>
 </div>
 <div id="stats"></div>
 <script type="module" src="./main.js"></script>

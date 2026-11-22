@@ -223,7 +223,7 @@ export function makeRevenants(scene, world, overlay, sparks, spots) {
   }
 
   // the warden's blade meets a revenant
-  function strike(e, dmg, crit, dir) {
+  function strike(e, dmg, crit, dir, heavy = false) {
     if (e.state === 'dead' || e.state === 'rise') return false;
     e.hp -= dmg / RULES.enemy.hp;
     e.k.tipWorld(_tip);
@@ -237,14 +237,17 @@ export function makeRevenants(scene, world, overlay, sparks, spots) {
       sfx.play('kill');
       return 'kill';
     }
-    e.k.hurt();
-    if (e.state === 'wind' || e.state === 'stalk' || e.state === 'idle') { e.state = 'stun'; e.stun = 0.45; e.p = -1; e.k.setEyes(1); }
-    e.pos.addScaledVector(dir, 0.25);
+    e.k.hit(e.pos.clone().sub(dir)); // the reaction follows where the blow came from
+    if (heavy) { // a heavy breaks anything short of death, even a swing already coming
+      e.state = 'stun'; e.stun = 0.8; e.p = -1; e.k.setEyes(1); e.k.play('guardBreak');
+      if (token.holder === e) { token.holder = null; token.cool = 0.8; }
+    } else if (e.state === 'wind' || e.state === 'stalk' || e.state === 'idle') { e.state = 'stun'; e.stun = 0.45; e.p = -1; e.k.setEyes(1); }
+    e.pos.addScaledVector(dir, heavy ? 0.6 : 0.25);
     sfx.play('hit');
     return 'hit';
   }
   function parried(e) {
-    e.state = 'stun'; e.stun = RULES.parryStun; e.p = -1; e.k.setEyes(0.3); e.k.hurt();
+    e.state = 'stun'; e.stun = RULES.parryStun; e.p = -1; e.k.setEyes(0.3); e.k.play('guardBreak');
     if (token.holder === e) { token.holder = null; token.cool = 1.2; }
   }
 
