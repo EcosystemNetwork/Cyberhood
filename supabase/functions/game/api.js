@@ -13,7 +13,8 @@
      GET  config, farms, pools        public
      POST signup, login               public
      GET  me, state                   signed in (Authorization: Bearer <session key>)
-     POST act, save, logout, pool     signed in */
+     POST act, save, logout, pool     signed in
+     POST realm                       the realm server only (x-realm-key: REALM_SECRET) */
 import crypto from 'node:crypto';
 import { Buffer } from 'node:buffer';
 import './rules/items.js'; // sets globalThis.GAME
@@ -77,6 +78,7 @@ export function makeGameApi(env) {
   const SERVICE_KEY = env.serviceKey;
   const ANON_KEY = env.anonKey || '';
   const DEV = !!env.dev;
+  const REALM_SECRET = env.realmSecret || ''; // the realm server's key for paying out kills (apps/realm)
 
   async function db(query, init = {}) {
     const res = await fetch(TABLE + query, {
@@ -191,6 +193,7 @@ export function makeGameApi(env) {
         owner: (user.character && user.character.name) || user.username,
         minute: DEV && opts.fast ? 1000 : 60000,
         sent: opts.sent, // the browser's clock when it sent this batch (for the game-clock check)
+        realm: !!opts.realm, // the realm server reporting kills (realmPay), never a browser
         plotTaken: opts.plotTaken, // an imported farm skips a plot someone else holds
         rand: () => crypto.randomInt(0, 2 ** 32) / 2 ** 32, // gold drops are rolled here, not in the browser
         ...fighter(user, s.owned),
@@ -233,6 +236,35 @@ export function makeGameApi(env) {
       if (!user) throw new Error('account vanished');
     }
     throw new Error('too many save conflicts');
+  }
+
+  /* Kills the realm server saw: { kills: [{ k: kill id, m: monster, u: [sealed accounts] }] }.
+     Each credited account gets one compare-and-swap write for all its kills in the batch.
+     -> { paid: [{ u, k, r: '' | why not, xp }] }. Retrying a batch is safe: kill ids pay once. */
+  const REALM_BATCH = 200;
+  async function realmPay(body) {
+    const kills = Array.isArray(body && body.kills) ? body.kills : null;
+    if (!kills || kills.length > REALM_BATCH) return [400, { error: 'Invalid kills' }];
+    const byAcct = new Map(); // account id -> { token, actions }
+    for (const kl of kills) {
+      if (!kl || typeof kl.k !== 'string' || typeof kl.m !== 'string' || !Array.isArray(kl.u)) return [400, { error: 'Invalid kills' }];
+      for (const token of kl.u.slice(0, 20)) {
+        const id = openAcct(token);
+        if (!id) continue; // not one of ours: ignored
+        if (!byAcct.has(id)) byAcct.set(id, { token, actions: [] });
+        const a = byAcct.get(id);
+        if (a.actions.length < MAX_ACTIONS) a.actions.push({ t: 'rkill', id: kl.k, m: kl.m });
+      }
+    }
+    const paid = [];
+    await Promise.all([...byAcct].map(async ([id, { token, actions }]) => {
+      const r = await db(`?id=eq.${encodeURIComponent(id)}&select=${ROW}`);
+      const user = r.data && r.data[0];
+      if (!user) return;
+      const out = await act(user, actions, { realm: true });
+      actions.forEach((a, i) => paid.push({ u: token, k: a.id, r: out.results[i], xp: out.results[i] ? 0 : E.MONSTER_LOOT[a.m].xp }));
+    }));
+    return [200, { paid }];
   }
 
   const HANDLE_MS = 15 * 60 * 1000;
@@ -375,12 +407,33 @@ export function makeGameApi(env) {
     })();
     return mpKeys;
   }
-  async function makeTicket(pk, name, guest) {
+  /* For the realm server (apps/realm), a signed-in player's ticket also carries
+       u:  their account, sealed (AES-GCM, a key only this API has): other players see tickets,
+           and must not learn or link account ids; the realm hands it back when it pays a kill
+       st: their attack stats, which cap how hard their hits land there */
+  const acctKey = () => crypto.createHash('sha256').update('realm-acct\0' + SERVICE_KEY).digest();
+  function sealAcct(id) {
+    const iv = crypto.randomBytes(12), c = crypto.createCipheriv('aes-256-gcm', acctKey(), iv);
+    const ct = Buffer.concat([c.update(String(id), 'utf8'), c.final()]);
+    return b64u(Buffer.concat([iv, ct, c.getAuthTag()]));
+  }
+  function openAcct(token) {
+    try {
+      const raw = Buffer.from(String(token), 'base64url');
+      if (raw.length < 29 || raw.length > 128) return null;
+      const d = crypto.createDecipheriv('aes-256-gcm', acctKey(), raw.subarray(0, 12));
+      d.setAuthTag(raw.subarray(raw.length - 16));
+      return Buffer.concat([d.update(raw.subarray(12, raw.length - 16)), d.final()]).toString('utf8');
+    } catch (e) { return null; }
+  }
+  async function makeTicket(pk, name, guest, user = null) {
     const { priv, pub } = await mpKeyPair();
     // the session id follows from the tab's key, so a renewed ticket keeps the same one
     const sid = crypto.createHash('sha256').update('mp-sid\0' + SERVICE_KEY + '\0' + pk).digest('hex').slice(0, 12);
     const exp = Date.now() + MP_TICKET_MS;
-    const t = JSON.stringify({ s: sid, n: name, g: guest ? 1 : 0, k: pk, e: exp });
+    const body = { s: sid, n: name, g: guest ? 1 : 0, k: pk, e: exp };
+    if (user) { body.u = sealAcct(user.id); body.st = fighter(user, ownedItems(user)).stats; }
+    const t = JSON.stringify(body);
     const sig = await globalThis.crypto.subtle.sign({ name: 'Ed25519' }, priv, Buffer.from(t));
     return { ticket: b64u(Buffer.from(t)) + '.' + b64u(sig), key: pub, sid, name, guest: !!guest, exp };
   }
@@ -470,7 +523,16 @@ export function makeGameApi(env) {
         // guests are marked so they can't pass as someone with an account
         const who = await sessionUser(headers);
         const shown = String(body.name ?? '').replace(/[^\p{L}\p{N} _'-]/gu, '').trim().slice(0, 16) || 'Wanderer';
-        return send(200, await makeTicket(pk, who ? shown : shown + ' (guest)', !who));
+        return send(200, await makeTicket(pk, who ? shown : shown + ' (guest)', !who, who));
+      }
+
+      if (action === 'realm') { // the realm server paying out kills it saw (see realmPay)
+        if (!REALM_SECRET) return send(404, { error: 'Not found' });
+        const key = Buffer.from(String(headers['x-realm-key'] || ''));
+        const want = Buffer.from(REALM_SECRET);
+        if (key.length !== want.length || !crypto.timingSafeEqual(key, want)) return send(401, { error: 'Not the realm' });
+        const [code, data] = await realmPay(body);
+        return send(code, data);
       }
 
       /* ---- signed in ---- */

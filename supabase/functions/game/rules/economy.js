@@ -140,6 +140,7 @@ export const ARENA_BUFF = 1.7;  // the biggest arena buff (Focus); only gladiato
 export const CD_SLACK = 0.85;   // frame timing: an attack may come this fraction of a cooldown early
 export const CLOCK_SLACK_MS = 3000;
 export const MAX_FOES = 40;
+export const REALM_KILLS_KEPT = 64; // the realm's kill ids remembered per player, so a retry never pays twice
 /* Group kills, the way modern open-world MMOs tag monsters: everyone who did real damage to a
    monster gets the full kill (XP and their own drops) when it goes down, whoever finished it.
    The server can't see other players' hits, so it takes the player's word that the monster died,
@@ -522,6 +523,16 @@ function applyOne(s, a, ctx) {
       if ((foe.dealt || 0) < Math.ceil(MONSTER_LOOT[foe.m].hp * ASSIST_SHARE)) return 'not enough damage';
       delete e.foes[a.id];
       return credit(e, foe.m, now, ctx.rand);
+    }
+    case 'rkill': { // { id, m }: a kill the realm server saw happen (apps/realm), paid once per id
+      if (!ctx.realm) return 'realm only';
+      if (!MONSTER_LOOT[a.m]) return 'unknown monster';
+      const id = typeof a.id === 'string' ? a.id.slice(0, 48) : '';
+      if (!id) return 'bad kill';
+      const seen = Array.isArray(e.rk) ? e.rk : [];
+      if (seen.includes(id)) return 'already paid'; // the realm retries a batch it didn't hear back about
+      e.rk = [...seen, id].slice(-REALM_KILLS_KEPT);
+      return credit(e, a.m, now, ctx.rand); // the same kill-rate limits as a kill through hits
     }
     case 'kill': { // only local testing reports kills directly; the live game kills through hits
       if (!ctx.dev) return 'kills come from hits';
