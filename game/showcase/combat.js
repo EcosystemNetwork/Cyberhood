@@ -12,6 +12,7 @@
 import * as THREE from 'three';
 import { makeKnight, LOOKS } from './knight.js';
 import { sfx } from '/game/lib/sfx.js';
+import { animEvery } from './remotes.js';
 
 export const RULES = {
   hitAt: 0.42, reach: 2.15, arc: Math.cos((75 * Math.PI) / 180),
@@ -78,14 +79,20 @@ export function makeOverlay(camera) {
   const _v = new THREE.Vector3();
   const project = (p) => { _v.copy(p).project(camera); return { x: (_v.x * 0.5 + 0.5) * innerWidth, y: (-_v.y * 0.5 + 0.5) * innerHeight, front: _v.z < 1 }; };
   return {
-    plate(name) {
+    // kind: 'enemy' (red, always a bar) or 'ally' (blue name, guild line, a thin green bar)
+    plate(name, kind = 'enemy', guild = null) {
       const el = document.createElement('div');
-      el.className = 'plate';
-      el.innerHTML = `<div class="n">${name}</div><div class="hb"><i></i></div>`;
+      el.className = 'plate ' + kind;
+      el.innerHTML = `<div class="say"></div>${guild ? `<div class="g">&laquo; ${guild} &raquo;</div>` : ''}<div class="n"></div><div class="hb"><i></i></div>`;
+      el.querySelector('.n').textContent = name;
       host.appendChild(el);
-      const bar = el.querySelector('i');
+      const bar = el.querySelector('.hb i'), bubble = el.querySelector('.say');
+      let sayT = 0;
       return {
+        el,
         hide() { el.style.opacity = '0'; },
+        remove() { el.remove(); },
+        say(msg) { bubble.textContent = msg; bubble.classList.add('on'); clearTimeout(sayT); sayT = setTimeout(() => bubble.classList.remove('on'), 4000); },
         set(p, hp, dist, threat, alive) {
           const s = project(p);
           const vis = alive && s.front && dist < 24;
@@ -216,7 +223,13 @@ export function makeRevenants(scene, world, overlay, sparks, spots) {
         if (e.state === 'rise') e.k.root.position.y -= (1 - Math.min(1, e.t)) * 1.6;
       }
       e.k.root.rotation.y = e.yaw;
-      e.k.update(dt, { atk: e.p, down: e.state === 'dead', lookAt: e.state !== 'idle' && e.state !== 'dead' ? player.pos : null });
+      // animation LOD (remotes.js): a foe that isn't fighting you right now can step less often
+      e.acc = (e.acc || 0) + dt; e.frame = (e.frame || 0) + 1;
+      const busy = e.state === 'wind' || e.state === 'strike' || token.holder === e;
+      if (busy || e.frame % animEvery(d) === 0) {
+        e.k.update(e.acc, { atk: e.p, down: e.state === 'dead', lookAt: e.state !== 'idle' && e.state !== 'dead' ? player.pos : null });
+        e.acc = 0;
+      }
 
       const head = e.k.root.position.clone(); head.y += 1.95;
       e.plate.set(head, e.hp, d, token.holder === e, e.state !== 'dead' && e.state !== 'rise');

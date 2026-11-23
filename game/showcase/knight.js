@@ -46,6 +46,7 @@ function pbr(src, look) {
   m.roughness = body ? 0.66 : 0.86;
   m.envMapIntensity = LOOK.envIntensity * 1.15;
   if (look.tint) { m.color.multiply(look.tint); m.roughness = Math.min(1, m.roughness + 0.08); }
+  if (look.cloakTint && /cape|hood|cowl|cloak/i.test(src.name)) m.color.multiply(look.cloakTint); // players tell apart by their cloaks
   const rim = look.rim;
   m.onBeforeCompile = (s) => {
     s.uniforms.uRim = { value: rim };

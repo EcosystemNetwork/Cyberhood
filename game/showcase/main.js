@@ -11,6 +11,8 @@ import { createMaterials, buildWorld, LAYOUT } from './world.js';
 import { buildCrypt, CRYPT } from './crypt.js';
 import { makeBoss } from './boss.js';
 import { makeLoot, ITEMS, RARITY } from './loot.js';
+import { createNet } from './net.js';
+import { createRemotes } from './remotes.js';
 import { loadKnightAssets, makeKnight, LOOKS, gltfLoader } from './knight.js';
 import { makeRevenants, makeSparks, makeOverlay, RULES } from './combat.js';
 import { sfx } from '/game/lib/sfx.js';
@@ -77,6 +79,11 @@ const AREAS = {
   glade: { world, foes, spawn: LAYOUT.spawn, yaw: Math.PI, name: 'THE HOLLOW CHAPEL', bg: scene.background, env: scene.environment,
     fog: [scene.fog.color.clone(), scene.fog.density], sun: true, extra: [statueRoot] },
 };
+/* ---------------- other players: tabs + simulated wardens, in the realm's message shapes (net.js) ---------------- */
+const ME = { sid: 'p' + Math.random().toString(36).slice(2, 8), name: (P.get('name') || 'Warden').slice(0, 16), look: { cloak: 0, armor: 0, guild: null } };
+const remotes = createRemotes(scene, R, overlay, sparks, (x, z) => world.heightAt(x, z));
+const net = createNet({ me: ME, bots: Math.min(6, Number(P.get('bots') ?? 3)), zone: () => area, collide: (b) => AREAS.glade.world.collide(b, 0.4) });
+net.on((m) => remotes.handle(m));
 let area = 'glade', travelling = false, relicClaimed = false, boss = null, emberDropped = false;
 const loot = makeLoot(scene, R);
 function crypt() { // built on first descent, behind the fade
@@ -183,6 +190,7 @@ function startSwing() {
   a.p = 0; a.dur = SWING[a.i].dur; a.hit = false; a.queued = false; a.heavy = null;
   player.st -= 12; player.stIdle = 0;
   sfx.play('swing');
+  net.act({ a: 'swing', i: a.i, dur: a.dur });
 }
 // heavy: hold to coil (the longer, up to 0.8 s, the harder), release to strike; a tap is a light swing
 const HEAVY = { min: 0.18, full: 0.8, cost: 25, dur: 0.5 };
@@ -203,9 +211,11 @@ function releaseHeavy() {
   player.st -= HEAVY.cost; player.stIdle = 0;
   me.play('heavyStrike');
   sfx.play('swing');
+  net.act({ a: 'heavy', dur: HEAVY.dur });
 }
 function setGuard(on) {
   if (on && !player.guard) player.guardAt = clock.t;
+  if (on !== player.guard && started) net.act({ a: on ? 'guard' : 'unguard' });
   player.guard = on;
 }
 function doRoll() {
@@ -220,6 +230,7 @@ function doRoll() {
   player.st -= 22; player.stIdle = 0;
   player.iUntil = clock.t + 0.42;
   me.roll();
+  net.act({ a: 'roll' });
   sfx.play('sprint');
 }
 const _md = new THREE.Vector3();
@@ -277,6 +288,7 @@ function hitPlayer(e, dmg) {
     player.st -= RULES.blockCost; player.stIdle = 0;
     sparks.burst(at, 'block', 26, toE.clone().negate());
     me.play('block');
+    net.hurt({ dmg: 0, hp: player.hp, from: [e.pos.x, e.pos.z], blocked: true });
     sfx.play('crate');
     fx.shake = 0.18; fx.stop = 0.05;
     player.pos.addScaledVector(toE, -0.22);
@@ -285,6 +297,7 @@ function hitPlayer(e, dmg) {
   }
   player.hp -= dmg;
   me.hit(e.pos);
+  net.hurt({ dmg: Math.round(dmg), hp: Math.max(0, Math.round(player.hp)), from: [e.pos.x, e.pos.z] });
   if (player.heavy) { player.heavy = null; me.stopMove('heavyWind'); } // a blow breaks the coil
   sparks.burst(at, 'ichor', 18, toE.clone().negate());
   sfx.play('hurt');
@@ -381,6 +394,8 @@ function frame(now) {
   if (got) equip(got);
   sparks.update(gdt);
   world.update(gdt, t, camera, player.pos);
+  net.update(dt, { x: player.pos.x, z: player.pos.z, face: player.yaw, hp: player.hp });
+  remotes.update(dt, camera, area);
   overlay.update(dt);
   updateCamera(dt, t);
   R.followSun(player.pos);
@@ -493,7 +508,7 @@ function stats(dt) {
   if (statsEl.style.display !== 'block' || (statsT -= dt) > 0) return;
   statsT = 0.5;
   const i = R.renderer.info;
-  statsEl.textContent = `${clock.fps.toFixed(0)} fps   ${R.quality}\ncalls ${i.render.calls}   tris ${(i.render.triangles / 1000).toFixed(0)}k\ngeo ${i.memory.geometries}   tex ${i.memory.textures}\ngrass ${world.grass.count()}   lights ${world.lights.length}`;
+  statsEl.textContent = `${clock.fps.toFixed(0)} fps   ${R.quality}\ncalls ${i.render.calls}   tris ${(i.render.triangles / 1000).toFixed(0)}k\ngeo ${i.memory.geometries}   tex ${i.memory.textures}\ngrass ${world.grass.count()}   lights ${world.lights.length}\nplayers ${remotes.count} here + you`;
 }
 
 // ready
@@ -503,4 +518,4 @@ $('veil').classList.add('gone');
 R.renderer.compile(scene, camera);
 requestAnimationFrame(frame);
 if (P.has('auto')) start();
-window.SHOWCASE = { R, get world() { return world; }, get foes() { return foes; }, get area() { return area; }, get relicClaimed() { return relicClaimed; }, travel, AREAS, get boss() { return boss; }, loot, equip, player, me, setCam: (...c) => { fixedCam = c.length ? c : null; }, cam, clock, start, toast, doAttack, doRoll, setGuard, beginHeavy, releaseHeavy, keys, input };
+window.SHOWCASE = { R, get world() { return world; }, get foes() { return foes; }, get area() { return area; }, get relicClaimed() { return relicClaimed; }, travel, AREAS, net, remotes, ME, get boss() { return boss; }, loot, equip, player, me, setCam: (...c) => { fixedCam = c.length ? c : null; }, cam, clock, start, toast, doAttack, doRoll, setGuard, beginHeavy, releaseHeavy, keys, input };

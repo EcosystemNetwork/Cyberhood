@@ -64,6 +64,15 @@
   .plate .hb { width: 84px; height: 5px; margin: 3px auto 0; background: rgba(0,0,0,0.6); border: 1px solid rgba(200, 60, 50, 0.5); position: relative; }
   .plate .hb i { position: absolute; inset: 0; background: #c0342b; transform-origin: left; transition: transform 0.15s; }
   .plate.threat .n { color: #ff9a7a; }
+  .plate.ally .n { color: #c8dcff; }
+  .plate.ally .g { font: 500 9px Cinzel, serif; letter-spacing: 0.16em; color: #d8b46a; text-shadow: 0 1px 4px #000; }
+  .plate.ally .hb { width: 64px; height: 3px; border-color: rgba(120, 190, 130, 0.45); }
+  .plate.ally .hb i { background: #5aa564; }
+  .plate .say { position: absolute; bottom: 100%; left: 50%; transform: translate(-50%, -6px); max-width: 220px; white-space: normal; width: max-content;
+    font: 500 12px Inter, sans-serif; color: #f2eadb; background: rgba(12, 10, 9, 0.78); border: 1px solid rgba(216, 180, 106, 0.3); padding: 4px 9px; border-radius: 4px;
+    opacity: 0; transition: opacity 0.3s; }
+  .plate .say.on { opacity: 1; }
+  .dmg.ally { font-size: 13px; color: #c9c2b6; opacity: 0.8; }
   .dmg { position: absolute; font: 700 18px Cinzel, serif; color: #fff0d8; text-shadow: 0 2px 6px #000, 0 0 3px #000; transform: translate(-50%, -50%); pointer-events: none; }
   .dmg.crit { color: #ffcc66; font-size: 24px; }
   .dmg.block { color: #cfd8e6; font-size: 14px; letter-spacing: 0.15em; }

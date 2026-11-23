@@ -65,13 +65,14 @@ export function attachArmor(root, scene, slots, { tint = null } = {}) {
       o.position.copy(_p); o.quaternion.copy(_q); o.scale.setScalar(s.scale || 1);
       o.updateMatrixWorld(true);
       b.attach(o);
-      o.visible = slots.includes(slot);
+      o.visible = o.userData.worn = slots.includes(slot);
       (pieces[slot] = pieces[slot] || []).push(o);
     }
   }
   return {
     pieces,
-    get slots() { return Object.keys(pieces).filter((k) => pieces[k][0].visible); },
-    show(slot, on) { for (const o of pieces[slot] || []) o.visible = on; },
+    get slots() { return Object.keys(pieces).filter((k) => pieces[k][0].userData.worn); },
+    show(slot, on) { for (const o of pieces[slot] || []) { o.userData.worn = on; o.visible = on && !o.userData.lodHidden; } },
+    applyLod() { for (const ps of Object.values(pieces)) for (const o of ps) o.visible = !!o.userData.worn && !o.userData.lodHidden; },
   };
 }

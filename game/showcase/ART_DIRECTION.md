@@ -103,5 +103,12 @@ and effects are kept out of the AO pass.
    (`loot.js`): drops arc out of the kill into rarity-coloured light pillars (rare: ember gold,
    legendary: grave blue); blades read by their glowing fuller and trail (Ember Blade, Grave Edge).
    Next: weapon models beyond the longsword (axe, spear), and a second monster family.
-5. **Multiplayer polish:** these nameplates, effects and telegraphs, carried into the realm
-   server's combat.
+5. **Multiplayer polish:** in, client side. `net.js` speaks the realm's message shapes (protocol 2
+   snapshots e/u/g, ouch / ko / say) plus a proposed `act` event (swing, heavy, guard, roll,
+   emote) that combat readability needs; transports today are other tabs (BroadcastChannel) and
+   simulated wardens (`?bots=N`, jittered 40-140 ms). `remotes.js` draws other players from
+   snapshots 120 ms in the past (interpolated, short extrapolation), with replicated swings,
+   guards, rolls and hit reactions; allies get a blue rim, guild nameplates, speech bubbles, half-
+   bright trails and small grey numbers so your own fight reads first. Cost LOD: remotes skip AO,
+   cast shadows within 14 m, drop armour past 22 m, and animate every 1st-4th frame by distance
+   (an animated hero is ~2 ms of JS). Next: the realm WebSocket transport, and `act` in protocol 3.

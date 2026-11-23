@@ -53,7 +53,8 @@ try {
     const z1 = await A.ev('SHOWCASE.player.pos.z');
     assert.ok(z1 < 7, `W walks the warden toward the chapel (z ${z1})`);
     // bring a revenant in front of the warden and strike it
-    await A.ev(`(() => { const S = SHOWCASE, p = S.player.pos, e = S.foes.list[0]; e.pos.set(p.x, p.y, p.z - 1.5); e.state = 'stun'; e.stun = 5; S.player.yaw = Math.PI; S.cam.yaw = 0; return 1; })()`);
+    // staged on open ground east of the courtyard, clear of the statue's plinth (whose collider would push the foe away)
+    await A.ev(`(() => { const S = SHOWCASE, e = S.foes.list[0]; S.player.pos.set(7, 0, 4); e.pos.set(7, 0, 2.5); e.state = 'stun'; e.stun = 5; S.player.yaw = Math.PI; S.cam.yaw = 0; return 1; })()`);
     const hp0 = await A.ev('SHOWCASE.foes.list[0].hp');
     await A.ev('SHOWCASE.doAttack(); 1'); await sleep(700);
     await snap('play_swing.png');
@@ -155,6 +156,21 @@ try {
     assert.equal(await A.ev('SHOWCASE.area'), 'glade', 'climbing the stair returns to the graveyard');
     assert.ok(Math.abs(await A.ev('SHOWCASE.player.pos.x') - 28.2) < 1.2, 'back out beside the tomb house door');
   }
+  // ---- other players: the simulated wardens show up and fight; a second tab joins as a real remote
+  await A.go(`${BASE}/game/showcase/?auto&bots=3`);
+  assert.ok(await A.ev(`new Promise((r) => { const t = setInterval(() => { if (window.SHOWCASE) { clearInterval(t); r(true); } }, 250); setTimeout(() => r(false), 60000); })`), 'boots with players');
+  await sleep(4000);
+  assert.equal(await A.ev('SHOWCASE.remotes.count'), 3, 'three simulated wardens are introduced');
+  assert.ok(await A.ev(`[...SHOWCASE.remotes.players.values()].some((p) => p.k.root.visible)`), 'and drawn');
+  assert.ok(await A.ev(`new Promise((r) => { const t = setInterval(() => { if ([...SHOWCASE.remotes.players.values()].some((p) => p.atk >= 0 || p.guard)) { clearInterval(t); r(true); } }, 100); setTimeout(() => r(false), 25000); })`),
+    'their swings and guards replicate (act events)');
+  const moved = await A.ev(`(async () => { const p = [...SHOWCASE.remotes.players.values()][0], a = p.pos.clone(); await new Promise((r) => setTimeout(r, 3000)); return p.pos.distanceTo(a); })()`);
+  assert.ok(moved > 0.05, `remote wardens move between snapshots (${moved.toFixed(2)} m)`);
+  await A.send('Runtime.evaluate', { expression: `window.open(location.origin + '/game/showcase/?auto&bots=0&q=low&name=Second'); 1`, userGesture: true });
+  assert.ok(await A.ev(`new Promise((r) => { const t = setInterval(() => { if ([...SHOWCASE.remotes.players.values()].some((p) => p.name === 'Second' && p.buf.length > 3)) { clearInterval(t); r(true); } }, 250); setTimeout(() => r(false), 60000); })`),
+    'a second tab joins as a remote player (BroadcastChannel)');
+  await snap('players.png');
+
   // ---- the Armoury: boots, every slot toggles, armour rides the bones through a combo
   await A.go(`${BASE}/game/showcase/preview.html?yaw=0.4`);
   assert.ok(await A.ev(`new Promise((r) => { const t = setInterval(() => { if (window.PREVIEW) { clearInterval(t); r(true); } }, 250); setTimeout(() => r(false), 60000); })`), 'the Armoury boots');
