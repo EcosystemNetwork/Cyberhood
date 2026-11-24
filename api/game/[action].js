@@ -12,6 +12,7 @@ const api = async () => {
     url: process.env.SUPABASE_URL,
     serviceKey: process.env.SUPABASE_SERVICE_KEY,
     anonKey: process.env.SUPABASE_ANON_KEY,
+    realmSecret: process.env.REALM_SECRET,
     dev: process.env.GAME_DEV === '1', // local testing: every account owns every item
     chain: { // Robinhood Chain (supabase/functions/game/wallet.js)
       chainId: process.env.CHAIN_ID,

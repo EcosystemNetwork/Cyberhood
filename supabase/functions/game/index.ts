@@ -8,6 +8,7 @@ Deno.serve((req) => serveGame(req, {
   url: Deno.env.get('SUPABASE_URL'),
   serviceKey: Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'),
   anonKey: Deno.env.get('SUPABASE_ANON_KEY'),
+  realmSecret: Deno.env.get('REALM_SECRET'), // shared with the realm server (apps/realm), for kill payouts
   // Robinhood Chain (wallet.js). Secrets: supabase secrets set CHAIN_SIGNER_KEY=... CHAIN_SYNC_KEY=...
   chain: {
     chainId: Deno.env.get('CHAIN_ID'),
