@@ -49,7 +49,9 @@ CFG = {
     'boots': dict(tris=8000, tex=1024, margin=0.0045, ease=1.0, rough=0.55),
     'tunic': dict(tris=12000, tex=1024, margin=0.007, ease=1.06, rough=0.75),
 }[KIND]
-SLEEVE_TIGHT = 0.6  # the tunic's sleeves, radially, round the upper arm
+SLEEVE_EASE = (0.010, 0.022)  # the tunic's sleeves stand this far off the upper arm: at the shoulder, at the cuff
+SNUG = 0.014  # above the armpits the tunic stands at most this far off the skin
+SLEEVE_SHAPE = 0.35# how much of the sculpt sleeve's own cross-section (folds, cloth thickness) is kept round the arm
 ARM_DROP = 70   # deg below horizontal the upper arms are posed at to fit: near where they hang in idle, walk and run, so the armholes stay closed there
 
 
@@ -441,10 +443,16 @@ if KIND == 'tunic':
     side = [lp for lp in open_loops(bm, in_group('tag_main')) if abs(centre(lp)[0]) > 0.12 and 0.3 < centre(lp)[2] < 0.88]
     fill += side
     n_faces = 0
-    for lp in fill:
+    fl = bm.faces.layers.int.new('fill')  # 1 + which loop: the bake finds no sculpt there (grey/black patches)
+    for k, lp in enumerate(fill):
         res = bmesh.ops.holes_fill(bm, edges=lp, sides=0)
-        bmesh.ops.triangulate(bm, faces=res['faces'])
-        n_faces += len(res['faces'])
+        tri = bmesh.ops.triangulate(bm, faces=res['faces'])
+        for f in tri['faces']:
+            f[fl] = k + 1
+            c = f.calc_center_median()
+            if f.normal.x * c.x + f.normal.y * (c.y - 0.01) < 0:  # holes_fill winds at random: face out from
+                f.normal_flip()                                    # the spine, or it shades black under the arm
+        n_faces += len(tri['faces'])
     bm.to_mesh(lo.data)
     bm.free()
     print('CLOSED', len(fill), 'loops (', len(side), 'armholes ) with', n_faces, 'faces')
@@ -493,6 +501,30 @@ bsdf.inputs['Roughness'].default_value = CFG['rough']
 img_c.pack(); img_n.pack()
 bpy.data.objects.remove(hi, do_unlink=True)
 print('BAKED', T)
+if 'fill' in lo.data.attributes:  # each filled hole takes the cloth's texel at one corner of its rim, so it
+    # reads as the garment rather than unbaked grey (or black from a garbage normal) under the arm
+    me = lo.data
+    fa = np.empty(len(me.polygons), np.int32)
+    me.attributes['fill'].data.foreach_get('value', fa)
+    uvl = me.uv_layers.active.data
+    rim = {}
+    for p in me.polygons:  # a non-fill face's corner on a fill face's vertex
+        if fa[p.index]:
+            continue
+        for li in p.loop_indices:
+            rim.setdefault(me.loops[li].vertex_index, uvl[li].uv.copy())
+    n_fix = 0
+    for k in set(fa[fa > 0].tolist()):
+        faces = [p for p in me.polygons if fa[p.index] == k]
+        uv = next((rim[v] for p in faces for v in p.vertices if v in rim), None)
+        if uv is None:
+            continue
+        for p in faces:
+            for li in p.loop_indices:
+                uvl[li].uv = uv
+        n_fix += len(faces)
+    me.attributes.remove(me.attributes['fill'])
+    print('FILL UVs', n_fix, 'faces')
 
 # lo's vertices and what each came from
 n = len(lo.data.vertices)
@@ -585,13 +617,45 @@ elif KIND == 'tunic':
         ax_b = (P[sd + 'ForeArm'] - Jb).normalized()
         R = np.array(ax_s.rotation_difference(ax_b).to_matrix())
         s = float(chest[0]) * CFG['ease']
-        # a wide bell in the sculpt, whose slanted opening faces forward once the arm hangs: brought
-        # in round the arm (radially only, it keeps its length)
-        rel = V - J
-        along = (rel @ np.array(ax_s))[:, None] * np.array(ax_s)
-        mapped = np.array(Jb) + ((along + (rel - along) * SLEEVE_TIGHT) * s) @ R.T
-        t = (V - J) @ np.array(ax_s)
-        k = (TAG.get(tag, np.zeros(n)) * smooth((t + 0.01) / 0.08))[:, None]
+        # The sculpt's sleeve is a wide bell at 40° down; scaled with the chest and turned onto the
+        # arm it stood off the shoulder like a pad and the arm left through its side. Instead wrap it
+        # round the arm as a tube: each vertex keeps its angle round the sleeve's axis and how far it
+        # sits along it, and its distance out is the arm's own thickness there (plus ease, looser
+        # toward the cuff) times how far out of the sleeve's mean radius it was in the sculpt.
+        a_s, a_b, Jn, Jbn = np.array(ax_s), np.array(ax_b), np.array(J), np.array(Jb)
+        rel_s = sl - Jn
+        ts = rel_s @ a_s
+        rad_s = np.linalg.norm(rel_s - ts[:, None] * a_s, axis=1)
+        tgrid = np.arange(-0.05, ts.max() + 0.01, 0.01)
+        rs = np.array([np.median(rad_s[np.abs(ts - t0) < 0.01]) if (np.abs(ts - t0) < 0.01).sum() > 20 else np.nan for t0 in tgrid])
+        good = ~np.isnan(rs)
+        rs = gauss(np.interp(tgrid, tgrid[good], rs[good]), 1.5)
+        armv = bco[BW[:, gi[f'mixamorig:{sd}Arm']] > 0.5]  # the upper arm only: shoulder skin would read as a thick arm and pad the sleeve's top
+        rel_b = armv - Jbn
+        tb_ = rel_b @ a_b
+        rad_b = np.linalg.norm(rel_b - tb_[:, None] * a_b, axis=1)
+        L_s = ts.max() * s
+        bgrid = np.arange(0.0, L_s + 0.03, 0.005)
+        rb = np.array([np.percentile(rad_b[np.abs(tb_ - t0) < 0.008], 95) if (np.abs(tb_ - t0) < 0.008).sum() > 8 else np.nan for t0 in bgrid])
+        good = ~np.isnan(rb)
+        rb = gauss(np.interp(bgrid, bgrid[good], rb[good]), 2.0)
+        rel = V - Jn
+        t = rel @ a_s
+        radial = rel - t[:, None] * a_s
+        r_now = np.linalg.norm(radial, axis=1)
+        ratio = r_now / np.maximum(np.interp(t, tgrid, rs), 1e-4)
+        ratio = 1 + (np.clip(ratio, 0.7, 1.3) - 1) * SLEEVE_SHAPE
+        tb = t * s
+        frac = np.clip(tb / max(L_s, 1e-4), 0, 1)
+        r_new = (np.interp(np.clip(tb, 0, None), bgrid, rb) + SLEEVE_EASE[0] + (SLEEVE_EASE[1] - SLEEVE_EASE[0]) * frac) * ratio
+        dirs = (radial / np.maximum(r_now, 1e-6)[:, None]) @ R.T
+        mapped = Jbn + tb[:, None] * a_b + dirs * r_new[:, None]
+        print('SLEEVE', sd, 'arm radius', [round(float(x), 3) for x in rb[::8]], 'sculpt radius', round(float(np.median(rs[tgrid > 0])), 3))
+        # blend from the torso's map by how far out of the armhole (an upright seam at the sleeve's
+        # root) a vertex is, not along the slanted sleeve: along it, the root's underside counted as well
+        # down the sleeve, left the armhole for the arm and opened a hole in front of the armpit
+        x_root = np.percentile(np.abs(sl[:, 0]), 1)
+        k = (TAG.get(tag, np.zeros(n)) * smooth((np.abs(V[:, 0]) - x_root - 0.005) / 0.13))[:, None]
         out = out * (1 - k) + mapped * k
         print('SLEEVE', sd, 'axis', [round(x, 2) for x in ax_s], '→', [round(x, 2) for x in ax_b], 'scale', round(s, 3))
 
@@ -639,6 +703,24 @@ elif KIND == 'boots':
         out[mine] = Vb
         print('BOOT', sd, 'foot len', round(Lb, 3), 'scale', round(s, 3), 'top', round(Vb[:, 2].max(), 3))
 
+if KIND == 'tunic':  # the sculpt's shoulders are square and the body's slope: above the armpits, no
+    # cloth stands further than SNUG off the skin (it read as shoulder pads, worse as the run shrugs)
+    snug_bvh = bvh_of(bco, btri, torso_v | side_arm_v['Left'] | side_arm_v['Right'])[0]
+    w_up = smooth((out[:, 2] - P['Spine2'].z) / 0.04)
+    pull = np.zeros_like(out)
+    for i in np.nonzero(w_up > 1e-3)[0]:
+        loc, nrm, _, _ = snug_bvh.find_nearest(Vector(out[i]))
+        if loc is None:
+            continue
+        d = out[i] - np.array(loc)
+        dist = np.linalg.norm(d)
+        if dist > SNUG:
+            pull[i] = -d / dist * (dist - SNUG) * w_up[i]
+    for _ in range(3):  # spread it, so the shoulder line comes down as a whole rather than in dents
+        pull = 0.5 * pull + 0.5 * neighbour_mean(pull)
+    out = out + pull
+    print('SNUG', int((np.linalg.norm(pull, axis=1) > 1e-3).sum()), 'verts pulled in, at most', round(float(np.linalg.norm(pull, axis=1).max()), 3))
+
 # ---- 4 out of the body and the layers under it
 cols = [(bco, btri)] + under_tris
 cco = np.concatenate([c for c, _ in cols])
@@ -656,7 +738,8 @@ if KIND == 'tunic':  # the torso's cloth is kept out of the trunk only: pushed o
     arms[:len(bco)] = ~torso_v
     col_bvh[2] = bvh_of(cco, ctri, ~arms)[0]
     sleeve = sum(TAG.get(t, np.zeros(n)) for t in ('sleeveL', 'sleeveR')) > 0.5
-    col_of[~sleeve] = 2
+    col_of[~sleeve & (out[:, 2] < P['Spine2'].z + 0.02)] = 2  # above that, over the shoulder, clear the arm too
+    # (or the deltoid shows through the cloth beside the sleeve's seam)
 X = out
 
 
@@ -723,7 +806,9 @@ for sgn in (1, -1):  # a leg's cloth takes its weights from that leg alone, neve
 for tag, sd in (('sleeveL', 'Left'), ('sleeveR', 'Right')):
     if tag in TAG and KIND == 'tunic':
         J = P[sd + 'Arm']
-        k = TAG[tag] * smooth(((X - np.array(J)) @ np.array((P[sd + "ForeArm"] - J).normalized()) + 0.04) / 0.05)  # all but the very root rides the arm
+        # the root moves with the torso it's sewn to (riding the arm, the seam split open over the
+        # shoulder as the arm swung), handing over to the arm down the sleeve
+        k = TAG[tag] * smooth(((X - np.array(J)) @ np.array((P[sd + "ForeArm"] - J).normalized()) - 0.005) / 0.06)
         for i in np.nonzero(k > 1e-3)[0]:
             W[i] = W[i] * (1 - k[i]) + nearest_w(arm_bvh[sd], X[i]) * k[i]
 if KIND == 'tunic':  # the skirt rides the hips half way, rather than stretching between the thighs
@@ -776,7 +861,8 @@ if KIND == 'tunic':  # the upper arm inside a sleeve, shoulder to just short of 
         ax = np.array((P[sd + 'ForeArm'] - P[sd + 'Arm']).normalized())
         reach = np.percentile((X[TAG[tag] > 0.5] - J) @ ax, 97)
         t = (bco - J) @ ax
-        cov |= side_arm_v[sd] & (t > -0.01) & (t < reach - 0.015)
+        cov |= side_arm_v[sd] & (t > -0.05) & (t < reach - 0.015)  # from above the joint: the seam over the
+        # shoulder parts a little as the arm swings, and should show dark cloth there, not skin
 lo['hide_body'] = [int(i) for i in np.nonzero(cov)[0]]
 lo['hide_body_of'] = len(bco)  # the body's vertex count, so a different body is never cut
 print('HIDES', int(cov.sum()), 'of', len(bco), 'body verts')
