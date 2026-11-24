@@ -10,6 +10,7 @@ import WebSocket from 'ws';
 export const BASE = process.env.BASE || 'http://localhost:8137';
 export const OUT = join(dirname(fileURLToPath(import.meta.url)), 'out');
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// CHROME_ANGLE=gl (or vulkan) uses the GPU on Linux, where SwiftShader can run under 1 fps
 const CHROME = process.env.CHROME || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 
 export async function launch() {
@@ -17,7 +18,7 @@ export async function launch() {
   const port = 9400 + Math.floor(Math.random() * 400);
   const prof = mkdtempSync(join(tmpdir(), 'w3d-'));
   const chrome = spawn(CHROME, ['--headless=new', `--remote-debugging-port=${port}`, `--user-data-dir=${prof}`, '--window-size=1280,720',
-    '--disable-renderer-backgrounding', '--disable-background-timer-throttling', '--disable-backgrounding-occluded-windows', ...(process.platform === 'darwin' ? ['--use-angle=metal'] : ['--use-angle=swiftshader', '--enable-unsafe-swiftshader']), 'about:blank'],
+    '--disable-renderer-backgrounding', '--disable-background-timer-throttling', '--disable-backgrounding-occluded-windows', ...(process.env.CHROME_ANGLE ? [`--use-angle=${process.env.CHROME_ANGLE}`, '--ignore-gpu-blocklist'] : process.platform === 'darwin' ? ['--use-angle=metal'] : ['--use-angle=swiftshader', '--enable-unsafe-swiftshader']), 'about:blank'],
   { stdio: 'ignore', detached: true });
   const kill = () => { try { process.kill(-chrome.pid); } catch (e) {} };
   process.on('exit', kill);

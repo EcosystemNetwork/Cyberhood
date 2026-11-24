@@ -1,11 +1,12 @@
 {
   "scripts": {
     "test": "node --test tests/*.test.js tests/*.test.mjs",
-    "test:chain": "node --test tests/chain-contracts.test.mjs tests/chain-bridge.test.mjs tests/chain-dex.test.mjs tests/chain-wallet-page.test.mjs",
+    "test:chain": "node --test tests/chain-contracts.test.mjs tests/chain-bridge.test.mjs tests/chain-dex.test.mjs tests/chain-orchard.test.mjs tests/chain-wallet-page.test.mjs",
     "chain:compile": "node tools/chain/compile.mjs",
     "chain:deploy": "node tools/chain/deploy.mjs",
     "chain:deploy:testnet": "node --env-file=.env.chain.testnet tools/chain/deploy.mjs",
-    "chain:dex:testnet": "node --env-file=.env.chain.testnet tools/chain/dex.mjs"
+    "chain:dex:testnet": "node --env-file=.env.chain.testnet tools/chain/dex.mjs",
+    "chain:orchard:testnet": "node --env-file=.env.chain.testnet tools/chain/orchard.mjs"
   },
   "dependencies": {
     "viem": "2.57.13",

@@ -29,6 +29,17 @@ Players earn Robinhood stock tokens by selling resources they farmed. They withd
 
 **Mainnet:** stock tokens are real, regulated securities, with eligibility and transfer rules. `dex.mjs` refuses mainnet without `I_HAVE_LEGAL_SIGNOFF=1`, and mainnet should use the official Uniswap deployment there.
 
+## The Orchard: stake LP tokens, grow Bloom
+
+`Bloom` (BLOOM, 18 decimals, 100M hard cap) is the game's reward token. The `Orchard` has one **grove** per resource / stock pool (`ORCHARD_GROVES` in `game/lib/chain.js`). Stake that pool's Uniswap V2 LP tokens in its grove and Bloom accrues every second, split between groves by their `alloc` weight.
+
+- **Emission**: 2 Bloom/s across all groves, halving every 120 days. At most 2 × rate × halving (41.5M) is ever minted, and the constructor checks this fits under Bloom's cap. The settings are in `ORCHARD`.
+- **Harvest**: 25% is paid straight away and 75% is locked, unlocking linearly over 30 days. New locked Bloom merges into your schedule, ending at the amount-weighted average of the two end times. `claimVested` pays out what has unlocked.
+- **Non-custodial**: no role can move staked LP tokens. `emergencyWithdraw` always works and only gives up the unharvested Bloom. The admin (a multisig on mainnet) can add groves and change their weights, nothing more. Only the Orchard holds Bloom's `MINTER_ROLE`.
+- **Deploy**: `npm run chain:orchard:testnet` runs `tools/chain/orchard.mjs`. It needs the pools from `dex.mjs`, re-running is safe, and `ADMIN=0x…` hands both contracts to a multisig. Then put the printed `{ bloom, orchard, groves }` into `CHAINS.testnet.orchard` in `game/lib/chain.js`.
+- **In the game**: Elder Rowan tends a grove of five trees behind the Potion Shop in Taproot City (`game/world3d/orchardview.js`). Press F next to her to plant (add a withdrawn resource plus its stock token as liquidity and stake it in one step), harvest, claim or unstake. Each tree grows with your stake and grows one glowing fruit per 5 Bloom ready to harvest. `game/wallet.html` has the same actions, and `game/lib/wallet.js` provides `orchard()`, `plant()`, `stake()`, `unstake()`, `harvest()` and `claimBloom()`.
+- **Tests**: `tests/chain-orchard.test.mjs` covers emission, the split and vesting, emergency exits, roles, a fuzz run that must never owe more than was emitted, and a real LP stake. `tests/chain-wallet-page.test.mjs` runs plant / harvest / unstake in the browser, and `tests/world3d/orchard.cdp.mjs` checks the 3D grove.
+
 ## How it works
 
 ```
@@ -44,7 +55,7 @@ Players earn Robinhood stock tokens by selling resources they farmed. They withd
 - **Gear** you withdraw is taken off your character. If you deposit a copy of gear you already own, it goes to `econ.stash` and can be withdrawn again.
 
 Code:
-- `contracts/src/`: the four contracts.
+- `contracts/src/`: the bridge's four contracts, plus `Bloom` and `Orchard`.
 - `game/lib/chain.js`: networks, ABI and the Claim type, shared by browser and server.
 - `supabase/functions/game/wallet.js`: the API routes `chain`, `loginnonce`, `walletlogin`, `linknonce`, `link`, `unlink`, `wallet`, `withdraw` and `chainsync`.
 - `game/lib/wallet.js`: the browser side. `game/wallet.html` is a test bench page.
