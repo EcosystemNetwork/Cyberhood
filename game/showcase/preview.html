@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Cyberhood: Armoury</title>
+<meta name="description" content="Cyberhood character preview: the warden and the revenant, modular armour, animations, lighting.">
+<link rel="icon" href="/favicon.png">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root { --ink: #efe6d2; --dim: #a89e8a; --gold: #d8b46a; --line: rgba(216, 180, 106, 0.28); --panel: rgba(14, 12, 11, 0.78); }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0d0c0e; color: var(--ink); font: 13px/1.4 Inter, system-ui, sans-serif; }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  header { position: fixed; left: max(20px, env(safe-area-inset-left)); top: max(16px, env(safe-area-inset-top)); pointer-events: none; }
+  header h1 { margin: 0; font: 700 22px Cinzel, serif; letter-spacing: 0.16em; text-shadow: 0 2px 14px #000; }
+  header p { margin: 4px 0 0; color: var(--gold); font: 500 11px Cinzel, serif; letter-spacing: 0.3em; }
+  header a { pointer-events: auto; color: var(--dim); font-size: 12px; text-decoration: none; display: inline-block; margin-top: 10px; }
+  header a:hover { color: var(--ink); }
+  #panel { position: fixed; right: max(16px, env(safe-area-inset-right)); top: 16px; bottom: 16px; width: 248px; overflow-y: auto; background: var(--panel); border: 1px solid var(--line);
+    padding: 14px 14px 18px; backdrop-filter: blur(6px); }
+  #panel h2 { font: 600 11px Cinzel, serif; letter-spacing: 0.22em; color: var(--gold); margin: 14px 0 8px; }
+  #panel h2:first-child { margin-top: 0; }
+  .row { display: flex; flex-wrap: wrap; gap: 6px; }
+  button { font: 600 12px Inter, sans-serif; color: var(--ink); background: rgba(255,255,255,0.04); border: 1px solid var(--line); padding: 6px 10px; cursor: pointer; border-radius: 3px; min-height: 30px; }
+  button:hover { background: rgba(216, 180, 106, 0.12); }
+  button.on { background: rgba(216, 180, 106, 0.26); border-color: var(--gold); }
+  button:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+  .hint { color: var(--dim); font-size: 11px; margin-top: 14px; }
+  #loading { position: fixed; inset: 0; display: grid; place-items: center; font: 600 13px Cinzel, serif; letter-spacing: 0.3em; color: var(--dim); background: #0d0c0e; transition: opacity 0.8s; }
+  #loading.gone { opacity: 0; pointer-events: none; }
+  @media (max-width: 700px) {
+    #panel { top: auto; left: 0; right: 0; bottom: 0; width: auto; max-height: 42vh; border-width: 1px 0 0; padding-bottom: max(18px, env(safe-area-inset-bottom)); }
+    header h1 { font-size: 18px; }
+  }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script>window.__errs = []; addEventListener('error', (e) => __errs.push(String(e.message))); addEventListener('unhandledrejection', (e) => __errs.push(String(e.reason)));</script>
+</head>
+<body>
+<canvas id="view"></canvas>
+<header>
+  <h1>THE ARMOURY</h1>
+  <p>CYBERHOOD</p>
+  <a href="./">Enter the Hollow Chapel &rarr;</a>
+</header>
+<aside id="panel">
+  <h2>Character</h2>
+  <div class="row" id="looks"></div>
+  <h2>Armour</h2>
+  <div class="row" id="slots"></div>
+  <div class="row" style="margin-top:6px"><button id="all">Full set</button><button id="none">None</button><button id="hood">Hood</button></div>
+  <h2>Combat</h2>
+  <div class="row" id="acts"></div>
+  <h2>Gestures</h2>
+  <div class="row" id="emotes"></div>
+  <h2>Light</h2>
+  <div class="row" id="lights"></div>
+  <div class="hint">Drag to turn &middot; scroll or pinch to zoom &middot; double-click to frame the face</div>
+</aside>
+<div id="loading">FORGING&hellip;</div>
+<script type="module" src="./preview.js"></script>
+</body>
+</html>
